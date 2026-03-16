@@ -12,6 +12,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: ${{ secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_SSH_KEY != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
