@@ -12,32 +12,56 @@ concurrency:
 
 jobs:
   deploy:
-    if: ${{ secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_SSH_KEY != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
 
     steps:
+      - name: Check deploy secrets
+        id: deploy_secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY; do
+            if [[ -z "${!var:-}" ]]; then
+              echo "::warning title=Missing secret::$var is not configured. Skipping deploy."
+              missing=1
+            fi
+          done
+          echo "missing=$missing" >> "$GITHUB_OUTPUT"
+
+      - name: Skip deploy until secrets are configured
+        if: steps.deploy_secrets.outputs.missing != '0'
+        run: echo "Skipping deploy because DEPLOY_* GitHub secrets are not configured yet."
+
       - name: Checkout
+        if: steps.deploy_secrets.outputs.missing == '0'
         uses: actions/checkout@v4
 
       - name: Setup Node.js
+        if: steps.deploy_secrets.outputs.missing == '0'
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
+        if: steps.deploy_secrets.outputs.missing == '0'
         run: npm ci
 
       - name: Syntax check
+        if: steps.deploy_secrets.outputs.missing == '0'
         run: npm run check:syntax
 
       - name: Configure SSH
+        if: steps.deploy_secrets.outputs.missing == '0'
         shell: bash
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
@@ -48,11 +72,8 @@ jobs:
           chmod 644 ~/.ssh/known_hosts
 
       - name: Deploy on VPS
+        if: steps.deploy_secrets.outputs.missing == '0'
         shell: bash
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
           set -euo pipefail
           DEPLOY_PORT="${DEPLOY_PORT:-22}"

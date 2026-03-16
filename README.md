@@ -47,4 +47,4 @@ npm run check:syntax
 - `.github/workflows/backend-ci.yml` runs syntax validation on pushes and pull requests
 - `.github/workflows/backend-deploy.yml` deploys the full VPS stack on pushes to `main` or manual dispatch
 - Add the same repository secrets as the FE repo: `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`
-- Until those secrets exist, the deploy workflow is skipped automatically
+- If those secrets are missing, the deploy workflow starts but exits cleanly with a skip message instead of failing syntax validation
