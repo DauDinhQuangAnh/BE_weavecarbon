@@ -36,4 +36,8 @@ npm run check:syntax
 
 - Standard checkout now uses redirect-based VNPAY PAY with `VNPAYQR`
 - IPN is the payment source of truth; FE polls payment status after return
-- Setup and deployment steps: `VNPAY_STANDARD_SETUP.md`
+
+## Docker
+
+- Backend can now be built with the included `Dockerfile`
+- For full FE + BE + DB deployment on one VPS, use the FE repo deployment stack (`docker-compose.vps.yml` + `DEPLOY_VPS.md`)

@@ -1357,6 +1357,13 @@ class ProductsService {
             destination,
             fallbackTotalCo2e
         );
+        if (normalizedLegs.length === 0) {
+            return {
+                shipmentId: null,
+                shipmentCreationSkipped: true,
+                skipReason: 'MISSING_TRANSPORT_LEGS'
+            };
+        }
         const totalDistanceKm = normalizedLegs.reduce((sum, leg) => sum + leg.distance_km, 0);
         const totalCo2e = normalizedLegs.reduce((sum, leg) => sum + leg.co2e, 0) || fallbackTotalCo2e;
         const quantity = this._toPositiveInt(payload?.quantity, 1);
@@ -1553,6 +1560,14 @@ class ProductsService {
             // Calculate totals from transport legs
             const fallbackTotalCo2e = Math.max(0, this._toNumber(product.total_co2e, 0));
             const legs = this._normalizeShipmentLegs(transportLegs, origin, destination, fallbackTotalCo2e);
+            if (legs.length === 0) {
+                console.log(`Product ${productId}: No transport legs in payload, skipping shipment creation`);
+                return {
+                    shipmentId: null,
+                    shipmentCreationSkipped: true,
+                    skipReason: 'MISSING_TRANSPORT_LEGS'
+                };
+            }
             const totalDistanceKm = legs.reduce((sum, leg) => sum + leg.distance_km, 0);
             const totalCo2e = legs.reduce((sum, leg) => sum + leg.co2e, 0) || fallbackTotalCo2e;
             const quantity = this._toPositiveInt(payload?.quantity, 1);

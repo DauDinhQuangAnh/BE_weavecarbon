@@ -1,0 +1,12 @@
+.git
+.gitignore
+node_modules
+uploads
+coverage
+dist
+build
+.env
+.env.*
+npm-debug.log*
+API_DOCUMENTATION.md
+README.md

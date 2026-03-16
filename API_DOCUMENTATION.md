@@ -290,6 +290,16 @@ Limiter dac thu:
   - `carbon_trend[]`
   - `emission_breakdown[]`
   - `market_readiness[]`
+  - `market_readiness_preview[]`: toi da 3 thi truong dau tien de hien thi nhanh tren dashboard
+  - `market_readiness_remaining_count`: so thi truong con lai sau 3 item dau
+  - `market_readiness_remaining_label`: chuoi san de FE hien thi nhu `+2`
+  - `market_readiness_display`
+    - `preview_items[]`: toi da 3 thi truong dau tien
+    - `remaining_items[]`: cac thi truong con lai de FE mo popup/modal
+    - `remaining_count`
+    - `remaining_label`
+    - `preview_limit`
+    - `has_more`
   - `recommendations[]`
   - `meta`
 - Errors:

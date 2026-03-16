@@ -8,6 +8,8 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const MARKET_READINESS_PREVIEW_LIMIT = 3;
+
 const normalizeBreakdownPercentages = (values) => {
   if (!Array.isArray(values) || values.length === 0) return [];
 
@@ -82,6 +84,27 @@ const buildShipmentAllocatedExpression = (
     END
   )
 `;
+
+const buildMarketReadinessDisplay = (
+  marketReadiness,
+  previewLimit = MARKET_READINESS_PREVIEW_LIMIT
+) => {
+  const visibleItems = Array.isArray(marketReadiness)
+    ? marketReadiness.slice(0, previewLimit)
+    : [];
+  const hiddenItems = Array.isArray(marketReadiness)
+    ? marketReadiness.slice(previewLimit)
+    : [];
+
+  return {
+    preview_items: visibleItems,
+    remaining_items: hiddenItems,
+    remaining_count: hiddenItems.length,
+    remaining_label: hiddenItems.length > 0 ? `+${hiddenItems.length}` : '',
+    preview_limit: previewLimit,
+    has_more: hiddenItems.length > 0
+  };
+};
 
 /**
  * GET /api/dashboard/overview
@@ -464,6 +487,7 @@ router.get('/overview', authenticate, requireRole('b2b'), async (req, res, next)
       requirements_met: row.requirements_met,
       requirements_missing: row.requirements_missing
     }));
+    const marketReadinessDisplay = buildMarketReadinessDisplay(marketReadiness);
 
     // ======================
     // 5. AI RECOMMENDATIONS - Khuyến nghị cải thiện
@@ -533,6 +557,10 @@ router.get('/overview', authenticate, requireRole('b2b'), async (req, res, next)
         carbon_trend: carbonTrend,
         emission_breakdown: emissionBreakdown,
         market_readiness: marketReadiness,
+        market_readiness_preview: marketReadinessDisplay.preview_items,
+        market_readiness_remaining_count: marketReadinessDisplay.remaining_count,
+        market_readiness_remaining_label: marketReadinessDisplay.remaining_label,
+        market_readiness_display: marketReadinessDisplay,
         recommendations
       },
       meta: {
