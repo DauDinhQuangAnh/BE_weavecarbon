@@ -12,6 +12,7 @@ const chatService = require('../services/chatService');
 const {
   listChatConversationsValidation,
   getChatConversationValidation,
+  deleteChatConversationValidation,
   sendChatMessageValidation,
   updateChatSettingsValidation
 } = require('../validators/chatValidators');
@@ -50,6 +51,20 @@ router.get(
     const data = await chatService.getConversationDetail(req.userId, req.companyId, req.params.id);
 
     return sendSuccess(res, { data });
+  })
+);
+
+router.delete(
+  '/conversations/:id',
+  deleteChatConversationValidation,
+  validate,
+  asyncHandler(async (req, res) => {
+    const data = await chatService.deleteConversation(req.userId, req.companyId, req.params.id);
+
+    return sendSuccess(res, {
+      data,
+      message: 'Conversation deleted successfully'
+    });
   })
 );
 

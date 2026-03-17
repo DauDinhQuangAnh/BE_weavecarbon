@@ -18,6 +18,12 @@ const getChatConversationValidation = [
     .withMessage('Conversation id must be a valid UUID')
 ];
 
+const deleteChatConversationValidation = [
+  param('id')
+    .isUUID()
+    .withMessage('Conversation id must be a valid UUID')
+];
+
 const sendChatMessageValidation = [
   body('conversation_id')
     .optional()
@@ -76,6 +82,7 @@ const updateChatSettingsValidation = [
 module.exports = {
   listChatConversationsValidation,
   getChatConversationValidation,
+  deleteChatConversationValidation,
   sendChatMessageValidation,
   updateChatSettingsValidation
 };

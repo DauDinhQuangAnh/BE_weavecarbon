@@ -313,6 +313,29 @@ class ChatService {
     };
   }
 
+  async deleteConversation(userId, companyId, conversationId) {
+    const result = await pool.query(
+      `
+        DELETE FROM public.chat_conversations
+        WHERE id = $1 AND user_id = $2 AND company_id = $3
+        RETURNING id, title
+      `,
+      [conversationId, userId, companyId]
+    );
+
+    if (result.rows.length === 0) {
+      throw createAppError('Conversation not found', {
+        statusCode: 404,
+        code: 'CHAT_CONVERSATION_NOT_FOUND'
+      });
+    }
+
+    return {
+      id: result.rows[0].id,
+      title: result.rows[0].title || 'New chat'
+    };
+  }
+
   async upsertSettings(userId, companyId, payload) {
     const normalizedBaseUrl = this.assertAllowedRagBaseUrl(payload.rag_base_url);
     const collectionName = compactWhitespace(payload.collection_name);
