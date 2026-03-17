@@ -11,6 +11,7 @@ const TITLE_MAX_LENGTH = 80;
 const PREVIEW_MAX_LENGTH = 120;
 const DASHBOARD_CHAT_COLLECTION_NAME = 'weaveCarbon_1';
 const DASHBOARD_CHAT_COLUMNS_TO_ANSWER = ['Question'];
+const GLOBAL_AI_RUNTIME_KEY = 'global';
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -103,7 +104,7 @@ class ChatService {
     return this.normalizeRagBaseUrl(internalOverride);
   }
 
-  getDashboardChatConfig() {
+  getFallbackDashboardChatConfig() {
     const allowedBaseUrl = Array.from(this.getAllowedRagBaseUrls())[0] || null;
 
     if (!allowedBaseUrl) {
@@ -151,13 +152,56 @@ class ChatService {
   normalizeConfigRow(row) {
     if (!row) return null;
 
-    return {
+    const config = {
       rag_base_url: row.rag_base_url,
       collection_name: row.collection_name,
       columns_to_answer: Array.isArray(row.columns_to_answer) ? row.columns_to_answer : [],
       number_docs_retrieval:
         toPositiveInt(row.number_docs_retrieval, DEFAULT_NUMBER_DOCS_RETRIEVAL, 1, 50),
       timeout_ms: toPositiveInt(row.timeout_ms, DEFAULT_TIMEOUT_MS, 1000, 120000)
+    };
+
+    if (
+      !compactWhitespace(config.rag_base_url) ||
+      !compactWhitespace(config.collection_name) ||
+      config.columns_to_answer.length === 0
+    ) {
+      return null;
+    }
+
+    return config;
+  }
+
+  validateRuntimeConfigPayload(payload) {
+    const normalizedBaseUrl = this.assertAllowedRagBaseUrl(payload.rag_base_url);
+    const collectionName = compactWhitespace(payload.collection_name);
+    const columnsToAnswer = this.normalizeColumns(payload.columns_to_answer);
+
+    if (!collectionName) {
+      throw createAppError('collection_name is required', {
+        statusCode: 400,
+        code: 'VALIDATION_ERROR'
+      });
+    }
+
+    if (columnsToAnswer.length === 0) {
+      throw createAppError('columns_to_answer must contain at least one column', {
+        statusCode: 400,
+        code: 'VALIDATION_ERROR'
+      });
+    }
+
+    return {
+      rag_base_url: normalizedBaseUrl,
+      collection_name: collectionName,
+      columns_to_answer: columnsToAnswer,
+      number_docs_retrieval: toPositiveInt(
+        payload.number_docs_retrieval,
+        DEFAULT_NUMBER_DOCS_RETRIEVAL,
+        1,
+        50
+      ),
+      timeout_ms: toPositiveInt(payload.timeout_ms, DEFAULT_TIMEOUT_MS, 1000, 120000)
     };
   }
 
@@ -346,6 +390,83 @@ class ChatService {
     };
   }
 
+  async getStoredGlobalRuntimeConfig() {
+    try {
+      const result = await pool.query(
+        `
+          SELECT rag_base_url, collection_name, columns_to_answer, number_docs_retrieval, timeout_ms
+          FROM public.global_ai_runtime_settings
+          WHERE singleton_key = $1
+          LIMIT 1
+        `,
+        [GLOBAL_AI_RUNTIME_KEY]
+      );
+
+      return this.normalizeConfigRow(result.rows[0]);
+    } catch (error) {
+      if (error?.code === '42P01') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async resolveGlobalRuntimeConfig() {
+    const storedConfig = await this.getStoredGlobalRuntimeConfig();
+    if (storedConfig) {
+      return storedConfig;
+    }
+
+    return this.getFallbackDashboardChatConfig();
+  }
+
+  async upsertGlobalRuntimeConfig(payload) {
+    const config = this.validateRuntimeConfigPayload(payload);
+
+    try {
+      const result = await pool.query(
+        `
+          INSERT INTO public.global_ai_runtime_settings (
+            singleton_key,
+            rag_base_url,
+            collection_name,
+            columns_to_answer,
+            number_docs_retrieval,
+            timeout_ms
+          )
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (singleton_key)
+          DO UPDATE SET
+            rag_base_url = EXCLUDED.rag_base_url,
+            collection_name = EXCLUDED.collection_name,
+            columns_to_answer = EXCLUDED.columns_to_answer,
+            number_docs_retrieval = EXCLUDED.number_docs_retrieval,
+            timeout_ms = EXCLUDED.timeout_ms,
+            updated_at = NOW()
+          RETURNING rag_base_url, collection_name, columns_to_answer, number_docs_retrieval, timeout_ms
+        `,
+        [
+          GLOBAL_AI_RUNTIME_KEY,
+          config.rag_base_url,
+          config.collection_name,
+          config.columns_to_answer,
+          config.number_docs_retrieval,
+          config.timeout_ms
+        ]
+      );
+
+      return this.normalizeConfigRow(result.rows[0]);
+    } catch (error) {
+      if (error?.code === '42P01') {
+        throw createAppError('Global AI runtime table is missing. Please run the latest database migration.', {
+          statusCode: 503,
+          code: 'GLOBAL_AI_RUNTIME_TABLE_MISSING'
+        });
+      }
+      throw error;
+    }
+  }
+
   async deleteConversation(userId, companyId, conversationId) {
     const result = await pool.query(
       `
@@ -370,31 +491,7 @@ class ChatService {
   }
 
   async upsertSettings(userId, companyId, payload) {
-    const normalizedBaseUrl = this.assertAllowedRagBaseUrl(payload.rag_base_url);
-    const collectionName = compactWhitespace(payload.collection_name);
-    const columnsToAnswer = this.normalizeColumns(payload.columns_to_answer);
-
-    if (!collectionName) {
-      throw createAppError('collection_name is required', {
-        statusCode: 400,
-        code: 'VALIDATION_ERROR'
-      });
-    }
-
-    if (columnsToAnswer.length === 0) {
-      throw createAppError('columns_to_answer must contain at least one column', {
-        statusCode: 400,
-        code: 'VALIDATION_ERROR'
-      });
-    }
-
-    const numberDocsRetrieval = toPositiveInt(
-      payload.number_docs_retrieval,
-      DEFAULT_NUMBER_DOCS_RETRIEVAL,
-      1,
-      50
-    );
-    const timeoutMs = toPositiveInt(payload.timeout_ms, DEFAULT_TIMEOUT_MS, 1000, 120000);
+    const config = this.validateRuntimeConfigPayload(payload);
 
     const result = await pool.query(
       `
@@ -422,11 +519,11 @@ class ChatService {
       [
         userId,
         companyId,
-        normalizedBaseUrl,
-        collectionName,
-        columnsToAnswer,
-        numberDocsRetrieval,
-        timeoutMs
+        config.rag_base_url,
+        config.collection_name,
+        config.columns_to_answer,
+        config.number_docs_retrieval,
+        config.timeout_ms
       ]
     );
 
@@ -588,7 +685,7 @@ class ChatService {
       companyId,
       payload.conversation_id
     );
-    const dashboardChatConfig = this.getDashboardChatConfig();
+    const dashboardChatConfig = await this.resolveGlobalRuntimeConfig();
     const ragResult = await this.callRagQuery(dashboardChatConfig, content);
     const client = await pool.connect();
 

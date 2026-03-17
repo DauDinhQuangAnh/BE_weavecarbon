@@ -20,6 +20,7 @@ const batchesRoutes = require('./routes/batches');
 const logisticsRoutes = require('./routes/logistics');
 const exportMarketsRoutes = require('./routes/exportMarkets');
 const chatRoutes = require('./routes/chat');
+const aiConfigRoutes = require('./routes/aiConfig');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -36,7 +37,8 @@ const apiRoutes = [
   ['/api/product-batches', batchesRoutes],
   ['/api/logistics', logisticsRoutes],
   ['/api/export/markets', exportMarketsRoutes],
-  ['/api/chat', chatRoutes]
+  ['/api/chat', chatRoutes],
+  ['/api/ai-config', aiConfigRoutes]
 ];
 
 function createCorsOptions(frontendOrigins) {
