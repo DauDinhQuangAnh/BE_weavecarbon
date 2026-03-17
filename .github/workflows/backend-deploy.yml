@@ -85,6 +85,9 @@ jobs:
           cd /opt/weavecarbon/BE_Carbon-main
           git checkout main
           git pull --ff-only origin main
+          cd /opt/weavecarbon/rag
+          git checkout main
+          git pull --ff-only origin main
           cd /opt/weavecarbon/FE
           bash deploy/redeploy-vps.sh
           EOF
