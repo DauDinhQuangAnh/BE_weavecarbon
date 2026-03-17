@@ -19,6 +19,7 @@ const productsRoutes = require('./routes/products');
 const batchesRoutes = require('./routes/batches');
 const logisticsRoutes = require('./routes/logistics');
 const exportMarketsRoutes = require('./routes/exportMarkets');
+const chatRoutes = require('./routes/chat');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -34,7 +35,8 @@ const apiRoutes = [
   ['/api/products', productsRoutes],
   ['/api/product-batches', batchesRoutes],
   ['/api/logistics', logisticsRoutes],
-  ['/api/export/markets', exportMarketsRoutes]
+  ['/api/export/markets', exportMarketsRoutes],
+  ['/api/chat', chatRoutes]
 ];
 
 function createCorsOptions(frontendOrigins) {

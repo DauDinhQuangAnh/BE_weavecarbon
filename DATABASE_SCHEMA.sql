@@ -179,7 +179,9 @@ CREATE INDEX idx_company_members_status ON public.company_members(status);
 CREATE TABLE public.chat_conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
   session_id TEXT,
+  title TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -191,6 +193,19 @@ CREATE TABLE public.chat_messages (
   content TEXT NOT NULL,
   metadata JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.chat_runtime_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL UNIQUE REFERENCES public.users(id) ON DELETE CASCADE,
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  rag_base_url TEXT NOT NULL,
+  collection_name TEXT NOT NULL,
+  columns_to_answer TEXT[] NOT NULL DEFAULT '{}',
+  number_docs_retrieval INTEGER NOT NULL DEFAULT 3,
+  timeout_ms INTEGER NOT NULL DEFAULT 30000,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 
@@ -890,6 +905,9 @@ CREATE INDEX idx_collection_points_active ON public.collection_points(is_active)
 -- Chat indexes
 CREATE INDEX idx_chat_conversations_user ON public.chat_conversations(user_id);
 CREATE INDEX idx_chat_messages_conversation ON public.chat_messages(conversation_id);
+CREATE INDEX idx_chat_conversations_user_company_updated ON public.chat_conversations(user_id, company_id, updated_at DESC);
+CREATE INDEX idx_chat_messages_conversation_created ON public.chat_messages(conversation_id, created_at ASC);
+CREATE INDEX idx_chat_runtime_settings_company_updated ON public.chat_runtime_settings(company_id, updated_at DESC);
 
 
 -- =============================================
@@ -922,6 +940,7 @@ CREATE TRIGGER update_collection_points_updated_at BEFORE UPDATE ON public.colle
 CREATE TRIGGER update_donations_updated_at BEFORE UPDATE ON public.donations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_user_rewards_updated_at BEFORE UPDATE ON public.user_rewards FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_chat_conversations_updated_at BEFORE UPDATE ON public.chat_conversations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+CREATE TRIGGER update_chat_runtime_settings_updated_at BEFORE UPDATE ON public.chat_runtime_settings FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 -- =============================================

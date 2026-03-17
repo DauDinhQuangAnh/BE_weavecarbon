@@ -2,7 +2,7 @@
 
 Tai lieu tong quan API cho FE va BE su dung chung mot "tieng noi" (single source of truth), duoc tong hop tu code dang chay trong `src/server.js`, `src/routes/*`, `src/validators/*`, `src/services/*`.
 
-- Last updated: 2026-02-25
+- Last updated: 2026-03-17
 - API version: 1.0.0 (theo `package.json`)
 - Base path: `/api`
 
@@ -848,6 +848,133 @@ Tat ca endpoint module nay: Auth Yes + role `b2b`.
 
 - Body: `status` (`processing|completed|failed`)
 - Co validate status transition
+
+## 7.12 Chat Module (`/api/chat`)
+
+- Muc dich:
+  - Dashboard Weavey chat cho user B2B da dang nhap.
+  - Luu history theo tung `user_id + company_id`.
+  - Luu cau hinh RAG o BE lam source of truth cho company admin.
+- Auth mac dinh cho tat ca endpoint trong module:
+  - `authenticate`
+  - `requireRole('b2b')`
+  - `requireCompanyMember`
+- Company admin moi duoc `PUT /settings`.
+- Landing chat, guest chat va demo session khong dung module nay.
+
+### `GET /conversations?page=1&page_size=20`
+
+- Auth: Yes, B2B company member
+- Muc dich: Lay danh sach hoi thoai cua chinh user hien tai trong company hien tai.
+- Query:
+  - `page` (optional, default `1`)
+  - `page_size` (optional, default `20`, max `100`)
+- Success: `200`
+- Response:
+  - `items[]`:
+    - `id`
+    - `title`
+    - `created_at`
+    - `updated_at`
+    - `message_count`
+    - `last_message_preview`
+  - `pagination { page, page_size, total, total_pages }`
+- Scope:
+  - User A khong thay duoc conversation cua User B, ke ca khi cung company.
+
+### `GET /conversations/:id`
+
+- Auth: Yes, B2B company member
+- Muc dich: Lay chi tiet 1 conversation cua user hien tai.
+- Success: `200`
+- Response:
+  - `id`, `title`, `created_at`, `updated_at`
+  - `messages[]`:
+    - `id`
+    - `role` (`user|assistant`)
+    - `content`
+    - `metadata`
+    - `created_at`
+- Errors:
+  - `404 CHAT_CONVERSATION_NOT_FOUND`
+
+### `POST /messages`
+
+- Auth: Yes, B2B company member
+- Muc dich:
+  - Gui 1 cau hoi moi toi RAG backend.
+  - Neu chua co `conversation_id` thi tao conversation moi sau khi goi RAG thanh cong.
+  - V1 van stateless voi RAG: chi gui cau hoi hien tai, khong prompt memory da luot.
+- Body:
+  - `conversation_id?` (UUID)
+  - `content` (required, non-empty string)
+  - `current_page?` (optional string, luu trong `chat_messages.metadata.current_page`)
+- Success: `200`
+- Response:
+  - `conversation`:
+    - `id`, `title`, `created_at`, `updated_at`
+    - `message_count`
+    - `last_message_preview`
+  - `user_message`
+  - `assistant_message`
+  - `config_source` (`self|company_admin|null`)
+- Assistant message metadata co the gom:
+  - `config_source`
+  - `collection_name`
+  - `rag_metadatas`
+- Errors:
+  - `400 CHAT_CONFIG_MISSING`
+  - `400 RAG_PROXY_BASE_URL_NOT_ALLOWED`
+  - `404 CHAT_CONVERSATION_NOT_FOUND`
+  - `502 CHAT_SEND_FAILED`
+  - `504 CHAT_SEND_FAILED` (timeout)
+
+### `GET /settings`
+
+- Auth: Yes, B2B company member
+- Muc dich: Resolve cau hinh chat ma dashboard se dung.
+- Success: `200`
+- Response:
+  - `config`:
+    - `rag_base_url`
+    - `collection_name`
+    - `columns_to_answer`
+    - `number_docs_retrieval`
+    - `timeout_ms`
+  - `config_source`:
+    - `self`: current user la admin va da co config rieng
+    - `company_admin`: fallback tu admin active cap nhat gan nhat trong cung company
+    - `null`: chua co config nao
+  - `can_edit`:
+    - `true` neu current user la company admin active
+    - `false` neu la member/viewer
+
+### `PUT /settings`
+
+- Auth: Yes, B2B company admin
+- Muc dich: Upsert cau hinh RAG cho admin hien tai.
+- Body:
+  - `rag_base_url` (required, absolute `http/https`, phai nam trong `RAG_PROXY_ALLOWED_BASE_URLS`)
+  - `collection_name` (required)
+  - `columns_to_answer` (required, non-empty string array)
+  - `number_docs_retrieval` (optional, default `3`)
+  - `timeout_ms` (optional, default `30000`)
+- Success: `200`
+- Response:
+  - `config`
+  - `config_source = self`
+  - `can_edit = true`
+- Errors:
+  - `400 VALIDATION_ERROR`
+  - `400 RAG_PROXY_BASE_URL_NOT_ALLOWED`
+  - `403 FORBIDDEN` neu khong phai company admin
+
+### Bien moi truong lien quan
+
+- `RAG_PROXY_ALLOWED_BASE_URLS`
+  - Danh sach allowlist phan tach boi dau phay.
+  - BE validate ca luc save settings va luc proxy request.
+  - Muc dich: giam rui ro SSRF khi admin nhap `rag_base_url`.
 
 ## 8. Luong tich hop FE de nghi
 
