@@ -23,6 +23,7 @@ const toPositiveInt = (value, fallback, min, max) => {
 const compactWhitespace = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 
 const trimTrailingSlash = (value) => value.replace(/\/+$/, '');
+const isPlainObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 class ChatService {
   normalizeRagBaseUrl(value) {
@@ -496,6 +497,13 @@ class ChatService {
       }
 
       if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNREFUSED') {
+          throw createAppError('Unable to connect to the RAG backend service.', {
+            statusCode: 502,
+            code: 'CHAT_SEND_FAILED'
+          });
+        }
+
         if (error.code === 'ECONNABORTED') {
           throw createAppError('RAG backend request timed out', {
             statusCode: 504,
@@ -503,12 +511,23 @@ class ChatService {
           });
         }
 
+        const responseData = error.response?.data;
         const detail =
-          error.response && isObject(error.response.data) && typeof error.response.data.detail === 'string'
-            ? error.response.data.detail
-            : error.message;
+          isPlainObject(responseData) && typeof responseData.detail === 'string' ?
+            responseData.detail :
+            Array.isArray(responseData?.detail) ?
+              JSON.stringify(responseData.detail) :
+              error.message;
+        const upstreamStatus = error.response?.status || null;
 
-        if (error.response?.status === 404) {
+        if (upstreamStatus === 400 || upstreamStatus === 422) {
+          throw createAppError(detail || 'Invalid request sent to the RAG backend', {
+            statusCode: 400,
+            code: 'CHAT_SEND_FAILED'
+          });
+        }
+
+        if (upstreamStatus === 404) {
           throw createAppError(
             `AI collection "${config.collection_name}" was not found in the RAG backend.`,
             {
@@ -518,8 +537,15 @@ class ChatService {
           );
         }
 
+        if (upstreamStatus === 429) {
+          throw createAppError('RAG backend is busy. Please try again shortly.', {
+            statusCode: 503,
+            code: 'CHAT_SEND_FAILED'
+          });
+        }
+
         throw createAppError(detail || 'Failed to fetch a response from the RAG backend', {
-          statusCode: 502,
+          statusCode: upstreamStatus && upstreamStatus >= 500 ? 502 : 500,
           code: 'CHAT_SEND_FAILED'
         });
       }
