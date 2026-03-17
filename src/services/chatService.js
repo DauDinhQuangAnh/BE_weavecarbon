@@ -9,6 +9,8 @@ const DEFAULT_NUMBER_DOCS_RETRIEVAL = 3;
 const DEFAULT_TIMEOUT_MS = 30000;
 const TITLE_MAX_LENGTH = 80;
 const PREVIEW_MAX_LENGTH = 120;
+const DASHBOARD_CHAT_COLLECTION_NAME = 'weaveCarbon_1';
+const DASHBOARD_CHAT_COLUMNS_TO_ANSWER = ['Question'];
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -87,6 +89,36 @@ class ChatService {
     }
 
     return normalizedBaseUrl;
+  }
+
+  resolveRagRequestBaseUrl(value) {
+    const normalizedBaseUrl = this.assertAllowedRagBaseUrl(value);
+    const internalOverride = compactWhitespace(process.env.RAG_PROXY_INTERNAL_BASE_URL || '');
+
+    if (!internalOverride) {
+      return normalizedBaseUrl;
+    }
+
+    return this.normalizeRagBaseUrl(internalOverride);
+  }
+
+  getDashboardChatConfig() {
+    const allowedBaseUrl = Array.from(this.getAllowedRagBaseUrls())[0] || null;
+
+    if (!allowedBaseUrl) {
+      throw createAppError('Dashboard AI chat is not configured on the server.', {
+        statusCode: 500,
+        code: 'CHAT_CONFIG_MISSING'
+      });
+    }
+
+    return {
+      rag_base_url: allowedBaseUrl,
+      collection_name: DASHBOARD_CHAT_COLLECTION_NAME,
+      columns_to_answer: [...DASHBOARD_CHAT_COLUMNS_TO_ANSWER],
+      number_docs_retrieval: DEFAULT_NUMBER_DOCS_RETRIEVAL,
+      timeout_ms: DEFAULT_TIMEOUT_MS
+    };
   }
 
   normalizeColumns(columns) {
@@ -426,7 +458,7 @@ class ChatService {
   }
 
   async callRagQuery(config, content) {
-    const baseUrl = this.assertAllowedRagBaseUrl(config.rag_base_url);
+    const baseUrl = this.resolveRagRequestBaseUrl(config.rag_base_url);
     const requestUrl = `${baseUrl}/collections/${encodeURIComponent(config.collection_name)}/query`;
 
     try {
@@ -476,6 +508,16 @@ class ChatService {
             ? error.response.data.detail
             : error.message;
 
+        if (error.response?.status === 404) {
+          throw createAppError(
+            `AI collection "${config.collection_name}" was not found in the RAG backend.`,
+            {
+              statusCode: 502,
+              code: 'CHAT_SEND_FAILED'
+            }
+          );
+        }
+
         throw createAppError(detail || 'Failed to fetch a response from the RAG backend', {
           statusCode: 502,
           code: 'CHAT_SEND_FAILED'
@@ -507,18 +549,21 @@ class ChatService {
 
   async sendMessage(userId, companyId, payload) {
     const content = compactWhitespace(payload.content);
+
+    if (!content) {
+      throw createAppError('content is required', {
+        statusCode: 400,
+        code: 'VALIDATION_ERROR'
+      });
+    }
+
     const existingConversation = await this.resolveConversationForSend(
       userId,
       companyId,
       payload.conversation_id
     );
-    const resolvedSettings = await this.resolveChatSettings(userId, companyId);
-
-    if (!resolvedSettings.config) {
-      throw this.buildMissingConfigError(resolvedSettings.can_edit);
-    }
-
-    const ragResult = await this.callRagQuery(resolvedSettings.config, content);
+    const dashboardChatConfig = this.getDashboardChatConfig();
+    const ragResult = await this.callRagQuery(dashboardChatConfig, content);
     const client = await pool.connect();
 
     try {
@@ -552,8 +597,8 @@ class ChatService {
       );
 
       const assistantMetadata = {
-        config_source: resolvedSettings.config_source,
-        collection_name: resolvedSettings.config.collection_name,
+        config_source: null,
+        collection_name: dashboardChatConfig.collection_name,
         rag_metadatas: ragResult.rag_response.metadatas ?? null
       };
 
@@ -608,7 +653,7 @@ class ChatService {
             assistantMessageResult.rows[0].metadata :
             {}
         },
-        config_source: resolvedSettings.config_source
+        config_source: null
       };
     } catch (error) {
       await client.query('ROLLBACK');
