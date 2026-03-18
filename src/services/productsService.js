@@ -57,6 +57,16 @@ const DEFAULT_EMISSION_FACTOR_BY_MODE = {
     rail: 0.028
 };
 
+const buildDomesticComplianceWarning = (validationResult) => ({
+    code: 'MISSING_DOMESTIC_DOCUMENTS',
+    message: 'Published with missing required domestic documents.',
+    details: {
+        market_code: validationResult?.marketCode || 'VN',
+        required_documents: validationResult?.requiredDocuments || [],
+        missing_by_product: validationResult?.missingByProduct || []
+    }
+});
+
 class ProductsService {
     /**
      * List products with filters and pagination
@@ -497,6 +507,7 @@ class ProductsService {
                 shipmentCreationSkipped: false,
                 skipReason: null
             };
+            let domesticComplianceWarning = null;
 
             if (dbStatus === 'active') {
                 const domesticComplianceValidation =
@@ -507,7 +518,7 @@ class ProductsService {
                     );
 
                 if (!domesticComplianceValidation.success) {
-                    throw domesticComplianceService.createMissingDocumentsError(domesticComplianceValidation);
+                    domesticComplianceWarning = buildDomesticComplianceWarning(domesticComplianceValidation);
                 }
 
                 shipmentMeta = await this._createShipmentFromProduct(
@@ -532,7 +543,8 @@ class ProductsService {
                 version: 1,
                 shipmentId: shipmentMeta.shipmentId,
                 shipmentCreationSkipped: shipmentMeta.shipmentCreationSkipped,
-                skipReason: shipmentMeta.skipReason
+                skipReason: shipmentMeta.skipReason,
+                domesticComplianceWarning
             };
         } catch (error) {
             await client.query('ROLLBACK');
@@ -723,6 +735,7 @@ class ProductsService {
 
             const product = selectResult.rows[0];
             const currentStatus = dbToFeStatus(product.status);
+            let domesticComplianceWarning = null;
 
             // Validate transitions
             const validTransitions = {
@@ -748,7 +761,7 @@ class ProductsService {
                     );
 
                 if (!domesticComplianceValidation.success) {
-                    throw domesticComplianceService.createMissingDocumentsError(domesticComplianceValidation);
+                    domesticComplianceWarning = buildDomesticComplianceWarning(domesticComplianceValidation);
                 }
             }
 
@@ -762,8 +775,6 @@ class ProductsService {
             `;
 
             const updateResult = await client.query(updateQuery, [dbNewStatus, productId]);
-
-            let shipmentId = null;
 
             // Auto-create shipment when publishing product
             let shipmentMeta = {
@@ -792,7 +803,8 @@ class ProductsService {
                     updatedAt: updateResult.rows[0].updated_at,
                     shipmentId: shipmentMeta.shipmentId,
                     shipmentCreationSkipped: shipmentMeta.shipmentCreationSkipped,
-                    skipReason: shipmentMeta.skipReason
+                    skipReason: shipmentMeta.skipReason,
+                    domesticComplianceWarning
                 }
             };
         } catch (error) {
