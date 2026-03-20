@@ -374,12 +374,12 @@ class ProductsService {
                 productName: product.name,
                 productType: product.category,
                 weightPerUnit: product.weight_kg ? product.weight_kg * 1000 : null,
+                // Snapshot data
+                ...payload,
                 status: dbToFeStatus(product.status),
                 version,
                 createdAt: product.created_at,
                 updatedAt: product.updated_at,
-                // Snapshot data
-                ...payload,
                 destinationMarket,
                 shipmentId: payload.shipmentId || payload.shipment_id || product.shipment_id || null,
                 shipmentReferenceNumber:
