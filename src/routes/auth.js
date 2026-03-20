@@ -6,7 +6,6 @@ const googleAuthService = require('../services/googleAuthService');
 const validate = require('../middleware/validator');
 const pool = require('../config/database');
 const { resolveFrontendBaseUrl } = require('../config/urls');
-const { ensureCompaniesDomesticMarketColumn } = require('../utils/companyMarkets');
 const {
   signupValidation,
   signinValidation,
@@ -339,12 +338,6 @@ router.post('/signin', signinLimiter, signinValidation, validate, async (req, re
     let company = null;
     let companyMembership = null;
     let companyIdForToken = user.company_id;
-    const schemaClient = await pool.connect();
-    try {
-      await ensureCompaniesDomesticMarketColumn(schemaClient);
-    } finally {
-      schemaClient.release();
-    }
 
     const membership = await authService.getPrimaryCompanyMembership(user.id);
     if (membership) {

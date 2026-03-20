@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { UPLOADS_ROOT } = require('../config/runtime');
 const validate = require('../middleware/validator');
 const exportMarketsService = require('../services/exportMarketsService');
 const {
@@ -21,8 +22,6 @@ const {
 const ENABLE_DEV_PLACEHOLDER_DOWNLOAD =
     process.env.NODE_ENV !== 'production' &&
     process.env.ENABLE_DOWNLOAD_PLACEHOLDER === 'true';
-
-const UPLOADS_ROOT = path.resolve(process.cwd(), 'uploads');
 
 function writeDevPlaceholderDocument(filePath, filename, marketCode) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -543,11 +542,10 @@ router.get(
             const mimeType = doc.mime_type || 'application/octet-stream';
 
             if (storageProvider === 'local') {
-                const uploadsDir = path.resolve(process.cwd(), 'uploads');
-                const filePath = path.resolve(uploadsDir, storageKey);
+                const filePath = path.resolve(UPLOADS_ROOT, storageKey);
 
                 // Prevent path traversal
-                if (!filePath.startsWith(uploadsDir)) {
+                if (!filePath.startsWith(UPLOADS_ROOT)) {
                     return res.status(400).json({
                         success: false,
                         error: { code: 'INVALID_PATH', message: 'Invalid storage path' }

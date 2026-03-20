@@ -5,8 +5,11 @@ uploads
 coverage
 dist
 build
+.release
 .env
 .env.*
 npm-debug.log*
 API_DOCUMENTATION.md
 README.md
+DATABASE_SCHEMA.sql
+new.txt

@@ -26,3 +26,6 @@ jobs:
 
       - name: Syntax check
         run: npm run check:syntax
+
+      - name: Build release package
+        run: npm run build:release

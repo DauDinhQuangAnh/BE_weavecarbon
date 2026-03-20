@@ -85,19 +85,16 @@ class ProductsService {
 
         const client = await pool.connect();
         try {
-            // Build WHERE conditions
             const conditions = ['p.company_id = $1'];
             const params = [companyId];
             let paramIndex = 2;
 
-            // Search filter
             if (search) {
                 conditions.push(`(p.sku ILIKE $${paramIndex} OR p.name ILIKE $${paramIndex})`);
                 params.push(`%${search}%`);
                 paramIndex++;
             }
 
-            // Status filter
             if (status && status !== 'all') {
                 const dbStatus = feToDbStatus(status);
                 conditions.push(`p.status = $${paramIndex}`);
@@ -115,17 +112,13 @@ class ProductsService {
             }
 
             const whereClause = conditions.join(' AND ');
-
-            // Count total
             const countQuery = `SELECT COUNT(*) as total FROM products p WHERE ${whereClause}`;
             const countResult = await client.query(countQuery, params);
             const total = parseInt(countResult.rows[0].total);
 
-            // Pagination
             const offset = (page - 1) * page_size;
             const totalPages = Math.ceil(total / page_size);
 
-            // Sort mapping
             const allowedSortFields = {
                 'created_at': 'p.created_at',
                 'updated_at': 'p.updated_at',
@@ -136,7 +129,6 @@ class ProductsService {
             const sortField = allowedSortFields[sort_by] || 'p.updated_at';
             const orderDirection = sort_order === 'asc' ? 'ASC' : 'DESC';
 
-            // Fetch products
             const productsQuery = `
                 SELECT 
                     p.id,
@@ -153,15 +145,7 @@ class ProductsService {
                     p.data_confidence_score,
                     p.created_at,
                     p.updated_at,
-                    c.target_markets,
-                    (
-                        SELECT sp.shipment_id
-                        FROM shipment_products sp
-                        INNER JOIN shipments s ON s.id = sp.shipment_id
-                        WHERE sp.product_id = p.id AND s.company_id = p.company_id
-                        ORDER BY s.updated_at DESC NULLS LAST, s.created_at DESC NULLS LAST
-                        LIMIT 1
-                    ) AS shipment_id
+                    c.target_markets
                 FROM products p
                 LEFT JOIN companies c ON p.company_id = c.id
                 WHERE ${whereClause}
@@ -171,27 +155,40 @@ class ProductsService {
             params.push(page_size, offset);
 
             const productsResult = await client.query(productsQuery, params);
-
-            // Get snapshots if needed
             const productIds = productsResult.rows.map(r => r.id);
-            let snapshotsMap = {};
+            const snapshotsMap = {};
+            const latestShipmentMap = {};
 
-            // Always load snapshots for logistics/assessment data
-            // (originAddress, destinationAddress, transportLegs needed for logistics screen)
             if (productIds.length > 0) {
                 const snapshotsQuery = `
-                    SELECT DISTINCT ON (product_id) product_id, payload
+                    SELECT product_id, payload
                     FROM product_assessment_snapshots
                     WHERE product_id = ANY($1)
-                    ORDER BY product_id, version DESC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC
                 `;
                 const snapshotsResult = await client.query(snapshotsQuery, [productIds]);
                 snapshotsResult.rows.forEach(row => {
                     snapshotsMap[row.product_id] = row.payload;
                 });
+
+                const latestShipmentQuery = `
+                    SELECT DISTINCT ON (sp.product_id)
+                        sp.product_id,
+                        sp.shipment_id
+                    FROM shipment_products sp
+                    INNER JOIN shipments s ON s.id = sp.shipment_id
+                    WHERE sp.product_id = ANY($1::uuid[])
+                      AND s.company_id = $2
+                    ORDER BY
+                        sp.product_id,
+                        s.updated_at DESC NULLS LAST,
+                        s.created_at DESC NULLS LAST
+                `;
+                const latestShipmentResult = await client.query(latestShipmentQuery, [productIds, companyId]);
+                latestShipmentResult.rows.forEach((row) => {
+                    latestShipmentMap[row.product_id] = row.shipment_id;
+                });
             }
 
-            // Format items
             const items = productsResult.rows.map(row => {
                 const snapshot = this._toPayloadObject(snapshotsMap[row.id]);
                 const destinationMarket = this._extractDestinationMarketFromPayload(
@@ -247,7 +244,7 @@ class ProductsService {
                         snapshotLogistics.totalDistanceKm ||
                         snapshotLogistics.total_distance_km ||
                         null,
-                    shipmentId: snapshot.shipmentId || snapshot.shipment_id || row.shipment_id || null,
+                    shipmentId: snapshot.shipmentId || snapshot.shipment_id || latestShipmentMap[row.id] || null,
                     carbonResults: {
                         perProduct: {
                             materials: parseFloat(row.materials_co2e) || 0,

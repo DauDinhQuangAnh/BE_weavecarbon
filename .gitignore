@@ -9,3 +9,4 @@ uploads/
 coverage/
 dist/
 build/
+.release/

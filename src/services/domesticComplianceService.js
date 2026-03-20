@@ -1,5 +1,6 @@
 const { randomUUID } = require('crypto');
 const { normalizeTargetMarkets } = require('../constants/targetMarkets');
+const { assertSchemaCapability } = require('../config/schemaCapabilities');
 const {
     ensureCompaniesDomesticMarketColumn,
     normalizeDomesticMarket
@@ -31,33 +32,11 @@ class DomesticComplianceService {
     }
 
     async ensureProductComplianceDocumentsTable(client) {
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS public.product_compliance_documents (
-              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-              company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
-              product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
-              compliance_document_id UUID NOT NULL REFERENCES public.compliance_documents(id) ON DELETE CASCADE,
-              market_code TEXT NOT NULL,
-              storage_key_snapshot TEXT,
-              source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'import', 'batch_publish')),
-              created_by UUID REFERENCES public.users(id),
-              created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-              updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-              UNIQUE(product_id, compliance_document_id)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_product_compliance_documents_company
-              ON public.product_compliance_documents(company_id);
-
-            CREATE INDEX IF NOT EXISTS idx_product_compliance_documents_product
-              ON public.product_compliance_documents(product_id);
-
-            CREATE INDEX IF NOT EXISTS idx_product_compliance_documents_document
-              ON public.product_compliance_documents(compliance_document_id);
-
-            CREATE INDEX IF NOT EXISTS idx_product_compliance_documents_market
-              ON public.product_compliance_documents(company_id, market_code);
-        `);
+        void client;
+        assertSchemaCapability(
+            'hasProductComplianceDocuments',
+            'product_compliance_documents is missing. Run "npm run migrate" before starting the API.'
+        );
     }
 
     async resolveCompanyDomesticMarketCode(client, companyId) {

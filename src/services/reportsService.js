@@ -1,6 +1,9 @@
 const pool = require('../config/database');
+const { once } = require('events');
 const path = require('path');
 const fs = require('fs');
+const { UPLOADS_ROOT } = require('../config/runtime');
+const reportJobQueue = require('./reportJobQueue');
 
 class ReportsService {
     /**
@@ -244,9 +247,10 @@ class ReportsService {
 
             const report = insertResult.rows[0];
 
-            // Generate real report file asynchronously
-            this._generateRealReport(report.id, companyId).catch(err => {
-                console.error('Background report generation failed:', err);
+            reportJobQueue.enqueue({
+                type: 'manual_report',
+                reportId: report.id,
+                companyId
             });
 
             return {
@@ -418,9 +422,12 @@ class ReportsService {
 
             const report = insertResult.rows[0];
 
-            // Generate real CSV export asynchronously
-            this._generateRealExport(report.id, companyId, dataset_type, file_format).catch(err => {
-                console.error('Background dataset export failed:', err);
+            reportJobQueue.enqueue({
+                type: 'dataset_export',
+                reportId: report.id,
+                companyId,
+                datasetType: dataset_type,
+                fileFormat: file_format
             });
 
             return {
@@ -460,12 +467,25 @@ class ReportsService {
     async getAllExportSourceCounts(companyId) {
         const client = await pool.connect();
         try {
-            const types = ['product', 'activity', 'audit', 'users', 'history'];
-            const results = {};
-            for (const type of types) {
-                results[type === 'product' ? 'products' : type] = await this._getDatasetCount(client, companyId, type);
-            }
-            return results;
+            const result = await client.query(
+                `
+                    SELECT
+                        (SELECT COUNT(*)::int FROM products WHERE company_id = $1 AND status <> 'archived') AS products,
+                        (SELECT COUNT(*)::int FROM carbon_calculations WHERE company_id = $1) AS activity,
+                        (SELECT COUNT(*)::int FROM carbon_calculations WHERE company_id = $1 AND calculation_type = 'audit') AS audit,
+                        (SELECT COUNT(*)::int FROM company_members WHERE company_id = $1) AS users,
+                        (SELECT COUNT(*)::int FROM reports WHERE company_id = $1) AS history
+                `,
+                [companyId]
+            );
+
+            return {
+                products: Number(result.rows[0]?.products || 0),
+                activity: Number(result.rows[0]?.activity || 0),
+                audit: Number(result.rows[0]?.audit || 0),
+                users: Number(result.rows[0]?.users || 0),
+                history: Number(result.rows[0]?.history || 0)
+            };
         } finally {
             client.release();
         }
@@ -535,8 +555,7 @@ class ReportsService {
             // Best-effort file cleanup (don't fail if file removal errors)
             if (report.storage_key && (report.storage_provider === 'local' || !report.storage_provider)) {
                 try {
-                    const fs = require('fs');
-                    const filePath = path.resolve(process.cwd(), 'uploads', report.storage_key);
+                    const filePath = path.resolve(UPLOADS_ROOT, report.storage_key);
                     if (fs.existsSync(filePath)) {
                         fs.unlinkSync(filePath);
                     }
@@ -777,6 +796,36 @@ class ReportsService {
         return header + '\n' + lines.join('\n');
     }
 
+    async _writeCsvFile(filePath, columns, rows) {
+        await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+
+        const stream = fs.createWriteStream(filePath, { encoding: 'utf8' });
+        let fileSize = 0;
+        const completionPromise = new Promise((resolve, reject) => {
+            stream.once('finish', () => resolve(fileSize));
+            stream.once('error', reject);
+        });
+
+        const writeLine = async (line) => {
+            fileSize += Buffer.byteLength(line, 'utf8');
+            if (!stream.write(line)) {
+                await once(stream, 'drain');
+            }
+        };
+
+        try {
+            await writeLine(`${columns.map((column) => this._csvEscape(column)).join(',')}\n`);
+            for (const row of rows) {
+                await writeLine(`${columns.map((column) => this._csvEscape(row[column])).join(',')}\n`);
+            }
+            stream.end();
+            return await completionPromise;
+        } catch (error) {
+            stream.destroy(error);
+            throw error;
+        }
+    }
+
     // =============================================
     // REAL FILE GENERATION
     // =============================================
@@ -798,20 +847,11 @@ class ReportsService {
             const rows = result.rows;
             const recordCount = rows.length;
 
-            // 2. Generate CSV content (CSV is the reliable Phase 1 format)
-            const csvContent = this._rowsToCsv(datasetDef.columns, rows);
-            const csvBuffer = Buffer.from(csvContent, 'utf-8');
-
-            // 3. Write file to local storage
+            // 2. Write CSV content to local storage without building one giant string in memory
             const ext = 'csv'; // Phase 1: always CSV for reliability
             const storageKey = `reports/${companyId}/exports/${datasetType}_${reportId}.${ext}`;
-            const uploadsDir = path.resolve(process.cwd(), 'uploads');
-            const filePath = path.resolve(uploadsDir, storageKey);
-
-            fs.mkdirSync(path.dirname(filePath), { recursive: true });
-            fs.writeFileSync(filePath, csvBuffer);
-
-            const fileSize = csvBuffer.length;
+            const filePath = path.resolve(UPLOADS_ROOT, storageKey);
+            const fileSize = await this._writeCsvFile(filePath, datasetDef.columns, rows);
             const originalFilename = `${datasetType}_export_${new Date().toISOString().split('T')[0]}.${ext}`;
 
             // 4. Update report record with real file info
@@ -903,15 +943,9 @@ class ReportsService {
                 rows = dataRes.rows;
             }
 
-            const csvContent = this._rowsToCsv(columns, rows);
-            const csvBuffer = Buffer.from(csvContent, 'utf-8');
-
             const storageKey = `reports/${companyId}/${new Date().getFullYear()}/${reportId}.csv`;
-            const filePath = path.resolve(process.cwd(), 'uploads', storageKey);
-            fs.mkdirSync(path.dirname(filePath), { recursive: true });
-            fs.writeFileSync(filePath, csvBuffer);
-
-            const fileSize = csvBuffer.length;
+            const filePath = path.resolve(UPLOADS_ROOT, storageKey);
+            const fileSize = await this._writeCsvFile(filePath, columns, rows);
             const originalFilename = `report_${reportId}_${new Date().toISOString().split('T')[0]}.csv`;
 
             await client.query(`

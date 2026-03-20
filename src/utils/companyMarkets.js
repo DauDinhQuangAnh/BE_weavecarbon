@@ -2,10 +2,9 @@ const {
   SUPPORTED_TARGET_MARKETS_SET,
   normalizeTargetMarkets
 } = require("../constants/targetMarkets");
+const { assertSchemaCapability } = require('../config/schemaCapabilities');
 
 const DEFAULT_DOMESTIC_MARKET = "VN";
-const SCHEMA_QUERY_TIMEOUT_MS = 8000;
-let domesticMarketSchemaReady = null;
 
 const normalizeDomesticMarket = (domesticMarket, fallbackTargetMarkets = []) => {
   const normalizedDomestic = String(domesticMarket || "").trim().toUpperCase();
@@ -37,48 +36,11 @@ const normalizeCompanyMarkets = ({
   };
 };
 
-const ensureCompaniesDomesticMarketColumn = async (client) => {
-  if (domesticMarketSchemaReady) {
-    await domesticMarketSchemaReady;
-    return;
-  }
-
-  domesticMarketSchemaReady = (async () => {
-    await client.query({
-      text: `
-        ALTER TABLE public.companies
-        ADD COLUMN IF NOT EXISTS domestic_market TEXT
-      `,
-      query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-    });
-
-    await client.query({
-      text: `
-        UPDATE public.companies
-        SET domestic_market = CASE
-          WHEN domestic_market IS NOT NULL AND BTRIM(domestic_market) <> '' THEN UPPER(BTRIM(domestic_market))
-          WHEN array_length(target_markets, 1) > 0 THEN UPPER(BTRIM(target_markets[1]))
-          ELSE $1
-        END
-        WHERE domestic_market IS NULL OR BTRIM(domestic_market) = ''
-      `,
-      values: [DEFAULT_DOMESTIC_MARKET],
-      query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-    });
-
-    await client.query({
-      text: `
-        ALTER TABLE public.companies
-        ALTER COLUMN domestic_market SET DEFAULT '${DEFAULT_DOMESTIC_MARKET}'
-      `,
-      query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-    });
-  })().catch((error) => {
-    domesticMarketSchemaReady = null;
-    throw error;
-  });
-
-  await domesticMarketSchemaReady;
+const ensureCompaniesDomesticMarketColumn = async () => {
+  assertSchemaCapability(
+    'hasCompaniesDomesticMarketColumn',
+    'companies.domestic_market is missing. Run "npm run migrate" before starting the API.'
+  );
 };
 
 module.exports = {

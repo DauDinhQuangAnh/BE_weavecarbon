@@ -1,6 +1,6 @@
 const pool = require('../config/database');
+const { assertSchemaCapability } = require('../config/schemaCapabilities');
 
-const SCHEMA_QUERY_TIMEOUT_MS = 8000;
 const CROSS_BORDER_BUFFER_HOURS = 8;
 
 const readIntegerEnv = (name, fallback) => {
@@ -44,7 +44,6 @@ const ETA_RULES_BY_MODE = {
   air: { speedKmh: 650, handlingHours: 6 }
 };
 
-let schemaReadyPromise = null;
 const demoCompanyCache = new Map();
 
 const createBusinessError = (code, message, statusCode = 400) => {
@@ -490,54 +489,11 @@ async function syncShipmentSimulationRecord(client, shipment, now = new Date()) 
 }
 
 async function ensureShipmentSimulationSchema() {
-  if (!schemaReadyPromise) {
-    schemaReadyPromise = (async () => {
-      await pool.query({
-        text: `
-          ALTER TABLE public.shipments
-          ADD COLUMN IF NOT EXISTS pending_until TIMESTAMPTZ
-        `,
-        query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-      });
-
-      await pool.query({
-        text: `
-          ALTER TABLE public.shipments
-          ADD COLUMN IF NOT EXISTS estimated_arrival_at TIMESTAMPTZ
-        `,
-        query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-      });
-
-      await pool.query({
-        text: `
-          ALTER TABLE public.shipments
-          ADD COLUMN IF NOT EXISTS actual_arrival_at TIMESTAMPTZ
-        `,
-        query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-      });
-
-      await pool.query({
-        text: `
-          ALTER TABLE public.shipments
-          ADD COLUMN IF NOT EXISTS simulation_enabled BOOLEAN NOT NULL DEFAULT true
-        `,
-        query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-      });
-
-      await pool.query({
-        text: `
-          CREATE INDEX IF NOT EXISTS idx_shipments_company_simulation
-          ON public.shipments (company_id, simulation_enabled, status)
-        `,
-        query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-      });
-    })().catch((error) => {
-      schemaReadyPromise = null;
-      throw error;
-    });
-  }
-
-  return schemaReadyPromise;
+  assertSchemaCapability(
+    'hasShipmentSimulationColumns',
+    'Shipment simulation columns are missing. Run "npm run migrate" before starting the API.'
+  );
+  return true;
 }
 
 async function isDemoCompany(companyId) {

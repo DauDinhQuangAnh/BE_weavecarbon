@@ -59,6 +59,10 @@ jobs:
         if: steps.deploy_secrets.outputs.missing == '0'
         run: npm run check:syntax
 
+      - name: Build release package
+        if: steps.deploy_secrets.outputs.missing == '0'
+        run: npm run build:release
+
       - name: Configure SSH
         if: steps.deploy_secrets.outputs.missing == '0'
         shell: bash
@@ -85,6 +89,9 @@ jobs:
           cd /opt/weavecarbon/BE_Carbon-main
           git checkout main
           git pull --ff-only origin main
+          npm ci --omit=dev
+          npm run migrate
+          npm cache clean --force || true
           cd /opt/weavecarbon/rag
           git checkout main
           git pull --ff-only origin main

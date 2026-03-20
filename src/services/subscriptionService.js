@@ -2,6 +2,7 @@ const pool = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const axios = require('axios');
+const { assertSchemaCapability } = require('../config/schemaCapabilities');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TRIAL_DAYS = 14;
@@ -220,125 +221,12 @@ class SubscriptionService {
     }
 
     async ensureSchema(_client) {
-        if (!this._schemaReady) {
-            this._schemaReady = (async () => {
-                await this.ensurePricingPlanEnumValues();
-
-                await pool.query({
-                    text: `
-          CREATE TABLE IF NOT EXISTS public.subscription_cycles (
-            company_id UUID PRIMARY KEY REFERENCES public.companies(id) ON DELETE CASCADE,
-            trial_started_at TIMESTAMPTZ NOT NULL,
-            trial_ends_at TIMESTAMPTZ NOT NULL,
-            standard_started_at TIMESTAMPTZ,
-            standard_expires_at TIMESTAMPTZ,
-            standard_sku_limit INTEGER NOT NULL DEFAULT 0,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-          )
-        `,
-                    query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-                });
-
-                await pool.query({
-                    text: `
-          ALTER TABLE public.subscription_cycles
-          ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ
-        `,
-                    query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-                });
-
-                await pool.query({
-                    text: `
-          ALTER TABLE public.subscription_cycles
-          ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ
-        `,
-                    query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-                });
-
-                await pool.query({
-                    text: `
-          DO $$
-          BEGIN
-            IF EXISTS (
-              SELECT 1
-              FROM information_schema.columns
-              WHERE table_schema = 'public'
-                AND table_name = 'subscription_cycles'
-                AND column_name = 'starter_trial_started_at'
-            ) THEN
-              UPDATE public.subscription_cycles
-              SET trial_started_at = COALESCE(trial_started_at, starter_trial_started_at),
-                  trial_ends_at = COALESCE(trial_ends_at, starter_trial_ends_at)
-              WHERE trial_started_at IS NULL OR trial_ends_at IS NULL;
-            END IF;
-          END $$;
-        `,
-                    query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-                });
-
-                await pool.query({
-                    text: `
-          ALTER TABLE public.subscription_cycles
-          ALTER COLUMN trial_started_at SET NOT NULL
-        `,
-                    query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-                });
-
-                await pool.query({
-                    text: `
-          ALTER TABLE public.subscription_cycles
-          ALTER COLUMN trial_ends_at SET NOT NULL
-        `,
-                    query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-                });
-
-                await pool.query({
-                    text: `
-          ALTER TABLE public.subscription_cycles
-          ADD COLUMN IF NOT EXISTS standard_sku_limit INTEGER NOT NULL DEFAULT 0
-        `,
-                    query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-                });
-
-                await pool.query({
-                    text: `
-          UPDATE public.companies
-          SET current_plan = 'trial'
-          WHERE current_plan::text NOT IN ('trial', 'standard', 'standard_20', 'standard_35', 'standard_50', 'export')
-        `,
-                    query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-                });
-
-                await pool.query({
-                    text: `
-          CREATE TABLE IF NOT EXISTS public.subscription_payment_sessions (
-            id UUID PRIMARY KEY,
-            company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
-            user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-            target_plan pricing_plan NOT NULL,
-            billing_cycle TEXT NOT NULL CHECK (billing_cycle IN ('monthly', 'yearly')),
-            payment_provider TEXT NOT NULL DEFAULT 'vnpay',
-            amount BIGINT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'success', 'failed', 'cancelled', 'expired')),
-            payment_url TEXT,
-            gateway_transaction_ref TEXT UNIQUE,
-            expires_at TIMESTAMPTZ NOT NULL,
-            paid_at TIMESTAMPTZ,
-            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-          )
-        `,
-                    query_timeout: SCHEMA_QUERY_TIMEOUT_MS
-                });
-            })().catch((error) => {
-                this._schemaReady = null;
-                throw error;
-            });
-        }
-
-        return this._schemaReady;
+        void _client;
+        assertSchemaCapability(
+            'hasSubscriptionSchema',
+            'Subscription schema is incomplete. Run "npm run migrate" before starting the API.'
+        );
+        return true;
     }
 
     toIsoOrNull(value) {

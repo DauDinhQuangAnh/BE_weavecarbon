@@ -4,6 +4,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 require('dotenv').config();
 
+const { bootstrapApplication } = require('./bootstrap/appBootstrap');
+const { SLOW_REQUEST_MS } = require('./config/runtime');
 const { resolveAllowedFrontendOrigins, normalizeOrigin } = require('./config/urls');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const { apiLimiter } = require('./middleware/rateLimiter');
@@ -70,10 +72,28 @@ function logStartup(port) {
   console.log(`[weavecarbon-api] Running on port ${port} in ${environment} mode`);
 }
 
+function slowRequestLogger(req, res, next) {
+  const startedAt = process.hrtime.bigint();
+
+  res.on('finish', () => {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    if (durationMs < SLOW_REQUEST_MS) {
+      return;
+    }
+
+    console.warn(
+      `[http] Slow request ${durationMs.toFixed(1)}ms :: ${req.method} ${req.originalUrl} -> ${res.statusCode}`
+    );
+  });
+
+  next();
+}
+
 app.disable('x-powered-by');
 app.use(helmet());
 app.use(cors(createCorsOptions(allowedOrigins)));
 app.use(morgan('combined'));
+app.use(slowRequestLogger);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -95,11 +115,19 @@ app.use(notFound);
 app.use(errorHandler);
 
 let server = null;
+const startupReady = bootstrapApplication();
 
 if (require.main === module) {
-  server = app.listen(PORT, () => {
-    logStartup(PORT);
-  });
+  startupReady
+    .then(() => {
+      server = app.listen(PORT, () => {
+        logStartup(PORT);
+      });
+    })
+    .catch((error) => {
+      console.error('[startup] Application bootstrap failed:', error);
+      process.exit(1);
+    });
 }
 
 function shutdown(signal) {
@@ -117,5 +145,7 @@ function shutdown(signal) {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+app.startupReady = startupReady;
 
 module.exports = app;

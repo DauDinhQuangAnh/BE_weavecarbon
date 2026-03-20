@@ -3,6 +3,7 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { UPLOADS_ROOT } = require('../config/runtime');
 const validate = require('../middleware/validator');
 const reportsService = require('../services/reportsService');
 const {
@@ -500,11 +501,10 @@ router.get(
 
             if (storageProvider === 'local') {
                 // Resolve file from local storage
-                const uploadsDir = path.resolve(process.cwd(), 'uploads');
-                const filePath = path.resolve(uploadsDir, storageKey);
+                const filePath = path.resolve(UPLOADS_ROOT, storageKey);
 
                 // Prevent path traversal
-                if (!filePath.startsWith(uploadsDir)) {
+                if (!filePath.startsWith(UPLOADS_ROOT)) {
                     return res.status(400).json({
                         success: false,
                         error: { code: 'INVALID_PATH', message: 'Invalid storage path' }

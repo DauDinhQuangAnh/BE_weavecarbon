@@ -4,7 +4,11 @@ const {
     SUPPORTED_TARGET_MARKETS_SET,
     normalizeTargetMarkets
 } = require('../constants/targetMarkets');
+const { getSchemaCapabilities } = require('../config/schemaCapabilities');
+const { EMISSION_FACTORS_CACHE_TTL_MS, READ_CACHE_TTL_MS } = require('../config/runtime');
 const domesticComplianceService = require('./domesticComplianceService');
+const reportJobQueue = require('./reportJobQueue');
+const TtlCache = require('../utils/ttlCache');
 
 const DEFAULT_MARKET_CODES = ['VN', 'EU', 'US', 'JP', 'KR', 'AU', 'ASEAN'];
 
@@ -442,38 +446,42 @@ const MARKET_REQUIREMENTS_BY_CODE = {
 const DOCUMENT_UPLOAD_DONE_STATUSES = new Set(['uploaded', 'approved']);
 
 class ExportMarketsService {
+    constructor() {
+        this.marketListCache = new TtlCache({ ttlMs: READ_CACHE_TTL_MS });
+        this.emissionFactorsCache = new TtlCache({ ttlMs: EMISSION_FACTORS_CACHE_TTL_MS });
+    }
+
+    invalidateListCache(companyId) {
+        this.marketListCache.delete(companyId);
+    }
+
     /**
      * List all market compliance data for a company
      * Returns market cards with documents, product_scope, carbon_data, recommendations
      */
     async listMarkets(companyId) {
+        const cached = this.marketListCache.get(companyId);
+        if (typeof cached !== 'undefined') {
+            return cached;
+        }
+
         const client = await pool.connect();
         try {
-            await domesticComplianceService.ensureProductComplianceDocumentsTable(client);
-
-            // Ensure markets + required document placeholders exist for UI rendering
-            const markets = await this._ensureMarketsAndRequiredDocuments(client, companyId);
+            const markets = await this._listCompanyMarkets(client, companyId);
             if (markets.length === 0) {
                 return [];
             }
 
-            const marketIds = markets.map(m => m.id);
+            const marketIds = markets.map((market) => market.id).filter(Boolean);
             const marketCodes = markets.map(m => String(m.market_code || '').trim().toUpperCase());
-
-            const hasProductComplianceDocumentsTable =
-                await this._hasProductComplianceDocumentsTable(client);
-
-            // Fetch documents for all markets (from compliance_documents by company + market_code)
-            // If link table is missing (legacy DB), fallback to empty linked_product_ids.
-            const docsQuery = hasProductComplianceDocumentsTable
-                ? `
+            const docsQuery = `
                 SELECT 
                     cd.id, cd.market_code, cd.document_code, cd.document_name,
                     cd.status, cd.storage_provider, cd.storage_key,
                     cd.original_filename, cd.mime_type, cd.file_size_bytes,
                     cd.checksum_sha256, cd.uploaded_by, cd.uploaded_at,
                     cd.valid_from, cd.valid_to, cd.created_at, cd.updated_at,
-                    linked.linked_product_ids
+                    COALESCE(linked.linked_product_ids, ARRAY[]::uuid[]) AS linked_product_ids
                 FROM compliance_documents cd
                 LEFT JOIN (
                     SELECT
@@ -486,23 +494,7 @@ class ExportMarketsService {
                 WHERE cd.company_id = $1
                   AND UPPER(cd.market_code) = ANY($2)
                 ORDER BY cd.created_at DESC
-            `
-                : `
-                SELECT 
-                    cd.id, cd.market_code, cd.document_code, cd.document_name,
-                    cd.status, cd.storage_provider, cd.storage_key,
-                    cd.original_filename, cd.mime_type, cd.file_size_bytes,
-                    cd.checksum_sha256, cd.uploaded_by, cd.uploaded_at,
-                    cd.valid_from, cd.valid_to, cd.created_at, cd.updated_at,
-                    ARRAY[]::uuid[] AS linked_product_ids
-                FROM compliance_documents cd
-                WHERE cd.company_id = $1
-                  AND UPPER(cd.market_code) = ANY($2)
-                ORDER BY cd.created_at DESC
             `;
-            const docsResult = await client.query(docsQuery, [companyId, marketCodes]);
-
-            // Fetch product scope for all markets
             const scopeQuery = `
                 SELECT 
                     mps.id, mps.market_id, mps.product_id, mps.hs_code, mps.notes,
@@ -512,9 +504,6 @@ class ExportMarketsService {
                 WHERE mps.market_id = ANY($1)
                 ORDER BY p.name ASC
             `;
-            const scopeResult = await client.query(scopeQuery, [marketIds]);
-
-            // Fetch carbon data for all markets
             const carbonQuery = `
                 SELECT 
                     mcd.id, mcd.market_id, mcd.scope, mcd.value, mcd.unit,
@@ -523,9 +512,6 @@ class ExportMarketsService {
                 WHERE mcd.market_id = ANY($1)
                 ORDER BY mcd.scope ASC
             `;
-            const carbonResult = await client.query(carbonQuery, [marketIds]);
-
-            // Fetch recommendations for all markets
             const recsQuery = `
                 SELECT 
                     mr.id, mr.market_id, mr.type, mr.missing_item,
@@ -536,16 +522,26 @@ class ExportMarketsService {
                 WHERE mr.market_id = ANY($1)
                 ORDER BY mr.priority ASC, mr.created_at DESC
             `;
-            const recsResult = await client.query(recsQuery, [marketIds]);
 
-            // Fetch emission factors (global reference data)
-            const efQuery = `
-                SELECT id, category, subcategory, factor_value, unit, source, version
-                FROM emission_factors
-                ORDER BY category, subcategory
-                LIMIT 50
-            `;
-            const efResult = await client.query(efQuery);
+            const [
+                docsResult,
+                scopeResult,
+                carbonResult,
+                recsResult,
+                emissionFactors
+            ] = await Promise.all([
+                pool.query(docsQuery, [companyId, marketCodes]),
+                marketIds.length > 0
+                    ? pool.query(scopeQuery, [marketIds])
+                    : Promise.resolve({ rows: [] }),
+                marketIds.length > 0
+                    ? pool.query(carbonQuery, [marketIds])
+                    : Promise.resolve({ rows: [] }),
+                marketIds.length > 0
+                    ? pool.query(recsQuery, [marketIds])
+                    : Promise.resolve({ rows: [] }),
+                this._getEmissionFactors()
+            ]);
 
             // Group sub-data by market_id (or market_code for docs)
             const docsMap = {};
@@ -563,8 +559,7 @@ class ExportMarketsService {
             const carbonMap = this._groupBy(carbonResult.rows, 'market_id');
             const recsMap = this._groupBy(recsResult.rows, 'market_id');
 
-            // Assemble response
-            return markets.map(market => {
+            const payload = markets.map(market => {
                 const marketCode = String(market.market_code || '').trim().toUpperCase();
                 const marketDocs = docsMap[market.id] || [];
 
@@ -648,7 +643,7 @@ class ExportMarketsService {
                         const regulationReference = template?.regulation_reference || 'Market compliance requirement';
 
                         return {
-                            recommendation_id: `auto-doc-${market.id}-${normalizedDocCode}`,
+                            recommendation_id: `auto-doc-${market.id || marketCode}-${normalizedDocCode}`,
                             type: 'document',
                             missing_item: doc.document_name || template?.name || normalizedDocCode,
                             regulatory_reason: `Thiếu tài liệu bắt buộc theo yêu cầu: ${regulationReference}.`,
@@ -732,7 +727,7 @@ class ExportMarketsService {
                         ...persistedRecommendations,
                         ...autoGeneratedRecommendations
                     ],
-                    emission_factors: efResult.rows.map(ef => ({
+                    emission_factors: emissionFactors.map(ef => ({
                         id: ef.id,
                         category: ef.category,
                         subcategory: ef.subcategory,
@@ -745,6 +740,8 @@ class ExportMarketsService {
                     updated_at: market.updated_at
                 };
             });
+            this.marketListCache.set(companyId, payload);
+            return payload;
         } finally {
             client.release();
         }
@@ -800,6 +797,7 @@ class ExportMarketsService {
             await this._recalculateMarketScore(client, market.id, companyId, marketCode);
 
             await client.query('COMMIT');
+            this.invalidateListCache(companyId);
 
             return {
                 success: true,
@@ -851,6 +849,7 @@ class ExportMarketsService {
 
             await this._recalculateMarketScore(client, market.id, companyId, marketCode);
             await client.query('COMMIT');
+            this.invalidateListCache(companyId);
 
             return { success: true, data: insertResult.rows[0] };
         } catch (error) {
@@ -894,6 +893,7 @@ class ExportMarketsService {
             }
 
             await client.query('COMMIT');
+            this.invalidateListCache(companyId);
 
             return { success: true, data: updateResult.rows[0] };
         } catch (error) {
@@ -930,6 +930,7 @@ class ExportMarketsService {
 
             await this._recalculateMarketScore(client, market.id, companyId, marketCode);
             await client.query('COMMIT');
+            this.invalidateListCache(companyId);
 
             return { success: true };
         } catch (error) {
@@ -977,6 +978,7 @@ class ExportMarketsService {
 
             await this._recalculateMarketScore(client, market.id, companyId, marketCode);
             await client.query('COMMIT');
+            this.invalidateListCache(companyId);
 
             return { success: true, data: result.rows[0] };
         } catch (error) {
@@ -1110,6 +1112,7 @@ class ExportMarketsService {
 
             await this._recalculateMarketScore(client, market.id, companyId, normalizedMarketCode);
             await client.query('COMMIT');
+            this.invalidateListCache(companyId);
 
             return { success: true, data: result.rows[0] };
         } catch (error) {
@@ -1202,6 +1205,7 @@ class ExportMarketsService {
 
             await this._recalculateMarketScore(client, market.id, companyId, normalizedMarketCode);
             await client.query('COMMIT');
+            this.invalidateListCache(companyId);
 
             return {
                 success: true,
@@ -1324,6 +1328,7 @@ class ExportMarketsService {
 
             await this._recalculateMarketScore(client, market.id, companyId, normalizedMarketCode);
             await client.query('COMMIT');
+            this.invalidateListCache(companyId);
 
             return { success: true, data: updateResult.rows[0] };
         } catch (error) {
@@ -1375,6 +1380,7 @@ class ExportMarketsService {
 
             await this._recalculateMarketScore(client, market.id, companyId, marketCode);
             await client.query('COMMIT');
+            this.invalidateListCache(companyId);
 
             return { success: true };
         } catch (error) {
@@ -1438,12 +1444,14 @@ class ExportMarketsService {
             ]);
 
             await client.query('COMMIT');
+            this.invalidateListCache(companyId);
 
             const report = insertResult.rows[0];
 
-            // Simulate async report generation
-            this._simulateComplianceReport(report.id, companyId).catch(err => {
-                console.error('Background compliance report generation failed:', err);
+            reportJobQueue.enqueue({
+                type: 'market_compliance_report',
+                reportId: report.id,
+                companyId
             });
 
             return {
@@ -1480,10 +1488,95 @@ class ExportMarketsService {
     }
 
     async _hasProductComplianceDocumentsTable(client) {
-        const result = await client.query(
-            `SELECT to_regclass('public.product_compliance_documents') AS table_name`
+        void client;
+        return getSchemaCapabilities().hasProductComplianceDocuments;
+    }
+
+    async _getEmissionFactors() {
+        const cached = this.emissionFactorsCache.get('global');
+        if (typeof cached !== 'undefined') {
+            return cached;
+        }
+
+        const result = await pool.query(
+            `
+                SELECT id, category, subcategory, factor_value, unit, source, version
+                FROM emission_factors
+                ORDER BY category, subcategory
+                LIMIT 50
+            `
         );
-        return Boolean(result.rows[0]?.table_name);
+        this.emissionFactorsCache.set('global', result.rows);
+        return result.rows;
+    }
+
+    async _listCompanyMarkets(client, companyId) {
+        const targetMarketsResult = await client.query(
+            'SELECT target_markets FROM companies WHERE id = $1 LIMIT 1',
+            [companyId]
+        );
+
+        const companyTargetMarkets = Array.isArray(targetMarketsResult.rows[0]?.target_markets)
+            ? targetMarketsResult.rows[0].target_markets
+            : [];
+
+        const selectedCodes = normalizeTargetMarkets(
+            companyTargetMarkets.length > 0 ? companyTargetMarkets : DEFAULT_MARKET_CODES
+        );
+
+        const existingMarketsResult = await client.query(
+            `
+                SELECT
+                    em.id,
+                    em.market_code,
+                    em.market_name,
+                    em.status,
+                    em.score,
+                    em.verification_status,
+                    em.verification_date,
+                    em.verification_body,
+                    em.verification_notes,
+                    em.created_at,
+                    em.updated_at
+                FROM export_markets em
+                WHERE em.company_id = $1
+                ORDER BY em.market_name ASC
+            `,
+            [companyId]
+        );
+
+        const existingMarketsByCode = new Map(
+            existingMarketsResult.rows.map((row) => [
+                String(row.market_code || '').trim().toUpperCase(),
+                row
+            ])
+        );
+
+        const mergedCodes = Array.from(new Set([
+            ...selectedCodes,
+            ...existingMarketsByCode.keys()
+        ]));
+
+        return mergedCodes.map((marketCode) => {
+            const existing = existingMarketsByCode.get(marketCode);
+            if (existing) {
+                return existing;
+            }
+
+            return {
+                id: null,
+                market_code: marketCode,
+                market_name: this._resolveMarketName(marketCode),
+                status: 'draft',
+                score: 0,
+                verification_status: null,
+                verification_date: null,
+                verification_body: null,
+                verification_notes: null,
+                created_at: null,
+                updated_at: null
+            };
+        }).sort((left, right) => String(left.market_name || '').localeCompare(String(right.market_name || '')));
     }
 
     _readImportValue(row, keys) {
@@ -1917,7 +2010,34 @@ class ExportMarketsService {
             WHERE company_id = $1 AND UPPER(market_code) = $2
         `;
         const result = await client.query(query, [companyId, normalizedMarketCode]);
-        return result.rows[0] || null;
+        if (result.rows[0]) {
+            return result.rows[0];
+        }
+
+        if (!SUPPORTED_TARGET_MARKETS_SET.has(normalizedMarketCode)) {
+            return null;
+        }
+
+        const insertResult = await client.query(
+            `
+                INSERT INTO export_markets (
+                    company_id,
+                    market_code,
+                    market_name,
+                    status,
+                    score,
+                    created_at,
+                    updated_at
+                )
+                VALUES ($1, $2, $3, 'draft', 0, NOW(), NOW())
+                ON CONFLICT (company_id, market_code) DO UPDATE
+                SET market_name = EXCLUDED.market_name
+                RETURNING id, market_code, market_name, status, score
+            `,
+            [companyId, normalizedMarketCode, this._resolveMarketName(normalizedMarketCode)]
+        );
+
+        return insertResult.rows[0] || null;
     }
 
     async _recalculateMarketScore(client, marketId, companyId, marketCode) {

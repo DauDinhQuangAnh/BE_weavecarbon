@@ -14,10 +14,11 @@ ENV PORT=4000
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./
 COPY src ./src
-COPY scripts ./scripts
+COPY migrations ./migrations
+COPY scripts/migrate.js ./scripts/migrate.js
 RUN mkdir -p uploads
 
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 CMD wget -qO- "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1 || exit 1
 
-CMD ["node", "src/server.js"]
+CMD ["sh", "-c", "node scripts/migrate.js && node src/server.js"]
