@@ -468,9 +468,11 @@ async function syncShipmentSimulationRecord(client, shipment, now = new Date()) 
       WHERE id = $4
       RETURNING
         id,
+        reference_number,
         status,
         simulation_enabled,
         pending_until,
+        created_at,
         estimated_arrival_at,
         estimated_arrival,
         actual_arrival_at,
@@ -534,12 +536,16 @@ async function syncShipmentSimulationById(client, shipmentId) {
     `
       SELECT
         id,
+        reference_number,
         status,
         simulation_enabled,
         pending_until,
+        created_at,
         estimated_arrival_at,
+        estimated_arrival,
         actual_arrival_at,
-        actual_arrival
+        actual_arrival,
+        updated_at
       FROM shipments
       WHERE id = $1
     `,

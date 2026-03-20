@@ -83,15 +83,34 @@ jobs:
           DEPLOY_PORT="${DEPLOY_PORT:-22}"
           ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" <<'EOF'
           set -euo pipefail
+
+          if [ -f /etc/profile ]; then
+            . /etc/profile
+          fi
+          if [ -f "$HOME/.profile" ]; then
+            . "$HOME/.profile"
+          fi
+          if [ -f "$HOME/.bashrc" ]; then
+            . "$HOME/.bashrc"
+          fi
+          if [ -s "$HOME/.nvm/nvm.sh" ]; then
+            . "$HOME/.nvm/nvm.sh"
+          fi
+
           cd /opt/weavecarbon/FE
           git checkout main
           git pull --ff-only origin main
           cd /opt/weavecarbon/BE_Carbon-main
           git checkout main
           git pull --ff-only origin main
-          npm ci --omit=dev
-          npm run migrate
-          npm cache clean --force || true
+          if command -v npm >/dev/null 2>&1; then
+            npm ci --omit=dev
+            npm run migrate
+            npm cache clean --force || true
+          else
+            echo "[deploy] npm not found on VPS; skipping host-side npm install/migrate."
+            echo "[deploy] Assuming BE is started via Docker/container runtime or another process manager."
+          fi
           cd /opt/weavecarbon/rag
           git checkout main
           git pull --ff-only origin main

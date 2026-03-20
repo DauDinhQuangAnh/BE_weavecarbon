@@ -56,6 +56,7 @@ const mapShipmentSummaryRow = (row) => ({
 
 const mapShipmentMutationRow = (row) => ({
   id: row.id,
+  reference_number: row.reference_number || null,
   status: row.status,
   created_at: row.created_at,
   updated_at: row.updated_at,
@@ -504,6 +505,7 @@ async function createShipment(companyId, userId, shipmentData) {
         )
         RETURNING
           id,
+          reference_number,
           status,
           created_at,
           updated_at,
@@ -768,6 +770,7 @@ async function updateShipment(shipmentId, companyId, updates) {
         WHERE id = $1 AND company_id = $2
         RETURNING
           id,
+          reference_number,
           status,
           created_at,
           updated_at,
@@ -784,7 +787,8 @@ async function updateShipment(shipmentId, companyId, updates) {
     let responseRow = updateResult.rows[0];
 
     if (responseRow?.simulation_enabled === true) {
-      responseRow = await syncShipmentSimulationById(client, shipmentId) || responseRow;
+      const syncedRow = await syncShipmentSimulationById(client, shipmentId);
+      responseRow = syncedRow ? { ...responseRow, ...syncedRow } : responseRow;
     }
 
     await client.query('COMMIT');
@@ -854,13 +858,14 @@ async function updateShipmentStatus(shipmentId, companyId, newStatus, actualArri
           SET
             status = 'cancelled',
             updated_at = NOW()
-          WHERE id = $1 AND company_id = $2
-          RETURNING
-            id,
-            status,
-            created_at,
-            updated_at,
-            pending_until,
+        WHERE id = $1 AND company_id = $2
+        RETURNING
+          id,
+          reference_number,
+          status,
+          created_at,
+          updated_at,
+          pending_until,
             estimated_arrival,
             estimated_arrival_at,
             actual_arrival,
@@ -905,6 +910,7 @@ async function updateShipmentStatus(shipmentId, companyId, newStatus, actualArri
         WHERE id = $4 AND company_id = $5
         RETURNING
           id,
+          reference_number,
           status,
           created_at,
           updated_at,
@@ -1028,6 +1034,7 @@ async function replaceShipmentLegs(shipmentId, companyId, legs) {
         WHERE id = $7
         RETURNING
           id,
+          reference_number,
           status,
           created_at,
           updated_at,
@@ -1053,7 +1060,8 @@ async function replaceShipmentLegs(shipmentId, companyId, legs) {
 
     let responseRow = updateResult.rows[0];
     if (responseRow?.simulation_enabled === true) {
-      responseRow = await syncShipmentSimulationById(client, shipmentId) || responseRow;
+      const syncedRow = await syncShipmentSimulationById(client, shipmentId);
+      responseRow = syncedRow ? { ...responseRow, ...syncedRow } : responseRow;
     }
 
     await client.query('COMMIT');
@@ -1145,6 +1153,7 @@ async function replaceShipmentProducts(shipmentId, companyId, products) {
         WHERE id = $3
         RETURNING
           id,
+          reference_number,
           status,
           created_at,
           updated_at,

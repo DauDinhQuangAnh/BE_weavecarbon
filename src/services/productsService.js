@@ -173,7 +173,8 @@ class ProductsService {
                 const latestShipmentQuery = `
                     SELECT DISTINCT ON (sp.product_id)
                         sp.product_id,
-                        sp.shipment_id
+                        sp.shipment_id,
+                        s.reference_number
                     FROM shipment_products sp
                     INNER JOIN shipments s ON s.id = sp.shipment_id
                     WHERE sp.product_id = ANY($1::uuid[])
@@ -185,11 +186,15 @@ class ProductsService {
                 `;
                 const latestShipmentResult = await client.query(latestShipmentQuery, [productIds, companyId]);
                 latestShipmentResult.rows.forEach((row) => {
-                    latestShipmentMap[row.product_id] = row.shipment_id;
+                    latestShipmentMap[row.product_id] = {
+                        shipmentId: row.shipment_id,
+                        referenceNumber: row.reference_number
+                    };
                 });
             }
 
             const items = productsResult.rows.map(row => {
+                const latestShipment = latestShipmentMap[row.id] || null;
                 const snapshot = this._toPayloadObject(snapshotsMap[row.id]);
                 const destinationMarket = this._extractDestinationMarketFromPayload(
                     snapshot,
@@ -244,7 +249,12 @@ class ProductsService {
                         snapshotLogistics.totalDistanceKm ||
                         snapshotLogistics.total_distance_km ||
                         null,
-                    shipmentId: snapshot.shipmentId || snapshot.shipment_id || latestShipmentMap[row.id] || null,
+                    shipmentId: snapshot.shipmentId || snapshot.shipment_id || latestShipment?.shipmentId || null,
+                    shipmentReferenceNumber:
+                        snapshot.shipmentReferenceNumber ||
+                        snapshot.shipment_reference_number ||
+                        latestShipment?.referenceNumber ||
+                        null,
                     carbonResults: {
                         perProduct: {
                             materials: parseFloat(row.materials_co2e) || 0,
@@ -306,16 +316,20 @@ class ProductsService {
                     p.created_at,
                     p.updated_at,
                     c.target_markets,
-                    (
-                        SELECT sp.shipment_id
-                        FROM shipment_products sp
-                        INNER JOIN shipments s ON s.id = sp.shipment_id
-                        WHERE sp.product_id = p.id AND s.company_id = p.company_id
-                        ORDER BY s.updated_at DESC NULLS LAST, s.created_at DESC NULLS LAST
-                        LIMIT 1
-                    ) AS shipment_id
+                    latest_shipment.shipment_id,
+                    latest_shipment.reference_number AS shipment_reference_number
                 FROM products p
                 LEFT JOIN companies c ON p.company_id = c.id
+                LEFT JOIN LATERAL (
+                    SELECT
+                        sp.shipment_id,
+                        s.reference_number
+                    FROM shipment_products sp
+                    INNER JOIN shipments s ON s.id = sp.shipment_id
+                    WHERE sp.product_id = p.id AND s.company_id = p.company_id
+                    ORDER BY s.updated_at DESC NULLS LAST, s.created_at DESC NULLS LAST
+                    LIMIT 1
+                ) latest_shipment ON true
                 WHERE p.id = $1 AND p.company_id = $2
             `;
             const productResult = await client.query(productQuery, [productId, companyId]);
@@ -368,6 +382,11 @@ class ProductsService {
                 ...payload,
                 destinationMarket,
                 shipmentId: payload.shipmentId || payload.shipment_id || product.shipment_id || null,
+                shipmentReferenceNumber:
+                    payload.shipmentReferenceNumber ||
+                    payload.shipment_reference_number ||
+                    product.shipment_reference_number ||
+                    null,
                 // Override with latest DB carbon data
                 carbonResults: {
                     ...(payload.carbonResults || {}),
@@ -501,6 +520,7 @@ class ProductsService {
             // Auto-create shipment if publishing directly
             let shipmentMeta = {
                 shipmentId: null,
+                shipmentReferenceNumber: null,
                 shipmentCreationSkipped: false,
                 skipReason: null
             };
@@ -539,6 +559,7 @@ class ProductsService {
                 status: dbToFeStatus(product.status),
                 version: 1,
                 shipmentId: shipmentMeta.shipmentId,
+                shipmentReferenceNumber: shipmentMeta.shipmentReferenceNumber,
                 shipmentCreationSkipped: shipmentMeta.shipmentCreationSkipped,
                 skipReason: shipmentMeta.skipReason,
                 domesticComplianceWarning
@@ -657,6 +678,7 @@ class ProductsService {
 
             let shipmentMeta = {
                 shipmentId: null,
+                shipmentReferenceNumber: null,
                 shipmentCreationSkipped: false,
                 skipReason: null
             };
@@ -688,6 +710,7 @@ class ProductsService {
                     version,
                     updatedAt: updateResult.rows[0].updated_at,
                     shipmentId: shipmentMeta.shipmentId,
+                    shipmentReferenceNumber: shipmentMeta.shipmentReferenceNumber,
                     shipmentCreationSkipped: shipmentMeta.shipmentCreationSkipped,
                     skipReason: shipmentMeta.skipReason
                 }
@@ -776,6 +799,7 @@ class ProductsService {
             // Auto-create shipment when publishing product
             let shipmentMeta = {
                 shipmentId: null,
+                shipmentReferenceNumber: null,
                 shipmentCreationSkipped: false,
                 skipReason: null
             };
@@ -799,6 +823,7 @@ class ProductsService {
                     status: dbToFeStatus(updateResult.rows[0].status),
                     updatedAt: updateResult.rows[0].updated_at,
                     shipmentId: shipmentMeta.shipmentId,
+                    shipmentReferenceNumber: shipmentMeta.shipmentReferenceNumber,
                     shipmentCreationSkipped: shipmentMeta.shipmentCreationSkipped,
                     skipReason: shipmentMeta.skipReason,
                     domesticComplianceWarning
@@ -1346,6 +1371,7 @@ class ProductsService {
         if (!origin || !destination) {
             return {
                 shipmentId: null,
+                shipmentReferenceNumber: null,
                 shipmentCreationSkipped: true,
                 skipReason: 'MISSING_LOGISTICS_DATA'
             };
@@ -1354,6 +1380,7 @@ class ProductsService {
         if (!origin?.country || !destination?.country) {
             return {
                 shipmentId: null,
+                shipmentReferenceNumber: null,
                 shipmentCreationSkipped: true,
                 skipReason: 'MISSING_LOCATION_COUNTRY'
             };
@@ -1369,6 +1396,7 @@ class ProductsService {
         if (normalizedLegs.length === 0) {
             return {
                 shipmentId: null,
+                shipmentReferenceNumber: null,
                 shipmentCreationSkipped: true,
                 skipReason: 'MISSING_TRANSPORT_LEGS'
             };
@@ -1380,7 +1408,7 @@ class ProductsService {
         const totalWeightKg = unitWeightKg > 0 ? unitWeightKg * quantity : unitWeightKg;
 
         const linkedShipmentResult = await client.query(
-            `SELECT s.id, s.created_at, s.pending_until
+            `SELECT s.id, s.reference_number, s.created_at, s.pending_until
              FROM shipments s
              INNER JOIN shipment_products sp ON sp.shipment_id = s.id
              WHERE s.company_id = $1 AND sp.product_id = $2
@@ -1404,6 +1432,7 @@ class ProductsService {
         if (productCount > 1) {
             return {
                 shipmentId,
+                shipmentReferenceNumber: linkedShipment.reference_number || null,
                 shipmentCreationSkipped: true,
                 skipReason: 'SHIPMENT_HAS_MULTIPLE_PRODUCTS'
             };
@@ -1526,6 +1555,7 @@ class ProductsService {
 
         return {
             shipmentId,
+            shipmentReferenceNumber: linkedShipment.reference_number || null,
             shipmentCreationSkipped: false,
             skipReason: null
         };
@@ -1543,6 +1573,7 @@ class ProductsService {
                 console.log(`Product ${productId}: No logistics data in payload, skipping shipment creation`);
                 return { 
                     shipmentId: null, 
+                    shipmentReferenceNumber: null,
                     shipmentCreationSkipped: true, 
                     skipReason: 'MISSING_LOGISTICS_DATA' 
                 };
@@ -1553,6 +1584,7 @@ class ProductsService {
                 console.log(`Product ${productId}: Missing origin/destination country (origin.country=${origin?.country}, destination.country=${destination?.country}), skipping shipment creation`);
                 return { 
                     shipmentId: null, 
+                    shipmentReferenceNumber: null,
                     shipmentCreationSkipped: true, 
                     skipReason: 'MISSING_LOCATION_COUNTRY' 
                 };
@@ -1573,6 +1605,7 @@ class ProductsService {
                 console.log(`Product ${productId}: No transport legs in payload, skipping shipment creation`);
                 return {
                     shipmentId: null,
+                    shipmentReferenceNumber: null,
                     shipmentCreationSkipped: true,
                     skipReason: 'MISSING_TRANSPORT_LEGS'
                 };
@@ -1711,6 +1744,7 @@ class ProductsService {
             console.log(`Product ${productId}: Created shipment ${shipmentId} (${refNumber}) from origin=${origin.country} destination=${destination.country}`);
             return { 
                 shipmentId, 
+                shipmentReferenceNumber: refNumber,
                 shipmentCreationSkipped: false, 
                 skipReason: null 
             };
@@ -1719,6 +1753,7 @@ class ProductsService {
             // Don't fail the whole transaction, just log and continue
             return { 
                 shipmentId: null, 
+                shipmentReferenceNumber: null,
                 shipmentCreationSkipped: true, 
                 skipReason: 'SHIPMENT_CREATE_ERROR' 
             };
