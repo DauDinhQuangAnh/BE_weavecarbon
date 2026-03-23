@@ -108,5 +108,24 @@ jobs:
           git checkout main
           git pull --ff-only origin main
           cd /opt/weavecarbon/FE
-          bash deploy/redeploy-vps.sh
+          if bash deploy/redeploy-vps.sh; then
+            echo "[deploy] FE stack redeploy completed."
+          else
+            echo "[deploy] FE stack redeploy failed. Attempting one cleanup + retry for stale DB container conflicts..."
+            if command -v docker >/dev/null 2>&1; then
+              # Remove stale containers that keep reserved names like *_weavecarbon-db from previous runs.
+              stale_db_ids="$(docker ps -aq --filter "name=weavecarbon-db" || true)"
+              if [ -n "${stale_db_ids:-}" ]; then
+                echo "[deploy] Removing stale DB containers: $stale_db_ids"
+                docker rm -f $stale_db_ids || true
+              else
+                echo "[deploy] No stale DB containers found."
+              fi
+            else
+              echo "[deploy] Docker not available on host; cannot run conflict cleanup."
+            fi
+
+            # Retry once after cleanup to recover from transient name conflicts.
+            bash deploy/redeploy-vps.sh
+          fi
           EOF
