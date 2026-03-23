@@ -10,6 +10,9 @@ const transporter = emailConfig.enabled
     host: emailConfig.host,
     port: emailConfig.port,
     secure: emailConfig.secure,
+    connectionTimeout: emailConfig.connectionTimeout,
+    greetingTimeout: emailConfig.greetingTimeout,
+    socketTimeout: emailConfig.socketTimeout,
     auth: emailConfig.auth
   })
   : null;
@@ -254,6 +257,44 @@ class EmailService {
     };
 
     return deliverEmail(mailOptions);
+  }
+
+  async sendLandingLeadEmails(email, representativeEmail) {
+    if (!emailConfig.enabled) {
+      return logSkippedEmail([
+        ['[Email] Email not configured - skipping landing CTA emails'],
+        ['[Email] Landing CTA user email:', email],
+        ['[Email] Landing CTA representative email:', representativeEmail]
+      ]);
+    }
+
+    const safeEmail = escapeHtml(email);
+
+    const userMailOptions = {
+      from: emailConfig.from,
+      to: email,
+      subject: 'Test',
+      text: 'test',
+      html: '<p>test</p>'
+    };
+
+    const representativeMailOptions = {
+      from: emailConfig.from,
+      to: representativeEmail,
+      subject: 'New landing page contact',
+      text: `${email} has contacted from the landing page.`,
+      html: `
+        <h1>New landing page contact</h1>
+        <p><strong>${safeEmail}</strong> has submitted the contact form on the landing page.</p>
+      `
+    };
+
+    const [userEmailSent, representativeEmailSent] = await Promise.all([
+      deliverEmail(userMailOptions),
+      deliverEmail(representativeMailOptions)
+    ]);
+
+    return userEmailSent && representativeEmailSent;
   }
 }
 

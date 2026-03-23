@@ -104,6 +104,15 @@ class CompanyMembersService {
             let userId;
 
             if (existingUser) {
+                const existingRoles = Array.isArray(existingUser.roles) ? existingUser.roles : [];
+
+                if (existingRoles.includes('b2c')) {
+                    throw createAppError('This email is already registered as a B2C account and cannot be invited as a B2B sub-account.', {
+                        statusCode: 409,
+                        code: 'B2C_EMAIL_NOT_ALLOWED_FOR_B2B'
+                    });
+                }
+
                 // User exists, just add to company
                 userId = existingUser.id;
 

@@ -330,12 +330,11 @@ class AccountService {
                 [userId, 'b2b']
             );
 
-            // If not b2b, add b2b role
             if (roleCheck.rows.length === 0) {
-                await client.query(
-                    'INSERT INTO user_roles (user_id, role, created_at) VALUES ($1, $2, NOW())',
-                    [userId, 'b2b']
-                );
+                throw createAppError('Only B2B accounts can create a company', {
+                    statusCode: 403,
+                    code: 'B2B_ROLE_REQUIRED'
+                });
             }
 
             // Create company

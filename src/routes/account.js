@@ -37,7 +37,7 @@ router.put('/profile', updateProfileValidation, validate, asyncHandler(async (re
   });
 }));
 
-router.post('/company', createCompanyValidation, validate, asyncHandler(async (req, res) => {
+router.post('/company', requireRole('b2b'), createCompanyValidation, validate, asyncHandler(async (req, res) => {
   const { name, business_type, domestic_market, target_markets } = req.body;
   const accountInfo = await accountService.getAccountInfo(req.userId);
 
