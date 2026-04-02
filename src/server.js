@@ -24,6 +24,7 @@ const exportMarketsRoutes = require('./routes/exportMarkets');
 const chatRoutes = require('./routes/chat');
 const aiConfigRoutes = require('./routes/aiConfig');
 const contactRoutes = require('./routes/contact');
+const b2cRoutes = require('./routes/b2c');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -42,7 +43,8 @@ const apiRoutes = [
   ['/api/export/markets', exportMarketsRoutes],
   ['/api/chat', chatRoutes],
   ['/api/ai-config', aiConfigRoutes],
-  ['/api/contact', contactRoutes]
+  ['/api/contact', contactRoutes],
+  ['/api/b2c', b2cRoutes]
 ];
 
 function createCorsOptions(frontendOrigins) {
