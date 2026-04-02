@@ -355,10 +355,10 @@ class AuthService {
 
   async handleGoogleAuth({ email, fullName, avatarUrl, role = 'b2c', intent = 'signin' }) {
     const normalizedEmail = (email || '').trim().toLowerCase();
-    const normalizedRole = ['b2b', 'b2c'].includes(role) ? role : 'b2c';
     const normalizedIntent = intent === 'signup' ? 'signup' : 'signin';
-    const isGoogleSignupFlow = normalizedIntent === 'signup';
-    const effectiveRole = isGoogleSignupFlow ? 'b2b' : normalizedRole;
+    const fallbackRole = normalizedIntent === 'signup' ? 'b2b' : 'b2c';
+    const normalizedRole = ['b2b', 'b2c'].includes(role) ? role : fallbackRole;
+    const effectiveRole = normalizedRole;
 
     if (!normalizedEmail) {
       const err = new Error('Missing Google email');

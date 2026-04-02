@@ -863,9 +863,8 @@ router.get('/google', googleAuthLimiter, (req, res) => {
   const selectedIntent = googleAuthService.normalizeIntent(
     req.query.intent || req.query.flow || req.query.mode || 'signin'
   );
-  const selectedRole = selectedIntent === 'signup'
-    ? 'b2b'
-    : googleAuthService.normalizeRole(req.query.role);
+  const defaultRole = selectedIntent === 'signup' ? 'b2b' : 'b2c';
+  const selectedRole = googleAuthService.normalizeRole(req.query.role || defaultRole);
 
   const authUrl = googleAuthService.getGoogleAuthUrl({
     role: selectedRole,

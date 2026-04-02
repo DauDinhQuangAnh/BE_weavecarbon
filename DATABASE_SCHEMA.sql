@@ -1,8 +1,8 @@
 -- =============================================
 -- WEAVECARBON COMPLETE DATABASE SCHEMA
--- PostgreSQL Script - Updated 2026-02-09
+-- PostgreSQL Script - Updated 2026-04-02
 -- Standalone PostgreSQL (No Supabase Auth dependency)
--- Total: 29 Tables (B2B + B2C modules)
+-- Total: 44 Tables (B2B + B2C modules)
 -- =============================================
 
 -- =============================================
@@ -116,6 +116,7 @@ CREATE TABLE public.companies (
   name TEXT NOT NULL,
   business_type business_type NOT NULL,
   current_plan pricing_plan NOT NULL DEFAULT 'trial',
+  domestic_market TEXT NOT NULL DEFAULT 'VN',
   target_markets TEXT[],
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -170,6 +171,40 @@ CREATE TABLE public.company_members (
 CREATE INDEX idx_company_members_company ON public.company_members(company_id);
 CREATE INDEX idx_company_members_user ON public.company_members(user_id);
 CREATE INDEX idx_company_members_status ON public.company_members(status);
+
+
+-- =============================================
+-- 5.2 SUBSCRIPTION BILLING (B2B plan lifecycle & payments)
+-- =============================================
+
+CREATE TABLE public.subscription_cycles (
+  company_id UUID PRIMARY KEY REFERENCES public.companies(id) ON DELETE CASCADE,
+  trial_started_at TIMESTAMPTZ NOT NULL,
+  trial_ends_at TIMESTAMPTZ NOT NULL,
+  standard_started_at TIMESTAMPTZ,
+  standard_expires_at TIMESTAMPTZ,
+  standard_sku_limit INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.subscription_payment_sessions (
+  id UUID PRIMARY KEY,
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  target_plan pricing_plan NOT NULL,
+  billing_cycle TEXT NOT NULL CHECK (billing_cycle IN ('monthly', 'yearly')),
+  payment_provider TEXT NOT NULL DEFAULT 'vnpay',
+  amount BIGINT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'success', 'failed', 'cancelled', 'expired')),
+  payment_url TEXT,
+  gateway_transaction_ref TEXT UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  paid_at TIMESTAMPTZ,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 
 -- =============================================
@@ -938,6 +973,8 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_companies_updated_at BEFORE UPDATE ON public.companies FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+CREATE TRIGGER update_subscription_cycles_updated_at BEFORE UPDATE ON public.subscription_cycles FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+CREATE TRIGGER update_subscription_payment_sessions_updated_at BEFORE UPDATE ON public.subscription_payment_sessions FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_products_updated_at BEFORE UPDATE ON public.products FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_shipments_updated_at BEFORE UPDATE ON public.shipments FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_suppliers_updated_at BEFORE UPDATE ON public.suppliers FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();

@@ -9,6 +9,24 @@ const {
 const TRIAL_QUERY_TIMEOUT_MS = 8000;
 
 class AccountService {
+    normalizeRoles(rawRoles) {
+        if (!rawRoles) return [];
+
+        if (typeof rawRoles === 'string') {
+            return rawRoles
+                .replace(/[{}]/g, '')
+                .split(',')
+                .map((role) => role && role.trim())
+                .filter((role) => role && role !== 'NULL');
+        }
+
+        if (Array.isArray(rawRoles)) {
+            return rawRoles.filter(Boolean);
+        }
+
+        return [];
+    }
+
     async initializeTrial(client, companyId) {
         await subscriptionService.ensureSchema(client);
         await client.query(
@@ -61,12 +79,25 @@ class AccountService {
             }
 
             const profile = profileResult.rows[0];
+            const rolesResult = await client.query(
+                `
+        SELECT array_remove(array_agg(DISTINCT role), NULL) AS roles
+        FROM user_roles
+        WHERE user_id = $1
+      `,
+                [userId]
+            );
+            const roles = this.normalizeRoles(rolesResult.rows[0]?.roles);
 
             let company = null;
+            let companyMembership = null;
 
             // Prefer active membership because legacy records may not have profile.company_id synced.
             const membershipCompanyQuery = `
         SELECT
+          cm.company_id,
+          cm.role AS company_role,
+          cm.status AS member_status,
           c.id,
           c.name,
           c.business_type,
@@ -86,7 +117,23 @@ class AccountService {
       `;
             const membershipCompanyResult = await client.query(membershipCompanyQuery, [userId]);
             if (membershipCompanyResult.rows.length > 0) {
-                company = membershipCompanyResult.rows[0];
+                const membershipCompany = membershipCompanyResult.rows[0];
+                company = {
+                    id: membershipCompany.id,
+                    name: membershipCompany.name,
+                    business_type: membershipCompany.business_type,
+                    current_plan: membershipCompany.current_plan,
+                    domestic_market: membershipCompany.domestic_market,
+                    target_markets: membershipCompany.target_markets,
+                    created_at: membershipCompany.created_at
+                };
+                companyMembership = {
+                    company_id: membershipCompany.company_id,
+                    role: membershipCompany.company_role,
+                    status: membershipCompany.member_status,
+                    is_root: membershipCompany.company_role === 'admin',
+                    membership_inferred: false
+                };
             }
 
             if (!company && profile.company_id) {
@@ -105,12 +152,25 @@ class AccountService {
                 const companyByProfileResult = await client.query(companyByProfileQuery, [profile.company_id]);
                 if (companyByProfileResult.rows.length > 0) {
                     company = companyByProfileResult.rows[0];
+                    const canInferMembership =
+                        roles.includes('b2b') || roles.includes('admin');
+                    if (canInferMembership) {
+                        companyMembership = {
+                            company_id: company.id,
+                            role: 'admin',
+                            status: 'active',
+                            is_root: true,
+                            membership_inferred: true
+                        };
+                    }
                 }
             }
 
             return {
                 profile,
-                company
+                company,
+                roles,
+                company_membership: companyMembership
             };
         } finally {
             client.release();
