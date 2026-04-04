@@ -1086,5 +1086,67 @@ $$ LANGUAGE plpgsql;
 
 
 -- =============================================
+-- 31. DEFAULT B2C REFERENCE DATA
+-- =============================================
+
+INSERT INTO public.collection_points (
+  id,
+  name,
+  address,
+  city,
+  district,
+  latitude,
+  longitude,
+  phone,
+  operating_hours,
+  accepts_charity,
+  accepts_recycle,
+  is_active
+)
+VALUES
+  ('20b00000-0000-4000-8000-000000000001', 'WeaveCarbon Thu Duc Hub', '01 Vo Van Ngan', 'Ho Chi Minh City', 'Thu Duc', 10.8496217, 106.7712428, '028-7100-1001', '08:30 - 18:00', true, true, true),
+  ('20b00000-0000-4000-8000-000000000002', 'WeaveCarbon District 7 Point', '102 Nguyen Thi Thap', 'Ho Chi Minh City', 'District 7', 10.7296141, 106.7063381, '028-7100-1002', '09:00 - 19:00', true, true, true),
+  ('20b00000-0000-4000-8000-000000000003', 'WeaveCarbon Da Nang Center', '25 Tran Phu', 'Da Nang', 'Hai Chau', 16.0678406, 108.2208015, '0236-710-1003', '08:00 - 17:30', true, true, true),
+  ('20b00000-0000-4000-8000-000000000004', 'WeaveCarbon Hanoi Recycling Hub', '18 Lang Ha', 'Hanoi', 'Dong Da', 21.0181208, 105.8144903, '024-7100-1004', '08:30 - 18:00', true, true, true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.material_rewards (
+  id,
+  material_name,
+  material_category,
+  points_per_kg,
+  co2_saved_per_kg,
+  description,
+  is_active
+)
+VALUES
+  ('10a00000-0000-4000-8000-000000000001', '100% Cotton', 'fabric', 32, 8.0, 'Default reward profile for cotton garments.', true),
+  ('10a00000-0000-4000-8000-000000000002', 'Organic Cotton', 'fabric', 18, 4.5, 'Lower-carbon cotton with a reduced proxy footprint.', true),
+  ('10a00000-0000-4000-8000-000000000003', 'Recycled Cotton', 'fabric', 16, 3.2, 'Reward profile for recycled cotton fabrics.', true),
+  ('10a00000-0000-4000-8000-000000000004', '100% Polyester', 'fabric', 24, 5.5, 'Default reward profile for polyester garments.', true),
+  ('10a00000-0000-4000-8000-000000000005', 'Recycled Polyester (rPET)', 'fabric', 12, 2.5, 'Reward profile for recycled polyester fabrics.', true),
+  ('10a00000-0000-4000-8000-000000000006', '100% Wool', 'fabric', 40, 10.1, 'Default reward profile for wool garments.', true),
+  ('10a00000-0000-4000-8000-000000000007', 'Merino Wool', 'fabric', 44, 11.5, 'Premium wool profile for merino garments.', true),
+  ('10a00000-0000-4000-8000-000000000008', '100% Silk', 'fabric', 30, 7.5, 'Reward profile for silk fabrics.', true),
+  ('10a00000-0000-4000-8000-000000000009', '100% Linen', 'fabric', 20, 5.2, 'Reward profile for linen fabrics.', true),
+  ('10a00000-0000-4000-8000-000000000010', '100% Nylon', 'fabric', 28, 6.8, 'Reward profile for nylon fabrics.', true),
+  ('10a00000-0000-4000-8000-000000000011', 'Recycled Nylon', 'fabric', 14, 3.5, 'Reward profile for recycled nylon fabrics.', true),
+  ('10a00000-0000-4000-8000-000000000012', 'Bamboo Fabric', 'fabric', 15, 3.8, 'Reward profile for bamboo-based fabrics.', true),
+  ('10a00000-0000-4000-8000-000000000013', 'Hemp Fabric', 'fabric', 14, 2.9, 'Reward profile for hemp-based fabrics.', true),
+  ('10a00000-0000-4000-8000-000000000014', 'Tencel/Lyocell', 'fabric', 16, 3.5, 'Reward profile for Tencel and lyocell fabrics.', true),
+  ('10a00000-0000-4000-8000-000000000015', 'Viscose/Rayon', 'fabric', 17, 4.2, 'Reward profile for viscose and rayon fabrics.', true),
+  ('10a00000-0000-4000-8000-000000000016', 'Acrylic', 'fabric', 20, 5.0, 'Reward profile for acrylic fabrics.', true),
+  ('10a00000-0000-4000-8000-000000000017', 'Genuine Leather', 'fabric', 50, 17.0, 'Reward profile for leather garments and accessories.', true),
+  ('10a00000-0000-4000-8000-000000000018', 'Faux Leather/PU', 'fabric', 28, 7.0, 'Reward profile for faux leather and PU materials.', true),
+  ('10a00000-0000-4000-8000-000000000019', 'Down Feather', 'fabric', 48, 15.0, 'Reward profile for down-filled products.', true),
+  ('10a00000-0000-4000-8000-000000000020', 'Faux Fur', 'fabric', 32, 8.5, 'Reward profile for faux fur products.', true),
+  ('10a00000-0000-4000-8000-000000000021', 'Cotton Canvas', 'fabric', 34, 9.0, 'Reward profile for cotton canvas products.', true),
+  ('10a00000-0000-4000-8000-000000000022', 'Cotton/Polyester Blend', 'fabric', 26, 6.5, 'Reward profile for blended cotton and polyester fabrics.', true),
+  ('10a00000-0000-4000-8000-000000000023', 'Wool/Polyester Blend', 'fabric', 32, 7.5, 'Reward profile for blended wool and polyester fabrics.', true),
+  ('10a00000-0000-4000-8000-000000000024', 'Other Material (Proxy)', 'fabric', 24, 6.0, 'Fallback reward profile for user-defined materials.', true)
+ON CONFLICT (id) DO NOTHING;
+
+
+-- =============================================
 -- END OF SCHEMA
 -- =============================================
