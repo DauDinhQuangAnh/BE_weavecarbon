@@ -5,6 +5,7 @@ const CATEGORY_TO_COLUMN = {
   charity: 'cp.accepts_charity = TRUE',
   recycle: 'cp.accepts_recycle = TRUE'
 };
+const MAX_NEARBY_DISTANCE_KM = 20;
 
 const toNumberOrNull = (value) => {
   const parsed = Number(value);
@@ -125,36 +126,43 @@ class B2CCollectionPointsService {
       city
     });
 
+    values.push(MAX_NEARBY_DISTANCE_KM);
+    const maxDistanceIndex = values.length;
     values.push(limit);
     const limitIndex = values.length;
 
     const result = await pool.query({
       text: `
-        SELECT
-          cp.id,
-          cp.name,
-          cp.address,
-          cp.city,
-          cp.district,
-          cp.latitude::double precision AS latitude,
-          cp.longitude::double precision AS longitude,
-          cp.phone,
-          cp.operating_hours,
-          cp.accepts_charity,
-          cp.accepts_recycle,
-          (
-            6371 * 2 * ASIN(
-              SQRT(
-                POWER(SIN(RADIANS((cp.latitude::double precision - $1) / 2)), 2) +
-                COS(RADIANS($1)) *
-                COS(RADIANS(cp.latitude::double precision)) *
-                POWER(SIN(RADIANS((cp.longitude::double precision - $2) / 2)), 2)
+        WITH ranked_points AS (
+          SELECT
+            cp.id,
+            cp.name,
+            cp.address,
+            cp.city,
+            cp.district,
+            cp.latitude::double precision AS latitude,
+            cp.longitude::double precision AS longitude,
+            cp.phone,
+            cp.operating_hours,
+            cp.accepts_charity,
+            cp.accepts_recycle,
+            (
+              6371 * 2 * ASIN(
+                SQRT(
+                  POWER(SIN(RADIANS((cp.latitude::double precision - $1) / 2)), 2) +
+                  COS(RADIANS($1)) *
+                  COS(RADIANS(cp.latitude::double precision)) *
+                  POWER(SIN(RADIANS((cp.longitude::double precision - $2) / 2)), 2)
+                )
               )
-            )
-          ) AS distance_km
-        FROM public.collection_points cp
-        WHERE ${conditions.join(' AND ')}
-        ORDER BY distance_km ASC, cp.name ASC
+            ) AS distance_km
+          FROM public.collection_points cp
+          WHERE ${conditions.join(' AND ')}
+        )
+        SELECT *
+        FROM ranked_points
+        WHERE distance_km <= $${maxDistanceIndex}
+        ORDER BY distance_km ASC, name ASC
         LIMIT $${limitIndex}
       `,
       values

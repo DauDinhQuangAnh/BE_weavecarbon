@@ -664,13 +664,12 @@ class B2CService {
       }
 
       if (
-        !gpsCheckin ||
-        !Number.isFinite(gpsCheckin.latitude) ||
-        !Number.isFinite(gpsCheckin.longitude)
+        gpsCheckin &&
+        (!Number.isFinite(gpsCheckin.latitude) || !Number.isFinite(gpsCheckin.longitude))
       ) {
         throw createBusinessError(
-          'GPS_CHECKIN_REQUIRED',
-          'Drop-off donations require GPS check-in',
+          'INVALID_GPS_CHECKIN',
+          'GPS check-in must include a valid latitude and longitude',
           422
         );
       }
@@ -755,25 +754,20 @@ class B2CService {
           );
         }
 
-        const distanceKm = calculateDistanceKm(
-          gpsCheckin.latitude,
-          gpsCheckin.longitude,
-          pointLatitude,
-          pointLongitude
-        );
-
-        if (distanceKm > MAX_GPS_DISTANCE_KM) {
-          throw createBusinessError(
-            'GPS_CHECKIN_TOO_FAR',
-            'You need to be closer to the selected collection point to confirm drop-off',
-            422,
-            { distance_km: roundTo(distanceKm, 3), max_distance_km: MAX_GPS_DISTANCE_KM }
+        if (gpsCheckin) {
+          const distanceKm = calculateDistanceKm(
+            gpsCheckin.latitude,
+            gpsCheckin.longitude,
+            pointLatitude,
+            pointLongitude
           );
-        }
 
-        donationStatus = 'received';
-        confirmedAt = gpsCheckin.checked_at ? new Date(gpsCheckin.checked_at) : new Date();
-        confirmationMethod = 'gps';
+          if (distanceKm <= MAX_GPS_DISTANCE_KM) {
+            donationStatus = 'received';
+            confirmedAt = gpsCheckin.checked_at ? new Date(gpsCheckin.checked_at) : new Date();
+            confirmationMethod = 'gps';
+          }
+        }
       } else if (shippingTrackingNumber) {
         donationStatus = 'in_transit';
       }
