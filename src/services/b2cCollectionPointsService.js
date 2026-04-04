@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const b2cDefaultsService = require('./b2cDefaultsService');
 
 const CATEGORY_TO_COLUMN = {
   charity: 'cp.accepts_charity = TRUE',
@@ -56,6 +57,8 @@ const appendSearchFilters = ({ conditions, values, category, search, city }) => 
 
 class B2CCollectionPointsService {
   async listCollectionPoints({ category, search, city, limit = 20 }) {
+    await b2cDefaultsService.ensureSeedData();
+
     const conditions = ['cp.is_active = TRUE'];
     const values = [];
 
@@ -105,6 +108,8 @@ class B2CCollectionPointsService {
     city,
     limit = 6
   }) {
+    await b2cDefaultsService.ensureSeedData();
+
     const values = [latitude, longitude];
     const conditions = [
       'cp.is_active = TRUE',

@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const pool = require('../config/database');
 const { UPLOADS_ROOT } = require('../config/runtime');
+const b2cDefaultsService = require('./b2cDefaultsService');
 
 const DONATION_IMAGE_LEVELS = [
   { minimum: 2000, label: 'Champion' },
@@ -136,6 +137,7 @@ class B2CService {
   async ensureSchema(client) {
     if (client) {
       await this._applySchema(client);
+      await b2cDefaultsService.ensureSeedData(client);
       return;
     }
 
@@ -144,6 +146,7 @@ class B2CService {
         const schemaClient = await pool.connect();
         try {
           await this._applySchema(schemaClient);
+          await b2cDefaultsService.ensureSeedData(schemaClient);
         } finally {
           schemaClient.release();
         }
