@@ -6,6 +6,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { UPLOADS_ROOT } = require('../config/runtime');
 const validate = require('../middleware/validator');
 const reportsService = require('../services/reportsService');
+const analyticsService = require('../services/analyticsService');
 const {
     listReportsValidation,
     getReportByIdValidation,
@@ -498,6 +499,22 @@ router.get(
             const storageKey = fileStatus.storage_key;
             const originalFilename = fileStatus.original_filename || `report.${fileStatus.file_format || 'pdf'}`;
             const mimeType = mimeMap[fileStatus.file_format] || 'application/octet-stream';
+            const report = await reportsService.getReportById(reportId, companyId);
+
+            await analyticsService.trackEvent({
+                event_name: 'wc_report_downloaded',
+                user_id: req.userId,
+                company_id: companyId,
+                entity_type: 'report',
+                entity_id: reportId,
+                payload: {
+                    report_type: report.report_type,
+                    format: fileStatus.file_format || 'csv',
+                    report_status: fileStatus.status || 'completed'
+                }
+            }).catch((error) => {
+                console.error('[reports] Failed to track wc_report_downloaded:', error);
+            });
 
             if (storageProvider === 'local') {
                 // Resolve file from local storage

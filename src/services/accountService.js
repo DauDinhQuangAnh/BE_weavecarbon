@@ -1,6 +1,7 @@
 const pool = require('../config/database');
 const bcrypt = require('bcryptjs');
 const subscriptionService = require('./subscriptionService');
+const analyticsService = require('./analyticsService');
 const { createAppError } = require('../utils/appError');
 const {
     ensureCompaniesDomesticMarketColumn,
@@ -166,11 +167,20 @@ class AccountService {
                 }
             }
 
+            const analyticsIdentity = analyticsService.getAnalyticsIdentity({
+                userId,
+                companyId: company?.id || profile.company_id || null
+            });
+
             return {
                 profile,
-                company,
+                company: company ? {
+                    ...company,
+                    analytics_company_key: analyticsIdentity.analytics_company_key
+                } : null,
                 roles,
-                company_membership: companyMembership
+                company_membership: companyMembership,
+                analytics_user_key: analyticsIdentity.analytics_user_key
             };
         } finally {
             client.release();
@@ -287,7 +297,10 @@ class AccountService {
                 });
             }
 
-            return companyResult.rows[0];
+            return {
+                ...companyResult.rows[0],
+                analytics_company_key: analyticsService.buildAnalyticsCompanyKey(companyId)
+            };
         } finally {
             client.release();
         }
@@ -434,7 +447,10 @@ class AccountService {
             }
 
             await client.query('COMMIT');
-            return company;
+            return {
+                ...company,
+                analytics_company_key: analyticsService.buildAnalyticsCompanyKey(company.id)
+            };
         } catch (error) {
             await client.query('ROLLBACK');
             throw error;

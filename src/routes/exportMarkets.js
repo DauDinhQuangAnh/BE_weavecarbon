@@ -267,7 +267,8 @@ router.post(
                 {
                     product_id: req.body.product_id,
                     hs_code: req.body.hs_code,
-                    notes: req.body.notes
+                    notes: req.body.notes,
+                    user_id: req.userId
                 }
             );
 
@@ -342,7 +343,8 @@ router.delete(
             const result = await exportMarketsService.removeProductFromScope(
                 req.companyId,
                 req.params.market_code,
-                req.params.product_id
+                req.params.product_id,
+                req.userId
             );
 
             if (!result.success) {

@@ -3,7 +3,27 @@ const { once } = require('events');
 const path = require('path');
 const fs = require('fs');
 const { UPLOADS_ROOT } = require('../config/runtime');
+const analyticsService = require('./analyticsService');
 const reportJobQueue = require('./reportJobQueue');
+
+const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope) => {
+    try {
+        const event = await analyticsService.enqueueEvent(client, payload);
+        if (event?.id) {
+            eventIds.push(event.id);
+        }
+    } catch (error) {
+        console.error(`[reportsService] Failed to queue ${scope}:`, error);
+    }
+};
+
+const safeTrackAnalyticsEvent = async (payload, scope) => {
+    try {
+        await analyticsService.trackEvent(payload);
+    } catch (error) {
+        console.error(`[reportsService] Failed to track ${scope}:`, error);
+    }
+};
 
 class ReportsService {
     /**
@@ -203,6 +223,7 @@ class ReportsService {
         } = reportData;
 
         const client = await pool.connect();
+        const analyticsEventIds = [];
         try {
             await client.query('BEGIN');
 
@@ -247,12 +268,25 @@ class ReportsService {
 
             const report = insertResult.rows[0];
 
+            await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+                event_name: 'wc_report_requested',
+                user_id: userId,
+                company_id: companyId,
+                entity_type: 'report',
+                entity_id: report.id,
+                payload: {
+                    report_type,
+                    format: file_format
+                }
+            }, 'wc_report_requested');
+
             reportJobQueue.enqueue({
                 type: 'manual_report',
                 reportId: report.id,
                 companyId
             });
 
+            analyticsService.queuePendingDispatch(analyticsEventIds);
             return {
                 id: report.id,
                 status: report.status,
@@ -271,11 +305,12 @@ class ReportsService {
      */
     async updateReportStatus(reportId, companyId, userId, newStatus) {
         const client = await pool.connect();
+        const analyticsEventIds = [];
         try {
             await client.query('BEGIN');
 
             const selectQuery = `
-                SELECT id, status FROM reports
+                SELECT id, status, report_type, dataset_type, file_format FROM reports
                 WHERE id = $1 AND company_id = $2
             `;
             const selectResult = await client.query(selectQuery, [reportId, companyId]);
@@ -324,11 +359,44 @@ class ReportsService {
 
             const updateResult = await client.query(updateQuery, updateParams);
 
+            const reportRow = updateResult.rows[0];
+            if (newStatus === 'completed') {
+                await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+                    event_name: 'wc_report_generated',
+                    user_id: userId,
+                    company_id: companyId,
+                    entity_type: 'report',
+                    entity_id: reportId,
+                    payload: {
+                        report_type: selectResult.rows[0].report_type,
+                        dataset_type: selectResult.rows[0].dataset_type || undefined,
+                        format: selectResult.rows[0].file_format || 'csv'
+                    }
+                }, 'wc_report_generated');
+            }
+
+            if (newStatus === 'failed') {
+                await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+                    event_name: 'wc_report_generation_failed',
+                    user_id: userId,
+                    company_id: companyId,
+                    entity_type: 'report',
+                    entity_id: reportId,
+                    payload: {
+                        report_type: selectResult.rows[0].report_type,
+                        dataset_type: selectResult.rows[0].dataset_type || undefined,
+                        format: selectResult.rows[0].file_format || 'csv',
+                        error_code: 'status_marked_failed'
+                    }
+                }, 'wc_report_generation_failed');
+            }
+
             await client.query('COMMIT');
+            analyticsService.queuePendingDispatch(analyticsEventIds);
 
             return {
                 success: true,
-                data: updateResult.rows[0]
+                data: reportRow
             };
         } catch (error) {
             await client.query('ROLLBACK');
@@ -380,6 +448,7 @@ class ReportsService {
         const { dataset_type, file_format = 'csv', title } = exportData;
 
         const client = await pool.connect();
+        const analyticsEventIds = [];
         try {
             await client.query('BEGIN');
 
@@ -422,6 +491,19 @@ class ReportsService {
 
             const report = insertResult.rows[0];
 
+            await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+                event_name: 'wc_report_requested',
+                user_id: userId,
+                company_id: companyId,
+                entity_type: 'report',
+                entity_id: report.report_id || report.id,
+                payload: {
+                    report_type: 'dataset_export',
+                    dataset_type,
+                    format: file_format
+                }
+            }, 'wc_report_requested');
+
             reportJobQueue.enqueue({
                 type: 'dataset_export',
                 reportId: report.id,
@@ -430,6 +512,7 @@ class ReportsService {
                 fileFormat: file_format
             });
 
+            analyticsService.queuePendingDispatch(analyticsEventIds);
             return {
                 report_id: report.id,
                 status: report.status,
@@ -870,6 +953,18 @@ class ReportsService {
                 WHERE id = $6 AND company_id = $7
             `, [storageKey, originalFilename, `/api/reports/${reportId}/download`, fileSize, recordCount, reportId, companyId]);
 
+            await safeTrackAnalyticsEvent({
+                event_name: 'wc_report_generated',
+                company_id: companyId,
+                entity_type: 'report',
+                entity_id: reportId,
+                payload: {
+                    report_type: 'dataset_export',
+                    dataset_type: datasetType,
+                    format: fileFormat || 'csv'
+                }
+            }, 'wc_report_generated');
+
             console.log(`[Export] Generated real CSV for report ${reportId}: ${recordCount} rows, ${fileSize} bytes`);
         } catch (error) {
             // Mark as failed
@@ -878,6 +973,18 @@ class ReportsService {
                 SET status = 'failed', error_message = $1, updated_at = NOW()
                 WHERE id = $2
             `, [error.message, reportId]).catch(() => {});
+            await safeTrackAnalyticsEvent({
+                event_name: 'wc_report_generation_failed',
+                company_id: companyId,
+                entity_type: 'report',
+                entity_id: reportId,
+                payload: {
+                    report_type: 'dataset_export',
+                    dataset_type: datasetType,
+                    format: fileFormat || 'csv',
+                    error_code: String(error.code || error.message || 'report_generation_failed')
+                }
+            }, 'wc_report_generation_failed');
             throw error;
         } finally {
             client.release();
@@ -963,6 +1070,17 @@ class ReportsService {
                 WHERE id = $6 AND company_id = $7
             `, [storageKey, originalFilename, `/api/reports/${reportId}/download`, fileSize, rows.length, reportId, companyId]);
 
+            await safeTrackAnalyticsEvent({
+                event_name: 'wc_report_generated',
+                company_id: companyId,
+                entity_type: 'report',
+                entity_id: reportId,
+                payload: {
+                    report_type: report.report_type,
+                    format: report.file_format || 'csv'
+                }
+            }, 'wc_report_generated');
+
             console.log(`[Report] Generated real CSV for report ${reportId}: ${rows.length} rows, ${fileSize} bytes`);
         } catch (error) {
             await client.query(`
@@ -970,6 +1088,17 @@ class ReportsService {
                 SET status = 'failed', error_message = $1, updated_at = NOW()
                 WHERE id = $2
             `, [error.message, reportId]).catch(() => {});
+            await safeTrackAnalyticsEvent({
+                event_name: 'wc_report_generation_failed',
+                company_id: companyId,
+                entity_type: 'report',
+                entity_id: reportId,
+                payload: {
+                    report_type: 'manual_report',
+                    format: 'csv',
+                    error_code: String(error.code || error.message || 'report_generation_failed')
+                }
+            }, 'wc_report_generation_failed');
             throw error;
         } finally {
             client.release();

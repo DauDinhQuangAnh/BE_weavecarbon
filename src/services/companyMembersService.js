@@ -1,7 +1,19 @@
 const pool = require('../config/database');
+const analyticsService = require('./analyticsService');
 const authService = require('./authService');
 const emailService = require('./emailService');
 const { createAppError } = require('../utils/appError');
+
+const pushAnalyticsEvent = async (client, eventIds, payload, scope) => {
+    try {
+        const event = await analyticsService.enqueueEvent(client, payload);
+        if (event?.id) {
+            eventIds.push(event.id);
+        }
+    } catch (error) {
+        console.error(`[companyMembersService] Failed to queue ${scope}:`, error);
+    }
+};
 
 class CompanyMembersService {
     /**
@@ -79,6 +91,7 @@ class CompanyMembersService {
         const { email, full_name, password, role, send_notification_email } = memberData;
 
         const client = await pool.connect();
+        const analyticsEventIds = [];
         try {
             await client.query('BEGIN');
 
@@ -196,7 +209,19 @@ class CompanyMembersService {
             const memberResult = await client.query(memberQuery, [companyId, userId, role, invitedBy]);
             const member = memberResult.rows[0];
 
+            await pushAnalyticsEvent(client, analyticsEventIds, {
+                event_name: 'wc_member_invited',
+                user_id: invitedBy,
+                company_id: companyId,
+                entity_type: 'company_member',
+                entity_id: member.id,
+                payload: {
+                    member_role: role
+                }
+            }, 'wc_member_invited');
+
             await client.query('COMMIT');
+            analyticsService.queuePendingDispatch(analyticsEventIds);
 
             // Send welcome email with login credentials (no verification needed)
             if (send_notification_email) {
@@ -226,6 +251,7 @@ class CompanyMembersService {
      */
     async updateMember(companyId, memberId, userId, updateData) {
         const client = await pool.connect();
+        const analyticsEventIds = [];
         try {
             await client.query('BEGIN');
 
@@ -305,7 +331,37 @@ class CompanyMembersService {
                 });
             }
 
+            const updatedMember = result.rows[0];
+            if (updateData.role) {
+                await pushAnalyticsEvent(client, analyticsEventIds, {
+                    event_name: 'wc_member_role_changed',
+                    user_id: userId,
+                    company_id: companyId,
+                    entity_type: 'company_member',
+                    entity_id: memberId,
+                    payload: {
+                        previous_role: targetMember.role === 'editor' ? 'member' : targetMember.role,
+                        next_role: updatedMember.role === 'editor' ? 'member' : updatedMember.role
+                    }
+                }, 'wc_member_role_changed');
+            }
+
+            if (updateData.status) {
+                await pushAnalyticsEvent(client, analyticsEventIds, {
+                    event_name: 'wc_member_disabled',
+                    user_id: userId,
+                    company_id: companyId,
+                    entity_type: 'company_member',
+                    entity_id: memberId,
+                    payload: {
+                        member_role: targetMember.role === 'editor' ? 'member' : targetMember.role,
+                        status: updateData.status
+                    }
+                }, 'wc_member_disabled');
+            }
+
             await client.query('COMMIT');
+            analyticsService.queuePendingDispatch(analyticsEventIds);
             return result.rows[0];
         } catch (error) {
             await client.query('ROLLBACK');
@@ -320,6 +376,7 @@ class CompanyMembersService {
      */
     async deleteMember(companyId, memberId, userId) {
         const client = await pool.connect();
+        const analyticsEventIds = [];
         try {
             await client.query('BEGIN');
 
@@ -371,7 +428,19 @@ class CompanyMembersService {
                 });
             }
 
+            await pushAnalyticsEvent(client, analyticsEventIds, {
+                event_name: 'wc_member_removed',
+                user_id: userId,
+                company_id: companyId,
+                entity_type: 'company_member',
+                entity_id: memberId,
+                payload: {
+                    member_role: targetMember.role === 'editor' ? 'member' : targetMember.role
+                }
+            }, 'wc_member_removed');
+
             await client.query('COMMIT');
+            analyticsService.queuePendingDispatch(analyticsEventIds);
             return true;
         } catch (error) {
             await client.query('ROLLBACK');

@@ -8,6 +8,7 @@
     "start:prod": "node scripts/migrate.js && node src/server.js",
     "dev": "nodemon src/server.js",
     "migrate": "node scripts/migrate.js",
+    "analytics:flush": "node scripts/flush-analytics-outbox.js",
     "build:release": "node scripts/build-release.js",
     "check:syntax": "node scripts/check-syntax.js",
     "test": "echo \"Error: no test specified\" && exit 1"

@@ -1,5 +1,6 @@
 const axios = require('axios');
 const pool = require('../config/database');
+const analyticsService = require('./analyticsService');
 const { createAppError } = require('../utils/appError');
 
 const DEFAULT_PAGE = 1;
@@ -22,6 +23,25 @@ const toPositiveInt = (value, fallback, min, max) => {
 };
 
 const compactWhitespace = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+
+const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope) => {
+  try {
+    const event = await analyticsService.enqueueEvent(client, payload);
+    if (event?.id) {
+      eventIds.push(event.id);
+    }
+  } catch (error) {
+    console.error(`[chatService] Failed to queue ${scope}:`, error);
+  }
+};
+
+const safeTrackAnalyticsEvent = async (payload, scope) => {
+  try {
+    await analyticsService.trackEvent(payload);
+  } catch (error) {
+    console.error(`[chatService] Failed to track ${scope}:`, error);
+  }
+};
 
 const trimTrailingSlash = (value) => value.replace(/\/+$/, '');
 const isPlainObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -484,6 +504,17 @@ class ChatService {
       });
     }
 
+    await safeTrackAnalyticsEvent({
+      event_name: 'wc_chat_conversation_deleted',
+      user_id: userId,
+      company_id: companyId,
+      entity_type: 'chat_conversation',
+      entity_id: conversationId,
+      payload: {
+        variant: 'dashboard'
+      }
+    }, 'wc_chat_conversation_deleted');
+
     return {
       id: result.rows[0].id,
       title: result.rows[0].title || 'New chat'
@@ -527,7 +558,17 @@ class ChatService {
       ]
     );
 
-    return this.normalizeConfigRow(result.rows[0]);
+    const normalizedConfig = this.normalizeConfigRow(result.rows[0]);
+    await safeTrackAnalyticsEvent({
+      event_name: 'wc_chat_settings_saved',
+      user_id: userId,
+      company_id: companyId,
+      payload: {
+        variant: 'dashboard'
+      }
+    }, 'wc_chat_settings_saved');
+
+    return normalizedConfig;
   }
 
   async resolveConversationForSend(userId, companyId, conversationId) {
@@ -688,6 +729,7 @@ class ChatService {
     const dashboardChatConfig = await this.resolveGlobalRuntimeConfig();
     const ragResult = await this.callRagQuery(dashboardChatConfig, content);
     const client = await pool.connect();
+    const analyticsEventIds = [];
 
     try {
       await client.query('BEGIN');
@@ -753,7 +795,31 @@ class ChatService {
         [conversation.id]
       );
 
+      await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+        event_name: 'wc_chat_message_sent',
+        user_id: userId,
+        company_id: companyId,
+        entity_type: 'chat_conversation',
+        entity_id: conversation.id,
+        payload: {
+          has_conversation: Boolean(existingConversation),
+          variant: 'dashboard'
+        }
+      }, 'wc_chat_message_sent');
+
+      await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+        event_name: 'wc_chat_response_received',
+        user_id: userId,
+        company_id: companyId,
+        entity_type: 'chat_conversation',
+        entity_id: conversation.id,
+        payload: {
+          variant: 'dashboard'
+        }
+      }, 'wc_chat_response_received');
+
       await client.query('COMMIT');
+      analyticsService.queuePendingDispatch(analyticsEventIds);
 
       const latestConversation = updateConversationResult.rows[0];
 

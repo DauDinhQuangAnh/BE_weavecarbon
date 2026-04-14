@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authService = require('../services/authService');
+const analyticsService = require('../services/analyticsService');
 const emailService = require('../services/emailService');
 const googleAuthService = require('../services/googleAuthService');
 const validate = require('../middleware/validator');
@@ -33,6 +34,38 @@ const GOOGLE_AUTH_ERROR_MESSAGES = {
   GOOGLE_TOKEN_EXCHANGE_FAILED: 'Unable to complete Google authentication. Please retry.',
   GOOGLE_USERINFO_FAILED: 'Unable to fetch Google profile. Please retry.',
   GOOGLE_AUTH_FAILED: 'Google authentication failed. Please retry.'
+};
+
+const attachAnalyticsCompany = (company) => {
+  if (!company) {
+    return null;
+  }
+
+  const companyId = company.id || company.company_id || null;
+  return {
+    ...company,
+    analytics_company_key: analyticsService.buildAnalyticsCompanyKey(companyId)
+  };
+};
+
+const resolveEntryAccountType = ({ role = null, roles = [], companyId = null } = {}) => {
+  if (role === 'b2c') return 'b2c';
+  if (role === 'b2b') return 'b2b';
+
+  if (Array.isArray(roles)) {
+    if (roles.includes('b2c')) return 'b2c';
+    if (roles.includes('b2b') || roles.includes('admin')) return 'b2b';
+  }
+
+  return companyId ? 'b2b' : 'b2c';
+};
+
+const safeTrackAnalyticsEvent = async (payload) => {
+  try {
+    await analyticsService.trackEvent(payload);
+  } catch (error) {
+    console.error('[auth] Failed to track analytics event:', error);
+  }
 };
 
 function cleanupProcessedGoogleAuthCodes() {
@@ -268,6 +301,22 @@ router.post('/signup', signupLimiter, signupValidation, validate, async (req, re
     })
       .catch(err => console.error('Failed to send verification email:', err));
 
+    await safeTrackAnalyticsEvent({
+      event_name: 'sign_up',
+      user_id: user.id,
+      company_id: company?.id || profile.company_id || null,
+      payload: {
+        method: 'email',
+        intent: 'signup',
+        entry_account_type: resolveEntryAccountType({ role })
+      }
+    });
+
+    const analyticsIdentity = analyticsService.getAnalyticsIdentity({
+      userId: user.id,
+      companyId: company?.id || profile.company_id || null
+    });
+
     res.status(201).json({
       success: true,
       data: {
@@ -283,7 +332,8 @@ router.post('/signup', signupLimiter, signupValidation, validate, async (req, re
           company_id: profile.company_id
         },
         role,
-        company,
+        company: attachAnalyticsCompany(company),
+        analytics_user_key: analyticsIdentity.analytics_user_key,
         requires_email_verification: true
       }
     });
@@ -407,6 +457,23 @@ router.post('/signin', signinLimiter, signinValidation, validate, async (req, re
     // Calculate expiry
     const expiresIn = 900; // 15 minutes in seconds
     const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+    await safeTrackAnalyticsEvent({
+      event_name: 'login',
+      user_id: user.id,
+      company_id: companyIdForToken,
+      payload: {
+        method: 'email',
+        intent: 'signin',
+        entry_account_type: resolveEntryAccountType({
+          roles: user.roles,
+          companyId: companyIdForToken
+        })
+      }
+    });
+    const analyticsIdentity = analyticsService.getAnalyticsIdentity({
+      userId: user.id,
+      companyId: companyIdForToken
+    });
 
     res.json({
       success: true,
@@ -423,8 +490,9 @@ router.post('/signin', signinLimiter, signinValidation, validate, async (req, re
           is_demo_user: user.is_demo_user
         },
         roles: user.roles,
-        company,
+        company: attachAnalyticsCompany(company),
         company_membership: companyMembership,
+        analytics_user_key: analyticsIdentity.analytics_user_key,
         tokens: {
           access_token: accessToken,
           refresh_token: refreshToken,
@@ -509,6 +577,20 @@ router.post('/refresh', refreshLimiter, refreshValidation, validate, async (req,
 
     const expiresIn = 900;
     const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+    await safeTrackAnalyticsEvent({
+      event_name: 'login',
+      user_id: user.id,
+      company_id: company?.id || profile?.company_id || null,
+      payload: {
+        method: 'demo',
+        intent: 'signin',
+        entry_account_type: resolveEntryAccountType({ role, companyId: company?.id || null })
+      }
+    });
+    const analyticsIdentity = analyticsService.getAnalyticsIdentity({
+      userId: user.id,
+      companyId: company?.id || profile?.company_id || null
+    });
 
     res.json({
       success: true,
@@ -560,8 +642,9 @@ router.post('/demo', demoValidation, validate, async (req, res, next) => {
         },
         profile: profile || null,
         roles: [role],
-        company,
+        company: attachAnalyticsCompany(company),
         company_membership: company_membership || null,
+        analytics_user_key: analyticsIdentity.analytics_user_key,
         tokens: {
           access_token: accessToken,
           refresh_token: refreshToken,
@@ -661,6 +744,14 @@ router.get('/verify-email', async (req, res, next) => {
     await authService.markEmailVerified(user.id);
 
     const companyIdForToken = await authService.resolveCompanyIdForToken(user.id, user.company_id);
+    await safeTrackAnalyticsEvent({
+      event_name: 'wc_email_verification_completed',
+      user_id: user.id,
+      company_id: companyIdForToken,
+      payload: {
+        method: 'email'
+      }
+    });
     const { requiresCompanySetup, nextStep } = resolvePostAuthNextStep(user, companyIdForToken);
     const accessToken = authService.generateAccessToken(
       user.id,
@@ -771,13 +862,22 @@ router.post('/verify-email', verifyEmailValidation, validate, async (req, res, n
 
     // Mark email as verified
     await authService.markEmailVerified(user.id);
+    const companyIdForToken = await authService.resolveCompanyIdForToken(user.id, user.company_id);
+    await safeTrackAnalyticsEvent({
+      event_name: 'wc_email_verification_completed',
+      user_id: user.id,
+      company_id: companyIdForToken,
+      payload: {
+        method: 'email'
+      }
+    });
 
     // Auto-login: generate tokens
     const accessToken = authService.generateAccessToken(
       user.id,
       user.email,
       user.roles,
-      user.company_id,
+      companyIdForToken,
       false
     );
     const refreshToken = authService.generateRefreshToken(user.id);
@@ -943,6 +1043,19 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
       }
     }
 
+    if (isNewUser) {
+      await safeTrackAnalyticsEvent({
+        event_name: 'sign_up',
+        user_id: user.id,
+        company_id: user.company_id || null,
+        payload: {
+          method: 'google',
+          intent: 'signup',
+          entry_account_type: resolveEntryAccountType({ role, companyId: user.company_id || null })
+        }
+      });
+    }
+
     if (blockLoginUntilEmailVerified) {
       const verificationRequiredRedirect = buildFrontendAuthCallbackUrl({
         provider: 'google',
@@ -977,6 +1090,20 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
     }
 
     await authService.markUserLoggedIn(user.id);
+    await safeTrackAnalyticsEvent({
+      event_name: 'login',
+      user_id: user.id,
+      company_id: companyIdForToken,
+      payload: {
+        method: 'google',
+        intent: 'signin',
+        entry_account_type: resolveEntryAccountType({
+          role,
+          roles: user.roles,
+          companyId: companyIdForToken
+        })
+      }
+    });
 
     // Generate app tokens
     const accessToken = authService.generateAccessToken(

@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const axios = require('axios');
 const { assertSchemaCapability } = require('../config/schemaCapabilities');
+const analyticsService = require('./analyticsService');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TRIAL_DAYS = 14;
@@ -12,6 +13,17 @@ const PAYMENT_SESSION_EXPIRY_MINUTES = 30;
 const VNPAY_PAYMENT_URL_EXPIRY_MINUTES = 15;
 const VNPAY_QUERYDR_MIN_INTERVAL_MS = 10 * 1000;
 const VNPAY_SUCCESS_CODE = '00';
+
+const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope) => {
+    try {
+        const event = await analyticsService.enqueueEvent(client, payload);
+        if (event?.id) {
+            eventIds.push(event.id);
+        }
+    } catch (error) {
+        console.error(`[subscriptionService] Failed to queue ${scope}:`, error);
+    }
+};
 
 class SubscriptionService {
     PLAN_LIMITS = {
@@ -1281,6 +1293,7 @@ class SubscriptionService {
 
     async completeUpgrade(sessionId, paymentStatusCode = '00', options = {}) {
         const client = await pool.connect();
+        const analyticsEventIds = [];
         try {
             await this.ensureSchema(client);
             await client.query('BEGIN');
@@ -1290,10 +1303,12 @@ class SubscriptionService {
         SELECT
           id,
           company_id,
+          user_id,
           target_plan,
           amount,
           metadata,
           billing_cycle,
+          payment_provider,
           status,
           expires_at,
           paid_at
@@ -1310,6 +1325,7 @@ class SubscriptionService {
 
             const session = sessionResult.rows[0];
             const targetPlan = this.normalizePlanId(session.target_plan, 'trial');
+            const analyticsPlanFamily = targetPlan === 'export' ? 'export' : 'standard';
             const sessionMetadata = this.normalizeMetadata(session.metadata);
             const gatewayDetails = this.normalizeMetadata(options.gatewayDetails);
             const transactionStatus = String(options.transactionStatus || '').trim();
@@ -1372,7 +1388,26 @@ class SubscriptionService {
                         JSON.stringify(expiredMetadata)
                     ]
                 );
+                await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+                    event_name: 'wc_payment_failed',
+                    user_id: session.user_id,
+                    company_id: session.company_id,
+                    entity_type: 'subscription_payment_session',
+                    entity_id: sessionId,
+                    payload: {
+                        billing_cycle: session.billing_cycle || 'monthly',
+                        payment_provider: session.payment_provider || 'vnpay',
+                        plan_family: analyticsPlanFamily,
+                        plan_sku_limit: Number(
+                            nextMetadata.requested_standard_sku_limit ||
+                            nextMetadata.standard_sku_increment ||
+                            0
+                        ) || undefined,
+                        error_code: 'session_expired'
+                    }
+                }, 'wc_payment_failed');
                 await client.query('COMMIT');
+                analyticsService.queuePendingDispatch(analyticsEventIds);
                 return {
                     updated: false,
                     current_plan: null,
@@ -1407,7 +1442,26 @@ class SubscriptionService {
                         )
                     ]
                 );
+                await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+                    event_name: 'wc_payment_failed',
+                    user_id: session.user_id,
+                    company_id: session.company_id,
+                    entity_type: 'subscription_payment_session',
+                    entity_id: sessionId,
+                    payload: {
+                        billing_cycle: session.billing_cycle || 'monthly',
+                        payment_provider: session.payment_provider || 'vnpay',
+                        plan_family: analyticsPlanFamily,
+                        plan_sku_limit: Number(
+                            nextMetadata.requested_standard_sku_limit ||
+                            nextMetadata.standard_sku_increment ||
+                            0
+                        ) || undefined,
+                        error_code: String(paymentStatusCode || transactionStatus || 'payment_failed')
+                    }
+                }, 'wc_payment_failed');
                 await client.query('COMMIT');
+                analyticsService.queuePendingDispatch(analyticsEventIds);
                 return {
                     updated: false,
                     current_plan: null,
@@ -1506,7 +1560,34 @@ class SubscriptionService {
                 throw this.buildError('Unsupported target plan in payment session', 'UNSUPPORTED_PLAN', 400);
             }
 
+            await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+                event_name: 'purchase',
+                user_id: session.user_id,
+                company_id: session.company_id,
+                entity_type: 'subscription_payment_session',
+                entity_id: sessionId,
+                value: Number(session.amount || 0),
+                currency: 'VND',
+                payload: {
+                    billing_cycle: session.billing_cycle || 'monthly',
+                    currency: 'VND',
+                    payment_provider: session.payment_provider || 'vnpay',
+                    plan_family: analyticsPlanFamily,
+                    plan_sku_limit:
+                        analyticsPlanFamily === 'standard' ?
+                            Number(
+                                nextStandardSkuLimit ||
+                                nextMetadata.requested_standard_sku_limit ||
+                                nextMetadata.standard_sku_increment ||
+                                0
+                            ) || undefined :
+                            undefined,
+                    value: Number(session.amount || 0)
+                }
+            }, 'purchase');
+
             await client.query('COMMIT');
+            analyticsService.queuePendingDispatch(analyticsEventIds);
 
             return {
                 updated: true,

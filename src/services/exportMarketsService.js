@@ -6,11 +6,64 @@ const {
 } = require('../constants/targetMarkets');
 const { getSchemaCapabilities } = require('../config/schemaCapabilities');
 const { EMISSION_FACTORS_CACHE_TTL_MS, READ_CACHE_TTL_MS } = require('../config/runtime');
+const analyticsService = require('./analyticsService');
 const domesticComplianceService = require('./domesticComplianceService');
 const reportJobQueue = require('./reportJobQueue');
 const TtlCache = require('../utils/ttlCache');
 
 const DEFAULT_MARKET_CODES = ['VN', 'EU', 'US', 'JP', 'KR', 'AU', 'ASEAN'];
+const MATERIAL_CERTIFICATION_TYPE_HINTS = new Set([
+    'material_certification',
+    'material_certificate',
+    'material_compliance',
+    'material_cert',
+    'certificate_material',
+    'certification_material',
+    'material_group_certification',
+    'material_certification_group'
+]);
+
+const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope) => {
+    try {
+        const event = await analyticsService.enqueueEvent(client, payload);
+        if (event?.id) {
+            eventIds.push(event.id);
+        }
+    } catch (error) {
+        console.error(`[exportMarketsService] Failed to queue ${scope}:`, error);
+    }
+};
+
+const safeTrackAnalyticsEvent = async (payload, scope) => {
+    try {
+        await analyticsService.trackEvent(payload);
+    } catch (error) {
+        console.error(`[exportMarketsService] Failed to track ${scope}:`, error);
+    }
+};
+
+const normalizeDocumentToken = (value) =>
+    String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+
+const normalizeLooseDocumentToken = (value) => normalizeDocumentToken(value).replace(/_/g, '');
+
+const resolveComplianceDocumentGroup = (document = {}) => {
+    const normalizedCode = normalizeDocumentToken(document.document_code || document.code || document.id);
+    const normalizedType = normalizeDocumentToken(document.document_type || document.type);
+    const looseCode = normalizeLooseDocumentToken(normalizedCode);
+    const looseType = normalizeLooseDocumentToken(normalizedType);
+    const looksLikeMaterialCertification =
+        normalizedCode.startsWith('cert_') ||
+        (looseCode.includes('material') && (looseCode.includes('cert') || looseCode.includes('certificate'))) ||
+        MATERIAL_CERTIFICATION_TYPE_HINTS.has(normalizedType) ||
+        (looseType.includes('material') && (looseType.includes('cert') || looseType.includes('certificate')));
+
+    return looksLikeMaterialCertification ? 'material_certification' : 'export_compliance';
+};
 
 const DEFAULT_REQUIRED_DOCUMENTS = [
     {
@@ -816,6 +869,7 @@ class ExportMarketsService {
      */
     async addProductToScope(companyId, marketCode, productData) {
         const client = await pool.connect();
+        const analyticsEventIds = [];
         try {
             await client.query('BEGIN');
 
@@ -848,7 +902,18 @@ class ExportMarketsService {
             ]);
 
             await this._recalculateMarketScore(client, market.id, companyId, marketCode);
+            await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+                event_name: 'wc_market_scope_product_added',
+                user_id: productData.user_id || null,
+                company_id: companyId,
+                entity_type: 'market_product_scope',
+                entity_id: insertResult.rows[0].id,
+                payload: {
+                    market_code: String(marketCode || '').trim().toUpperCase()
+                }
+            }, 'wc_market_scope_product_added');
             await client.query('COMMIT');
+            analyticsService.queuePendingDispatch(analyticsEventIds);
             this.invalidateListCache(companyId);
 
             return { success: true, data: insertResult.rows[0] };
@@ -907,8 +972,9 @@ class ExportMarketsService {
     /**
      * Remove product from market scope
      */
-    async removeProductFromScope(companyId, marketCode, productId) {
+    async removeProductFromScope(companyId, marketCode, productId, userId = null) {
         const client = await pool.connect();
+        const analyticsEventIds = [];
         try {
             await client.query('BEGIN');
 
@@ -929,7 +995,18 @@ class ExportMarketsService {
             }
 
             await this._recalculateMarketScore(client, market.id, companyId, marketCode);
+            await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+                event_name: 'wc_market_scope_product_removed',
+                user_id: userId,
+                company_id: companyId,
+                entity_type: 'market_product_scope',
+                entity_id: productId,
+                payload: {
+                    market_code: String(marketCode || '').trim().toUpperCase()
+                }
+            }, 'wc_market_scope_product_removed');
             await client.query('COMMIT');
+            analyticsService.queuePendingDispatch(analyticsEventIds);
             this.invalidateListCache(companyId);
 
             return { success: true };
@@ -995,6 +1072,7 @@ class ExportMarketsService {
      */
     async uploadDocument(companyId, marketCode, documentId, userId, fileData, options = {}) {
         const client = await pool.connect();
+        const analyticsEventIds = [];
         try {
             await client.query('BEGIN');
 
@@ -1027,7 +1105,7 @@ class ExportMarketsService {
 
             // Check if document exists
             const docCheck = await client.query(
-                'SELECT id FROM compliance_documents WHERE id = $1 AND company_id = $2 AND UPPER(market_code) = $3',
+                'SELECT id, document_code, document_name, document_type FROM compliance_documents WHERE id = $1 AND company_id = $2 AND UPPER(market_code) = $3',
                 [documentId, companyId, normalizedMarketCode]
             );
 
@@ -1096,6 +1174,14 @@ class ExportMarketsService {
                 ]);
             }
 
+            const resolvedDocumentMetadata =
+                result.rows[0] || docCheck.rows[0] || {
+                    document_code: fileData.document_code || null,
+                    document_name: fileData.document_name || null,
+                    document_type: fileData.document_type || null,
+                    id: documentId
+                };
+
             const productIds = Array.isArray(options.product_ids)
                 ? options.product_ids
                 : [];
@@ -1111,7 +1197,20 @@ class ExportMarketsService {
             }
 
             await this._recalculateMarketScore(client, market.id, companyId, normalizedMarketCode);
+            await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+                event_name: 'wc_document_uploaded',
+                user_id: userId,
+                company_id: companyId,
+                entity_type: 'compliance_document',
+                entity_id: documentId,
+                payload: {
+                    market_code: normalizedMarketCode,
+                    document_group: resolveComplianceDocumentGroup(resolvedDocumentMetadata),
+                    mode: docCheck.rows.length > 0 ? 'edit' : 'create'
+                }
+            }, 'wc_document_uploaded');
             await client.query('COMMIT');
+            analyticsService.queuePendingDispatch(analyticsEventIds);
             this.invalidateListCache(companyId);
 
             return { success: true, data: result.rows[0] };
@@ -1273,6 +1372,7 @@ class ExportMarketsService {
      */
     async approveDocument(companyId, marketCode, documentId, userId) {
         const client = await pool.connect();
+        const analyticsEventIds = [];
         try {
             await client.query('BEGIN');
 
@@ -1327,7 +1427,19 @@ class ExportMarketsService {
             );
 
             await this._recalculateMarketScore(client, market.id, companyId, normalizedMarketCode);
+            await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+                event_name: 'wc_document_approved',
+                user_id: userId,
+                company_id: companyId,
+                entity_type: 'compliance_document',
+                entity_id: documentId,
+                payload: {
+                    market_code: normalizedMarketCode,
+                    document_group: resolveComplianceDocumentGroup(updateResult.rows[0] || documentRow)
+                }
+            }, 'wc_document_approved');
             await client.query('COMMIT');
+            analyticsService.queuePendingDispatch(analyticsEventIds);
             this.invalidateListCache(companyId);
 
             return { success: true, data: updateResult.rows[0] };
@@ -1396,6 +1508,7 @@ class ExportMarketsService {
      */
     async generateComplianceReport(companyId, userId, marketCode, fileFormat) {
         const client = await pool.connect();
+        const analyticsEventIds = [];
         try {
             await client.query('BEGIN');
 
@@ -1443,7 +1556,20 @@ class ExportMarketsService {
                 JSON.stringify(metadata)
             ]);
 
+            await pushTransactionalAnalyticsEvent(client, analyticsEventIds, {
+                event_name: 'wc_export_report_requested',
+                user_id: userId,
+                company_id: companyId,
+                entity_type: 'report',
+                entity_id: insertResult.rows[0].id,
+                payload: {
+                    market_code: String(marketCode || '').trim().toUpperCase(),
+                    format: fileFormat || 'pdf'
+                }
+            }, 'wc_export_report_requested');
+
             await client.query('COMMIT');
+            analyticsService.queuePendingDispatch(analyticsEventIds);
             this.invalidateListCache(companyId);
 
             const report = insertResult.rows[0];
@@ -2129,12 +2255,33 @@ class ExportMarketsService {
                     updated_at = NOW()
                 WHERE id = $5 AND company_id = $6
             `, [storageKey, `compliance_report_${reportId}.pdf`, `/api/reports/${reportId}/download`, fileSize, reportId, companyId]);
+            await safeTrackAnalyticsEvent({
+                event_name: 'wc_report_generated',
+                company_id: companyId,
+                entity_type: 'report',
+                entity_id: reportId,
+                payload: {
+                    report_type: 'compliance',
+                    format: 'pdf'
+                }
+            }, 'wc_report_generated');
         } catch (error) {
             await client.query(`
                 UPDATE reports
                 SET status = 'failed', error_message = $1, updated_at = NOW()
                 WHERE id = $2
             `, [error.message, reportId]).catch(() => {});
+            await safeTrackAnalyticsEvent({
+                event_name: 'wc_report_generation_failed',
+                company_id: companyId,
+                entity_type: 'report',
+                entity_id: reportId,
+                payload: {
+                    report_type: 'compliance',
+                    format: 'pdf',
+                    error_code: String(error.code || error.message || 'report_generation_failed')
+                }
+            }, 'wc_report_generation_failed');
             throw error;
         } finally {
             client.release();
