@@ -9,6 +9,7 @@ const { sendError, sendSuccess } = require('../utils/http');
 const { UPLOADS_ROOT } = require('../config/runtime');
 const b2cCollectionPointsService = require('../services/b2cCollectionPointsService');
 const b2cService = require('../services/b2cService');
+const b2cImageAnalysisService = require('../services/b2cImageAnalysisService');
 const {
   listCollectionPointsValidation,
   listNearbyCollectionPointsValidation,
@@ -72,6 +73,49 @@ const donationImageUpload = multer({
 
 const uploadDonationImage = (req, res, next) => {
   donationImageUpload.single('source_image')(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      sendError(res, {
+        status: 400,
+        code: 'FILE_TOO_LARGE',
+        message: 'Donation image is too large. Maximum size is 10MB.'
+      });
+      return;
+    }
+
+    sendError(res, {
+      status: 400,
+      code: 'INVALID_DONATION_IMAGE',
+      message: error.message || 'Invalid donation image upload.'
+    });
+  });
+};
+
+const donationAnalyzeImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024
+  },
+  fileFilter: (_req, file, callback) => {
+    const mimeType = String(file.mimetype || '').toLowerCase();
+    if (!mimeType.startsWith('image/')) {
+      callback(new Error('Only image files are allowed.'));
+      return;
+    }
+
+    callback(null, true);
+  }
+});
+
+const uploadAnalyzeDonationImage = (req, res, next) => {
+  donationAnalyzeImageUpload.fields([
+    { name: 'image', maxCount: 1 },
+    { name: 'source_image', maxCount: 1 }
+  ])(req, res, (error) => {
     if (!error) {
       next();
       return;
@@ -253,6 +297,19 @@ router.get(
     const payload = await b2cService.listRewardTransactions(req.userId, {
       limit: req.query.limit || 30
     });
+
+    return sendSuccess(res, {
+      data: payload
+    });
+  })
+);
+
+router.post(
+  '/analyze-donation-image',
+  uploadAnalyzeDonationImage,
+  asyncHandler(async (req, res) => {
+    const imageFile = req.files?.image?.[0] || req.files?.source_image?.[0] || null;
+    const payload = await b2cImageAnalysisService.analyzeDonationImage(imageFile);
 
     return sendSuccess(res, {
       data: payload
