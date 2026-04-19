@@ -577,20 +577,6 @@ router.post('/refresh', refreshLimiter, refreshValidation, validate, async (req,
 
     const expiresIn = 900;
     const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-    await safeTrackAnalyticsEvent({
-      event_name: 'login',
-      user_id: user.id,
-      company_id: company?.id || profile?.company_id || null,
-      payload: {
-        method: 'demo',
-        intent: 'signin',
-        entry_account_type: resolveEntryAccountType({ role, companyId: company?.id || null })
-      }
-    });
-    const analyticsIdentity = analyticsService.getAnalyticsIdentity({
-      userId: user.id,
-      companyId: company?.id || profile?.company_id || null
-    });
 
     res.json({
       success: true,
@@ -628,6 +614,10 @@ router.post('/demo', demoValidation, validate, async (req, res, next) => {
 
     const expiresIn = 900;
     const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+    const analyticsIdentity = analyticsService.getAnalyticsIdentity({
+      userId: user.id,
+      companyId: company?.id || profile?.company_id || null
+    });
 
     res.json({
       success: true,
