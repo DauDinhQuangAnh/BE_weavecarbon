@@ -69,6 +69,28 @@ const listRewardTransactionsValidation = [
     .toInt()
 ];
 
+const listCouponsValidation = [
+  query('search')
+    .optional()
+    .isString()
+    .withMessage('Search must be a string')
+    .trim(),
+  query('category')
+    .optional()
+    .isString()
+    .withMessage('Category must be a string')
+    .trim(),
+  query('status')
+    .optional()
+    .isIn(['active', 'all'])
+    .withMessage('Status must be active or all'),
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('Limit must be between 1 and 100')
+    .toInt()
+];
+
 const donationParamsValidation = [donationIdValidation];
 
 module.exports = {
@@ -76,5 +98,6 @@ module.exports = {
   listNearbyCollectionPointsValidation,
   listDonationsValidation,
   listRewardTransactionsValidation,
+  listCouponsValidation,
   donationParamsValidation
 };
