@@ -802,6 +802,241 @@ CREATE TABLE public.material_rewards (
 
 
 -- =============================================
+-- 22b. COUPONS (B2C reward catalog)
+-- =============================================
+
+CREATE TABLE public.b2c_coupons (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  merchant_name TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'other',
+  description TEXT,
+  points_cost INTEGER NOT NULL CHECK (points_cost > 0),
+  discount_type TEXT NOT NULL DEFAULT 'percent' CHECK (discount_type IN ('percent', 'amount', 'free_item', 'cashback')),
+  discount_value NUMERIC(12, 2),
+  currency TEXT NOT NULL DEFAULT 'VND',
+  code TEXT,
+  image_url TEXT,
+  terms TEXT,
+  valid_from TIMESTAMPTZ,
+  valid_until TIMESTAMPTZ,
+  stock_total INTEGER,
+  stock_remaining INTEGER,
+  redemption_limit_per_user INTEGER NOT NULL DEFAULT 1,
+  redemption_method TEXT NOT NULL DEFAULT 'code' CHECK (redemption_method IN ('code', 'link', 'manual')),
+  is_featured BOOLEAN NOT NULL DEFAULT false,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  tags TEXT[] NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT b2c_coupons_stock_total_non_negative CHECK (stock_total IS NULL OR stock_total >= 0),
+  CONSTRAINT b2c_coupons_stock_remaining_non_negative CHECK (stock_remaining IS NULL OR stock_remaining >= 0),
+  CONSTRAINT b2c_coupons_discount_value_positive CHECK (discount_value IS NULL OR discount_value > 0)
+);
+
+CREATE INDEX idx_b2c_coupons_active_featured_sort
+  ON public.b2c_coupons(is_active, is_featured DESC, sort_order ASC, valid_until ASC NULLS LAST, points_cost ASC);
+
+CREATE INDEX idx_b2c_coupons_category_active
+  ON public.b2c_coupons(category, is_active, points_cost ASC);
+
+CREATE INDEX idx_b2c_coupons_valid_until
+  ON public.b2c_coupons(valid_until ASC NULLS LAST);
+
+CREATE TABLE public.b2c_coupon_redemptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  coupon_id UUID NOT NULL REFERENCES public.b2c_coupons(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  points_spent INTEGER NOT NULL CHECK (points_spent > 0),
+  redemption_code TEXT,
+  status TEXT NOT NULL DEFAULT 'reserved' CHECK (status IN ('reserved', 'redeemed', 'cancelled', 'expired')),
+  redeemed_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX idx_b2c_coupon_redemptions_code
+  ON public.b2c_coupon_redemptions(redemption_code)
+  WHERE redemption_code IS NOT NULL;
+
+CREATE INDEX idx_b2c_coupon_redemptions_user_created
+  ON public.b2c_coupon_redemptions(user_id, created_at DESC);
+
+CREATE INDEX idx_b2c_coupon_redemptions_coupon_created
+  ON public.b2c_coupon_redemptions(coupon_id, created_at DESC);
+
+
+-- Seed data for B2C coupons
+INSERT INTO public.b2c_coupons (
+  id,
+  slug,
+  title,
+  merchant_name,
+  category,
+  description,
+  points_cost,
+  discount_type,
+  discount_value,
+  currency,
+  code,
+  image_url,
+  terms,
+  valid_from,
+  valid_until,
+  stock_total,
+  stock_remaining,
+  redemption_limit_per_user,
+  redemption_method,
+  is_featured,
+  is_active,
+  sort_order,
+  tags,
+  created_at,
+  updated_at
+)
+VALUES
+  (
+    '30c00000-0000-4000-8000-000000000001',
+    'coffee-brew-bonus-10',
+    '10% Off Specialty Coffee',
+    'Brew Lab',
+    'coffee',
+    'Enjoy a discount on handcrafted coffee drinks at participating Brew Lab stores.',
+    180,
+    'percent',
+    10,
+    'VND',
+    'BREW10',
+    NULL,
+    'Use this code at checkout or in-store when paying at the counter.',
+    TIMESTAMPTZ '2026-04-20 00:00:00+00',
+    TIMESTAMPTZ '2026-07-31 23:59:59+00',
+    500,
+    250,
+    2,
+    'code',
+    true,
+    true,
+    1,
+    ARRAY['coffee', 'drink', 'partner'],
+    now(),
+    now()
+  ),
+  (
+    '30c00000-0000-4000-8000-000000000002',
+    'shopping-flat-50000',
+    'VND 50,000 Shopping Voucher',
+    'Green Market',
+    'shopping',
+    'Redeem this voucher for eco-friendly fashion and home goods at Green Market.',
+    320,
+    'amount',
+    50000,
+    'VND',
+    'GREEN50K',
+    NULL,
+    'Voucher applies to eligible items only and cannot be combined with other vouchers.',
+    TIMESTAMPTZ '2026-04-20 00:00:00+00',
+    TIMESTAMPTZ '2026-08-31 23:59:59+00',
+    300,
+    180,
+    1,
+    'code',
+    true,
+    true,
+    2,
+    ARRAY['shopping', 'voucher', 'fashion'],
+    now(),
+    now()
+  ),
+  (
+    '30c00000-0000-4000-8000-000000000003',
+    'food-free-drink-upgrade',
+    'Free Drink Upgrade',
+    'Urban Bites',
+    'food',
+    'Upgrade any selected drink to a premium size at Urban Bites.',
+    140,
+    'free_item',
+    NULL,
+    'VND',
+    'UPSIZE',
+    NULL,
+    'Valid for one premium drink upgrade per order.',
+    TIMESTAMPTZ '2026-04-20 00:00:00+00',
+    TIMESTAMPTZ '2026-06-30 23:59:59+00',
+    800,
+    640,
+    3,
+    'manual',
+    false,
+    true,
+    3,
+    ARRAY['food', 'drink', 'lifestyle'],
+    now(),
+    now()
+  ),
+  (
+    '30c00000-0000-4000-8000-000000000004',
+    'beauty-cashback-15',
+    '15% Cashback on Beauty Orders',
+    'Glow Studio',
+    'beauty',
+    'Receive cashback points on skincare and beauty orders made through Glow Studio.',
+    260,
+    'cashback',
+    15,
+    'VND',
+    'GLOW15',
+    NULL,
+    'Cashback is returned as circular points after the order is verified.',
+    TIMESTAMPTZ '2026-04-20 00:00:00+00',
+    TIMESTAMPTZ '2026-09-30 23:59:59+00',
+    200,
+    95,
+    1,
+    'link',
+    false,
+    true,
+    4,
+    ARRAY['beauty', 'cashback', 'skincare'],
+    now(),
+    now()
+  ),
+  (
+    '30c00000-0000-4000-8000-000000000005',
+    'coffee-two-for-one',
+    '2-for-1 Coffee Session',
+    'Morning Loop Cafe',
+    'coffee',
+    'Redeem two handcrafted coffees for the cost of one at selected locations.',
+    220,
+    'free_item',
+    NULL,
+    'VND',
+    'LOOP2FOR1',
+    NULL,
+    'Valid only on weekdays before 5 PM and while stock lasts.',
+    TIMESTAMPTZ '2026-04-20 00:00:00+00',
+    TIMESTAMPTZ '2026-05-31 23:59:59+00',
+    120,
+    60,
+    1,
+    'code',
+    true,
+    true,
+    5,
+    ARRAY['coffee', 'limited', 'featured'],
+    now(),
+    now()
+  )
+ON CONFLICT (slug) DO NOTHING;
+
+
+-- =============================================
 -- 23. DONATIONS (B2C main donation records)
 -- =============================================
 
@@ -986,6 +1221,8 @@ CREATE TRIGGER update_certificates_updated_at BEFORE UPDATE ON public.certificat
 CREATE TRIGGER update_reports_updated_at BEFORE UPDATE ON public.reports FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_ai_recommendations_updated_at BEFORE UPDATE ON public.ai_recommendations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_collection_points_updated_at BEFORE UPDATE ON public.collection_points FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+CREATE TRIGGER update_b2c_coupons_updated_at BEFORE UPDATE ON public.b2c_coupons FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+CREATE TRIGGER update_b2c_coupon_redemptions_updated_at BEFORE UPDATE ON public.b2c_coupon_redemptions FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_donations_updated_at BEFORE UPDATE ON public.donations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_user_rewards_updated_at BEFORE UPDATE ON public.user_rewards FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_chat_conversations_updated_at BEFORE UPDATE ON public.chat_conversations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();

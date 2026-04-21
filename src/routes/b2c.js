@@ -14,6 +14,7 @@ const {
   listNearbyCollectionPointsValidation,
   listDonationsValidation,
   listRewardTransactionsValidation,
+  listCouponsValidation,
   donationParamsValidation
 } = require('../validators/b2cValidators');
 
@@ -180,6 +181,24 @@ router.get(
   '/material-rewards',
   asyncHandler(async (_req, res) => {
     const payload = await b2cService.listMaterialRewards();
+
+    return sendSuccess(res, {
+      data: payload
+    });
+  })
+);
+
+router.get(
+  '/coupons',
+  listCouponsValidation,
+  validate,
+  asyncHandler(async (req, res) => {
+    const payload = await b2cService.listCoupons({
+      search: req.query.search,
+      category: req.query.category,
+      status: req.query.status || 'active',
+      limit: req.query.limit || 48
+    });
 
     return sendSuccess(res, {
       data: payload

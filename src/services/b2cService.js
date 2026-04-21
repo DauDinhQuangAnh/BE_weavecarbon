@@ -91,6 +91,33 @@ const mapMaterialReward = (row) => ({
   is_active: row.is_active === true
 });
 
+const mapCoupon = (row) => ({
+  id: row.id,
+  title: row.title,
+  merchant_name: row.merchant_name,
+  category: row.category,
+  description: row.description,
+  points_cost: Math.max(0, Math.trunc(toNumber(row.points_cost))),
+  discount_type: row.discount_type,
+  discount_value: row.discount_value === null ? null : toNumber(row.discount_value),
+  currency: row.currency,
+  code: row.code,
+  image_url: row.image_url,
+  valid_from: row.valid_from,
+  valid_until: row.valid_until,
+  stock_total: row.stock_total === null ? null : Math.max(0, Math.trunc(toNumber(row.stock_total))),
+  stock_remaining:
+    row.stock_remaining === null ? null : Math.max(0, Math.trunc(toNumber(row.stock_remaining))),
+  redemption_limit_per_user: Math.max(1, Math.trunc(toNumber(row.redemption_limit_per_user, 1))),
+  redemption_method: row.redemption_method,
+  terms: row.terms,
+  tags: Array.isArray(row.tags) ? row.tags : [],
+  is_featured: row.is_featured === true,
+  is_active: row.is_active === true,
+  created_at: row.created_at,
+  updated_at: row.updated_at
+});
+
 const mapCollectionPointSummary = (row) => {
   if (!row.collection_point_id) {
     return null;
@@ -347,6 +374,82 @@ class B2CService {
 
     return {
       items: result.rows.map(mapMaterialReward)
+    };
+  }
+
+  async listCoupons({ search, category, status = 'active', limit = 48 } = {}) {
+    await this.ensureSchema();
+
+    const normalizedSearch = normalizeOptionalString(search);
+    const normalizedCategory = normalizeOptionalString(category);
+    const shouldFilterActive = status !== 'all';
+    const safeLimit = Math.min(Math.max(Number(limit) || 48, 1), 100);
+    const searchPattern = normalizedSearch ? `%${normalizedSearch}%` : null;
+
+    const result = await pool.query(
+      `
+        SELECT
+          c.id,
+          c.title,
+          c.merchant_name,
+          c.category,
+          c.description,
+          c.points_cost,
+          c.discount_type,
+          c.discount_value,
+          c.currency,
+          c.code,
+          c.image_url,
+          c.valid_from,
+          c.valid_until,
+          c.stock_total,
+          c.stock_remaining,
+          c.redemption_limit_per_user,
+          c.redemption_method,
+          c.terms,
+          c.tags,
+          c.is_featured,
+          c.is_active,
+          c.created_at,
+          c.updated_at,
+          COUNT(*) OVER() AS total_count
+        FROM public.b2c_coupons c
+        WHERE
+          ($1::text IS NULL OR LOWER(c.category) = LOWER($1))
+          AND (
+            $2::text IS NULL
+            OR c.title ILIKE $2
+            OR c.merchant_name ILIKE $2
+            OR COALESCE(c.description, '') ILIKE $2
+            OR EXISTS (
+              SELECT 1
+              FROM unnest(COALESCE(c.tags, '{}'::text[])) AS tag
+              WHERE tag ILIKE $2
+            )
+          )
+          AND (
+            NOT $3::boolean
+            OR (
+              c.is_active = TRUE
+              AND (c.valid_from IS NULL OR c.valid_from <= NOW())
+              AND (c.valid_until IS NULL OR c.valid_until >= NOW())
+            )
+          )
+        ORDER BY
+          c.is_featured DESC,
+          c.sort_order ASC,
+          c.points_cost ASC,
+          c.valid_until ASC NULLS LAST
+        LIMIT $4
+      `,
+      [normalizedCategory, searchPattern, shouldFilterActive, safeLimit]
+    );
+
+    const totalCount = result.rows.length > 0 ? Math.max(0, Math.trunc(toNumber(result.rows[0].total_count))) : 0;
+
+    return {
+      items: result.rows.map(mapCoupon),
+      total_count: totalCount
     };
   }
 
