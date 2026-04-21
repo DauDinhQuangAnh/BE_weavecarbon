@@ -8,6 +8,11 @@ const validate = require('../middleware/validator');
 const pool = require('../config/database');
 const { resolveFrontendBaseUrl } = require('../config/urls');
 const {
+  clearRefreshTokenCookie,
+  getRefreshTokenFromRequest,
+  setRefreshTokenCookie
+} = require('../utils/authCookies');
+const {
   signupValidation,
   signinValidation,
   refreshValidation,
@@ -24,6 +29,7 @@ const {
 const { authenticate } = require('../middleware/auth');
 
 const GOOGLE_OAUTH_CODE_CACHE_TTL_MS = 5 * 60 * 1000;
+const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 900;
 const processedGoogleAuthCodes = new Map();
 
 const GOOGLE_AUTH_ERROR_MESSAGES = {
@@ -105,6 +111,154 @@ function resolvePostAuthNextStep(user, companyIdForToken) {
   return {
     requiresCompanySetup,
     nextStep: requiresCompanySetup ? 'company_onboarding' : 'dashboard'
+  };
+}
+
+function normalizeRefreshTokenValue(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function resolveRefreshTokenValue(req) {
+  return (
+    normalizeRefreshTokenValue(getRefreshTokenFromRequest(req)) ||
+    normalizeRefreshTokenValue(req.body?.refresh_token)
+  );
+}
+
+function extractBearerAccessToken(req) {
+  const authorization = String(req.get('authorization') || '');
+  if (!authorization.toLowerCase().startsWith('bearer ')) {
+    return null;
+  }
+
+  return normalizeRefreshTokenValue(authorization.slice(7));
+}
+
+function resolveRequestMetadata(req) {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const forwardedIp = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
+  const ipAddress = String(forwardedIp || req.ip || req.socket?.remoteAddress || '').trim() || null;
+  const userAgent = String(req.get('user-agent') || '').trim() || null;
+
+  return {
+    ipAddress,
+    userAgent
+  };
+}
+
+function buildTokenPayload(accessToken, refreshToken, { includeRefreshToken = true } = {}) {
+  const expiresAt = new Date(Date.now() + ACCESS_TOKEN_EXPIRES_IN_SECONDS * 1000).toISOString();
+  const tokens = {
+    access_token: accessToken,
+    token_type: 'Bearer',
+    expires_in: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
+    expires_at: expiresAt
+  };
+
+  if (includeRefreshToken && refreshToken) {
+    tokens.refresh_token = refreshToken;
+  }
+
+  return tokens;
+}
+
+async function resolveAuthSessionContext(user, { updateMembershipLogin = false } = {}) {
+  let company = null;
+  let companyMembership = null;
+  let companyIdForToken = user.company_id;
+
+  const membership = await authService.getPrimaryCompanyMembership(user.id);
+  if (membership) {
+    company = {
+      id: membership.company_id,
+      name: membership.company_name,
+      business_type: membership.business_type,
+      current_plan: membership.current_plan,
+      domestic_market: membership.domestic_market,
+      target_markets: membership.target_markets
+    };
+
+    companyMembership = {
+      company_id: membership.company_id,
+      role: membership.company_role,
+      status: membership.member_status,
+      is_root: membership.company_role === 'admin',
+      membership_inferred: false
+    };
+
+    companyIdForToken = membership.company_id;
+
+    if (updateMembershipLogin && membership.member_status === 'active') {
+      await pool.query(
+        `UPDATE company_members
+         SET last_login = NOW(), updated_at = NOW()
+         WHERE company_id = $1 AND user_id = $2`,
+        [membership.company_id, user.id]
+      );
+    }
+  } else if (user.company_id) {
+    const companyResult = await pool.query(
+      'SELECT id, name, business_type, current_plan, domestic_market, target_markets FROM companies WHERE id = $1',
+      [user.company_id]
+    );
+    company = companyResult.rows[0] || null;
+
+    if (company) {
+      companyMembership = {
+        company_id: company.id,
+        role: 'admin',
+        status: 'active',
+        is_root: true,
+        membership_inferred: true
+      };
+      companyIdForToken = company.id;
+    }
+  }
+
+  return {
+    company,
+    companyMembership,
+    companyIdForToken
+  };
+}
+
+function buildAuthResponseData({
+  user,
+  company,
+  companyMembership,
+  companyIdForToken,
+  accessToken,
+  refreshToken,
+  includeRefreshToken = true
+}) {
+  const analyticsIdentity = analyticsService.getAnalyticsIdentity({
+    userId: user.id,
+    companyId: companyIdForToken
+  });
+
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+      email_verified: user.email_verified,
+      avatar_url: user.avatar_url || null
+    },
+    profile: {
+      id: user.profile_id,
+      company_id: user.company_id,
+      is_demo_user: user.is_demo_user
+    },
+    roles: user.roles,
+    company: attachAnalyticsCompany(company),
+    company_membership: companyMembership,
+    analytics_user_key: analyticsIdentity.analytics_user_key,
+    tokens: buildTokenPayload(accessToken, refreshToken, { includeRefreshToken })
   };
 }
 
@@ -249,12 +403,23 @@ router.post('/signup', signupLimiter, signupValidation, validate, async (req, re
     if (existingUser) {
       // If email exists but NOT verified, allow re-registration (delete old account)
       if (!existingUser.email_verified) {
-        console.log(`🔄 Email ${email} exists but not verified. Deleting old account for re-registration...`);
+        const pendingMembership = await authService.getPrimaryCompanyMembership(existingUser.id);
+        if (pendingMembership?.member_status === 'invited') {
+          return res.status(409).json({
+            success: false,
+            error: {
+              code: 'INVITED_ACCOUNT_PENDING_ACTIVATION',
+              message: 'This email already has a pending company invite. Please use the invite email to continue.'
+            }
+          });
+        }
+
+        console.log(`[auth] Email ${email} exists but is not verified. Deleting old account for re-registration...`);
 
         // Delete old unverified account
         await pool.query('DELETE FROM users WHERE id = $1', [existingUser.id]);
 
-        console.log(`✅ Old unverified account deleted. Proceeding with new registration.`);
+        console.log('[auth] Old unverified account deleted. Proceeding with new registration.');
       } else {
         // Email verified - cannot re-register
         return res.status(409).json({
@@ -384,65 +549,14 @@ router.post('/signin', signinLimiter, signinValidation, validate, async (req, re
       });
     }
 
-    // Get company membership info (root/member) if exists
-    let company = null;
-    let companyMembership = null;
-    let companyIdForToken = user.company_id;
-
-    const membership = await authService.getPrimaryCompanyMembership(user.id);
-    if (membership) {
-      company = {
-        id: membership.company_id,
-        name: membership.company_name,
-        business_type: membership.business_type,
-        current_plan: membership.current_plan,
-        domestic_market: membership.domestic_market,
-        target_markets: membership.target_markets
-      };
-
-      companyMembership = {
-        company_id: membership.company_id,
-        role: membership.company_role,
-        status: membership.member_status,
-        is_root: membership.company_role === 'admin',
-        membership_inferred: false
-      };
-
-      companyIdForToken = membership.company_id;
-
-      if (membership.member_status === 'active') {
-        // Update last_login for active member
-        await pool.query(
-          `UPDATE company_members SET last_login = NOW(), updated_at = NOW()
-           WHERE company_id = $1 AND user_id = $2`,
-          [membership.company_id, user.id]
-        );
-      }
-    } else if (user.company_id) {
-      const companyResult = await pool.query(
-        'SELECT id, name, business_type, current_plan, domestic_market, target_markets FROM companies WHERE id = $1',
-        [user.company_id]
-      );
-      company = companyResult.rows[0];
-
-      if (company) {
-        // Backward-compatible fallback: treat as root if profile has company_id but no membership
-        companyMembership = {
-          company_id: company.id,
-          role: 'admin',
-          status: 'active',
-          is_root: true,
-          membership_inferred: true
-        };
-        companyIdForToken = company.id;
-      }
-    }
+    const rememberMe = remember_me !== false;
+    const { company, companyMembership, companyIdForToken } = await resolveAuthSessionContext(
+      user,
+      { updateMembershipLogin: true }
+    );
 
     // Update user last_login
-    await pool.query(
-      `UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1`,
-      [user.id]
-    );
+    await authService.markUserLoggedIn(user.id);
 
     // Generate tokens
     const accessToken = authService.generateAccessToken(
@@ -452,11 +566,10 @@ router.post('/signin', signinLimiter, signinValidation, validate, async (req, re
       companyIdForToken,
       user.is_demo_user
     );
-    const refreshToken = authService.generateRefreshToken(user.id);
+    const refreshToken = authService.generateRefreshToken(user.id, rememberMe);
+    await authService.storeRefreshToken(refreshToken, user.id, resolveRequestMetadata(req));
+    setRefreshTokenCookie(res, refreshToken, { rememberMe });
 
-    // Calculate expiry
-    const expiresIn = 900; // 15 minutes in seconds
-    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
     await safeTrackAnalyticsEvent({
       event_name: 'login',
       user_id: user.id,
@@ -470,37 +583,18 @@ router.post('/signin', signinLimiter, signinValidation, validate, async (req, re
         })
       }
     });
-    const analyticsIdentity = analyticsService.getAnalyticsIdentity({
-      userId: user.id,
-      companyId: companyIdForToken
-    });
 
     res.json({
       success: true,
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          full_name: user.full_name,
-          email_verified: user.email_verified
-        },
-        profile: {
-          id: user.profile_id,
-          company_id: user.company_id,
-          is_demo_user: user.is_demo_user
-        },
-        roles: user.roles,
-        company: attachAnalyticsCompany(company),
-        company_membership: companyMembership,
-        analytics_user_key: analyticsIdentity.analytics_user_key,
-        tokens: {
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          token_type: 'Bearer',
-          expires_in: expiresIn,
-          expires_at: expiresAt
-        }
-      }
+      data: buildAuthResponseData({
+        user,
+        company,
+        companyMembership,
+        companyIdForToken,
+        accessToken,
+        refreshToken,
+        includeRefreshToken: true
+      })
     });
   } catch (error) {
     next(error);
@@ -508,18 +602,30 @@ router.post('/signin', signinLimiter, signinValidation, validate, async (req, re
 });
 
 // 3. SIGNOUT
-router.post('/signout', authenticate, async (req, res, next) => {
+router.post('/signout', async (req, res, next) => {
   try {
-    const { all_devices } = req.body;
+    const { all_devices } = req.body || {};
+    const refreshToken = resolveRefreshTokenValue(req);
+    const accessToken = extractBearerAccessToken(req);
+    const decodedAccessToken = accessToken ? authService.verifyAccessToken(accessToken) : null;
+    const decodedRefreshToken = refreshToken ? authService.verifyRefreshToken(refreshToken) : null;
+    const userId = decodedAccessToken?.sub || decodedRefreshToken?.sub || null;
 
-    // In a production app, you would invalidate the tokens in a blacklist or database
-    // For now, we'll just return success
+    let revokedCount = 0;
+
+    if (all_devices && userId) {
+      revokedCount = await authService.revokeAllRefreshTokens(userId);
+    } else if (refreshToken) {
+      revokedCount = await authService.revokeRefreshToken(refreshToken);
+    }
+
+    clearRefreshTokenCookie(res);
 
     res.json({
       success: true,
       data: {
-        sessions_revoked: all_devices ? 'all' : 1,
-        all_devices: all_devices || false
+        sessions_revoked: all_devices ? 'all' : revokedCount,
+        all_devices: Boolean(all_devices)
       }
     });
   } catch (error) {
@@ -530,12 +636,39 @@ router.post('/signout', authenticate, async (req, res, next) => {
 // 4. REFRESH TOKEN
 router.post('/refresh', refreshLimiter, refreshValidation, validate, async (req, res, next) => {
   try {
-    const { refresh_token } = req.body;
+    const refreshToken = resolveRefreshTokenValue(req);
+    if (!refreshToken) {
+      clearRefreshTokenCookie(res);
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'INVALID_REFRESH_TOKEN',
+          message: 'Invalid or expired refresh token'
+        }
+      });
+    }
 
     // Verify refresh token
-    const decoded = authService.verifyRefreshToken(refresh_token);
+    const decoded = authService.verifyRefreshToken(refreshToken);
 
     if (!decoded || decoded.type !== 'refresh') {
+      clearRefreshTokenCookie(res);
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'INVALID_REFRESH_TOKEN',
+          message: 'Invalid or expired refresh token'
+        }
+      });
+    }
+
+    const activeRefreshToken = await authService.isRefreshTokenActive(refreshToken);
+    const usedLegacyBodyRefreshToken =
+      !activeRefreshToken &&
+      normalizeRefreshTokenValue(req.body?.refresh_token) === refreshToken;
+
+    if (!activeRefreshToken && !usedLegacyBodyRefreshToken) {
+      clearRefreshTokenCookie(res);
       return res.status(401).json({
         success: false,
         error: {
@@ -558,12 +691,7 @@ router.post('/refresh', refreshLimiter, refreshValidation, validate, async (req,
       });
     }
 
-    // Determine company id from membership if available
-    let companyIdForToken = user.company_id;
-    const membership = await authService.getPrimaryCompanyMembership(user.id);
-    if (membership) {
-      companyIdForToken = membership.company_id;
-    }
+    const { company, companyMembership, companyIdForToken } = await resolveAuthSessionContext(user);
 
     // Generate new tokens
     const newAccessToken = authService.generateAccessToken(
@@ -573,22 +701,120 @@ router.post('/refresh', refreshLimiter, refreshValidation, validate, async (req,
       companyIdForToken,
       user.is_demo_user
     );
-    const newRefreshToken = authService.generateRefreshToken(user.id);
-
-    const expiresIn = 900;
-    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+    const rememberMe = decoded.remember_me !== false;
+    const newRefreshToken = authService.generateRefreshToken(user.id, rememberMe);
+    if (activeRefreshToken) {
+      await authService.rotateRefreshToken(
+        refreshToken,
+        newRefreshToken,
+        resolveRequestMetadata(req)
+      );
+    } else {
+      await authService.storeRefreshToken(
+        newRefreshToken,
+        user.id,
+        resolveRequestMetadata(req)
+      );
+    }
+    setRefreshTokenCookie(res, newRefreshToken, { rememberMe });
 
     res.json({
       success: true,
-      data: {
-        tokens: {
-          access_token: newAccessToken,
-          refresh_token: newRefreshToken,
-          token_type: 'Bearer',
-          expires_in: expiresIn,
-          expires_at: expiresAt
+      data: buildAuthResponseData({
+        user,
+        company,
+        companyMembership,
+        companyIdForToken,
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        includeRefreshToken: true
+      })
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 4B. SESSION BOOTSTRAP
+router.get('/session', refreshLimiter, async (req, res, next) => {
+  try {
+    const refreshToken = getRefreshTokenFromRequest(req);
+    if (!refreshToken) {
+      clearRefreshTokenCookie(res);
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'INVALID_REFRESH_TOKEN',
+          message: 'Invalid or expired refresh token'
         }
-      }
+      });
+    }
+
+    const decoded = authService.verifyRefreshToken(refreshToken);
+    if (!decoded || decoded.type !== 'refresh') {
+      clearRefreshTokenCookie(res);
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'INVALID_REFRESH_TOKEN',
+          message: 'Invalid or expired refresh token'
+        }
+      });
+    }
+
+    const activeRefreshToken = await authService.isRefreshTokenActive(refreshToken);
+    if (!activeRefreshToken) {
+      clearRefreshTokenCookie(res);
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'INVALID_REFRESH_TOKEN',
+          message: 'Invalid or expired refresh token'
+        }
+      });
+    }
+
+    const user = await authService.getUserById(decoded.sub);
+    if (!user) {
+      clearRefreshTokenCookie(res);
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'USER_NOT_FOUND',
+          message: 'User not found'
+        }
+      });
+    }
+
+    const { company, companyMembership, companyIdForToken } = await resolveAuthSessionContext(user);
+    const accessToken = authService.generateAccessToken(
+      user.id,
+      user.email,
+      user.roles,
+      companyIdForToken,
+      user.is_demo_user
+    );
+    const rememberMe = decoded.remember_me !== false;
+    const nextRefreshToken = authService.generateRefreshToken(user.id, rememberMe);
+
+    await authService.rotateRefreshToken(
+      refreshToken,
+      nextRefreshToken,
+      resolveRequestMetadata(req)
+    );
+    setRefreshTokenCookie(res, nextRefreshToken, { rememberMe });
+
+    res.json({
+      success: true,
+      data: buildAuthResponseData({
+        user,
+        company,
+        companyMembership,
+        companyIdForToken,
+        accessToken,
+        refreshToken: nextRefreshToken,
+        includeRefreshToken: false
+      })
     });
   } catch (error) {
     next(error);
@@ -750,17 +976,18 @@ router.get('/verify-email', async (req, res, next) => {
       companyIdForToken,
       false
     );
-    const refreshToken = authService.generateRefreshToken(user.id);
-    const expiresIn = 900;
-    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+    const refreshToken = authService.generateRefreshToken(user.id, true);
+    await authService.storeRefreshToken(refreshToken, user.id, resolveRequestMetadata(req));
+    setRefreshTokenCookie(res, refreshToken, { rememberMe: true });
+    const tokenPayload = buildTokenPayload(accessToken, refreshToken, { includeRefreshToken: true });
 
     if (wantsHtml) {
       const continueUrl = buildFrontendAuthCallbackUrl({
         access_token: accessToken,
         refresh_token: refreshToken,
-        token_type: 'Bearer',
-        expires_in: expiresIn,
-        expires_at: expiresAt,
+        token_type: tokenPayload.token_type,
+        expires_in: tokenPayload.expires_in,
+        expires_at: tokenPayload.expires_at,
         email_verified: 1,
         requires_company_setup: requiresCompanySetup ? 1 : 0,
         next_step: nextStep
@@ -788,7 +1015,10 @@ router.get('/verify-email', async (req, res, next) => {
         },
         tokens: {
           access_token: accessToken,
-          refresh_token: refreshToken
+          refresh_token: refreshToken,
+          token_type: tokenPayload.token_type,
+          expires_in: tokenPayload.expires_in,
+          expires_at: tokenPayload.expires_at
         }
       }
     });
@@ -870,22 +1100,16 @@ router.post('/verify-email', verifyEmailValidation, validate, async (req, res, n
       companyIdForToken,
       false
     );
-    const refreshToken = authService.generateRefreshToken(user.id);
-
-    const expiresIn = 900;
-    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+    const refreshToken = authService.generateRefreshToken(user.id, true);
+    await authService.storeRefreshToken(refreshToken, user.id, resolveRequestMetadata(req));
+    setRefreshTokenCookie(res, refreshToken, { rememberMe: true });
+    const tokenPayload = buildTokenPayload(accessToken, refreshToken, { includeRefreshToken: true });
 
     res.json({
       success: true,
       data: {
         message: 'Email verified successfully',
-        tokens: {
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          token_type: 'Bearer',
-          expires_in: expiresIn,
-          expires_at: expiresAt
-        }
+        tokens: tokenPayload
       }
     });
   } catch (error) {
@@ -948,6 +1172,158 @@ router.post('/verify-email/resend', verifyEmailLimiter, async (req, res, next) =
     next(error);
   }
 });
+
+router.get('/accept-company-invite', async (req, res, next) => {
+  const wantsHtml = prefersHtmlResponse(req);
+  const frontendOrigin = resolveRequestedFrontendOrigin(req);
+  const frontendUrl = resolveFrontendBaseUrl(frontendOrigin);
+  const loginUrl = `${frontendUrl}/auth`;
+
+  res.set('Cache-Control', 'no-store');
+
+  const sendInviteError = (statusCode, code, message, details) => {
+    if (wantsHtml) {
+      return res.status(statusCode).type('html').send(buildVerificationResultPage({
+        status: 'error',
+        title: 'Invite link is not available',
+        message,
+        details: details || 'Please request a new invite from your company administrator.',
+        actionUrl: loginUrl,
+        actionLabel: 'Go to Sign in'
+      }));
+    }
+
+    return res.status(statusCode).json({
+      success: false,
+      error: {
+        code,
+        message
+      }
+    });
+  };
+
+  try {
+    const token = Array.isArray(req.query.token) ? req.query.token[0] : req.query.token;
+    if (!token) {
+      return sendInviteError(400, 'MISSING_PARAMETERS', 'Invite token is required');
+    }
+
+    const decoded = authService.verifyCompanyInviteToken(token);
+    const normalizedEmail = String(decoded?.email || '').trim().toLowerCase();
+    const companyId = String(decoded?.company_id || '').trim();
+
+    if (!decoded || decoded.type !== 'company_invite' || !normalizedEmail || !companyId) {
+      return sendInviteError(
+        400,
+        'INVALID_INVITE_TOKEN',
+        'Invalid or expired invite token'
+      );
+    }
+
+    const user = await authService.getUserByEmail(normalizedEmail);
+    if (!user) {
+      return sendInviteError(404, 'USER_NOT_FOUND', 'User not found');
+    }
+
+    const membership = await authService.getCompanyMembership(companyId, user.id);
+    if (!membership) {
+      return sendInviteError(404, 'INVITE_NOT_FOUND', 'Invite not found');
+    }
+
+    if (membership.status === 'disabled') {
+      return sendInviteError(
+        403,
+        'INVITE_DISABLED',
+        'This invite is no longer active'
+      );
+    }
+
+    if (!user.email_verified) {
+      await authService.markEmailVerified(user.id);
+    }
+
+    await authService.activateCompanyMembership(companyId, user.id);
+    await pool.query(
+      `UPDATE company_members
+       SET last_login = NOW(), updated_at = NOW()
+       WHERE company_id = $1 AND user_id = $2`,
+      [companyId, user.id]
+    );
+    await authService.markUserLoggedIn(user.id);
+
+    const refreshedUser = await authService.getUserById(user.id);
+    const tokenUser = refreshedUser || user;
+    const accessToken = authService.generateAccessToken(
+      tokenUser.id,
+      tokenUser.email,
+      tokenUser.roles,
+      companyId,
+      tokenUser.is_demo_user || false
+    );
+    const refreshToken = authService.generateRefreshToken(tokenUser.id, true);
+    await authService.storeRefreshToken(refreshToken, tokenUser.id, resolveRequestMetadata(req));
+    setRefreshTokenCookie(res, refreshToken, { rememberMe: true });
+
+    await safeTrackAnalyticsEvent({
+      event_name: 'login',
+      user_id: tokenUser.id,
+      company_id: companyId,
+      payload: {
+        method: 'email_invite',
+        intent: 'invite_accept',
+        entry_account_type: 'b2b'
+      }
+    });
+
+    const tokenPayload = buildTokenPayload(accessToken, refreshToken, { includeRefreshToken: true });
+    const { nextStep } = resolvePostAuthNextStep(tokenUser, companyId);
+
+    if (wantsHtml) {
+      const continueUrl = buildFrontendAuthCallbackUrl({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        token_type: tokenPayload.token_type,
+        expires_in: tokenPayload.expires_in,
+        expires_at: tokenPayload.expires_at,
+        email_verified: 1,
+        next_step: nextStep
+      }, frontendOrigin);
+
+      return res.status(200).type('html').send(buildVerificationResultPage({
+        status: 'success',
+        title: 'Invite accepted successfully',
+        message: 'Your access is now active.',
+        details: 'Continue to WeaveCarbon to finish setting up your account.',
+        actionUrl: continueUrl,
+        actionLabel: 'Continue to WeaveCarbon'
+      }));
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        message: 'Invite accepted successfully',
+        company_id: companyId,
+        next_step: nextStep,
+        tokens: tokenPayload
+      }
+    });
+  } catch (error) {
+    if (wantsHtml) {
+      console.error('Company invite acceptance error:', error);
+      return res.status(500).type('html').send(buildVerificationResultPage({
+        status: 'error',
+        title: 'Unexpected invite error',
+        message: 'We could not complete the invite right now.',
+        details: 'Please try again in a moment or request a new invite.',
+        actionUrl: loginUrl,
+        actionLabel: 'Go to Sign in'
+      }));
+    }
+
+    return next(error);
+  }
+});
 // 8. GOOGLE OAUTH - Initiate
 router.get('/google', googleAuthLimiter, (req, res) => {
   const selectedIntent = googleAuthService.normalizeIntent(
@@ -955,11 +1331,15 @@ router.get('/google', googleAuthLimiter, (req, res) => {
   );
   const defaultRole = selectedIntent === 'signup' ? 'b2b' : 'b2c';
   const selectedRole = googleAuthService.normalizeRole(req.query.role || defaultRole);
+  const rememberMe = googleAuthService.normalizeRememberMe(
+    req.query.remember_me || req.query.rememberMe || true
+  );
 
   const authUrl = googleAuthService.getGoogleAuthUrl({
     role: selectedRole,
     intent: selectedIntent,
-    frontendOrigin: req.query.frontend_origin || req.query.frontendOrigin || null
+    frontendOrigin: req.query.frontend_origin || req.query.frontendOrigin || null,
+    rememberMe
   });
 
   res.set('Cache-Control', 'no-store');
@@ -994,7 +1374,7 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
       throw err;
     }
 
-    const { role, intent, frontendOrigin } = parsedState;
+    const { role, intent, frontendOrigin, rememberMe } = parsedState;
 
     // Exchange code for tokens
     const googleTokens = await googleAuthService.getGoogleTokens(code);
@@ -1066,18 +1446,10 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
       return res.redirect(verificationRequiredRedirect);
     }
 
-    const membership = await authService.getPrimaryCompanyMembership(user.id);
-    const companyIdForToken = await authService.resolveCompanyIdForToken(user.id, user.company_id);
+    const { companyIdForToken } = await resolveAuthSessionContext(user, {
+      updateMembershipLogin: true
+    });
     const { requiresCompanySetup: shouldSetupCompany, nextStep } = resolvePostAuthNextStep(user, companyIdForToken);
-
-    if (membership?.member_status === 'active') {
-      await pool.query(
-        `UPDATE company_members
-         SET last_login = NOW(), updated_at = NOW()
-         WHERE company_id = $1 AND user_id = $2`,
-        [membership.company_id, user.id]
-      );
-    }
 
     await authService.markUserLoggedIn(user.id);
     await safeTrackAnalyticsEvent({
@@ -1103,14 +1475,16 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
       companyIdForToken,
       user.is_demo_user || false
     );
-    const refreshToken = authService.generateRefreshToken(user.id);
+    const refreshToken = authService.generateRefreshToken(user.id, rememberMe);
+    await authService.storeRefreshToken(refreshToken, user.id, resolveRequestMetadata(req));
+    setRefreshTokenCookie(res, refreshToken, { rememberMe });
 
     // Redirect to frontend with tokens in URL hash
     const redirectUrl = buildFrontendAuthCallbackUrl({
       access_token: accessToken,
       refresh_token: refreshToken,
       token_type: 'Bearer',
-      expires_in: 900,
+      expires_in: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
       provider: 'google',
       auth_intent: intent,
       is_new_user: isNewUser ? 1 : 0,

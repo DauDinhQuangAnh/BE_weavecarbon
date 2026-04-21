@@ -85,24 +85,44 @@ class CompanyMembersService {
     }
 
     /**
-     * Create new member - Reuse signup flow
+     * Create new member through email invite flow
      */
     async createMember(companyId, invitedBy, memberData) {
-        const { email, full_name, password, role, send_notification_email } = memberData;
+        const {
+            email,
+            full_name,
+            role,
+            send_notification_email,
+            frontend_origin
+        } = memberData;
+        const normalizedEmail = String(email || '').trim().toLowerCase();
+        const normalizedFullName = String(full_name || '').trim();
 
         const client = await pool.connect();
         const analyticsEventIds = [];
         try {
             await client.query('BEGIN');
 
-            // Check if email already exists in the company
+            const companyQuery = await client.query(
+                'SELECT name FROM companies WHERE id = $1',
+                [companyId]
+            );
+
+            if (companyQuery.rows.length === 0) {
+                throw createAppError('Company not found', {
+                    statusCode: 404,
+                    code: 'COMPANY_NOT_FOUND'
+                });
+            }
+
+            const company = companyQuery.rows[0];
             const existingQuery = `
         SELECT cm.id 
         FROM company_members cm
         INNER JOIN users u ON u.id = cm.user_id
         WHERE cm.company_id = $1 AND u.email = $2
       `;
-            const existingResult = await client.query(existingQuery, [companyId, email]);
+            const existingResult = await client.query(existingQuery, [companyId, normalizedEmail]);
 
             if (existingResult.rows.length > 0) {
                 throw createAppError('Email already exists in company', {
@@ -111,9 +131,8 @@ class CompanyMembersService {
                 });
             }
 
-            // Check if user exists globally
-            const existingUser = await authService.getUserByEmail(email);
-
+            const existingUser = await authService.getUserByEmail(normalizedEmail);
+            const memberFullName = existingUser?.full_name || normalizedFullName;
             let userId;
 
             if (existingUser) {
@@ -126,16 +145,13 @@ class CompanyMembersService {
                     });
                 }
 
-                // User exists, just add to company
                 userId = existingUser.id;
 
-                // Update profile with company_id if not set
                 await client.query(
                     'UPDATE profiles SET company_id = $1 WHERE user_id = $2 AND company_id IS NULL',
                     [companyId, userId]
                 );
 
-                // Check if user has b2b role, if not add it
                 const roleCheck = await client.query(
                     'SELECT role FROM user_roles WHERE user_id = $1 AND role = $2',
                     [userId, 'b2b']
@@ -148,62 +164,20 @@ class CompanyMembersService {
                     );
                 }
             } else {
-                // Create new user using authService (reuse signup flow)
-                // Get company info first
-                const companyQuery = await client.query(
-                    'SELECT name, business_type FROM companies WHERE id = $1',
-                    [companyId]
-                );
-
-                if (companyQuery.rows.length === 0) {
-                    throw createAppError('Company not found', {
-                        statusCode: 404,
-                        code: 'COMPANY_NOT_FOUND'
-                    });
-                }
-
-                const company = companyQuery.rows[0];
-
-                // Create user with b2b role and company data
-                const { user, profile } = await authService.createUser(
-                    email,
-                    password,
-                    full_name,
-                    'b2b',
-                    {
-                        name: company.name,
-                        business_type: company.business_type,
-                        target_markets: []
-                    }
-                );
-
+                const { user } = await authService.createInvitedCompanyUser({
+                    client,
+                    email: normalizedEmail,
+                    fullName: normalizedFullName,
+                    companyId
+                });
                 userId = user.id;
-
-                // Auto-verify email for sub-accounts created by admin
-                await client.query(
-                    `UPDATE users SET email_verified = true, email_verified_at = NOW(), updated_at = NOW() WHERE id = $1`,
-                    [userId]
-                );
-
-                // Update profile to link to existing company (not create new one)
-                await client.query(
-                    'UPDATE profiles SET company_id = $1 WHERE user_id = $2',
-                    [companyId, userId]
-                );
-
-                // Remove auto-created company_members record (created during signup as admin)
-                await client.query(
-                    'DELETE FROM company_members WHERE user_id = $1',
-                    [userId]
-                );
             }
 
-            // Add to company_members with specified role (active since admin created)
             const memberQuery = `
         INSERT INTO company_members (
           company_id, user_id, role, status, invited_by, created_at, updated_at
         )
-        VALUES ($1, $2, $3, 'active', $4, NOW(), NOW())
+        VALUES ($1, $2, $3, 'invited', $4, NOW(), NOW())
         RETURNING id, user_id, role, status, created_at
       `;
             const memberResult = await client.query(memberQuery, [companyId, userId, role, invitedBy]);
@@ -223,17 +197,27 @@ class CompanyMembersService {
             await client.query('COMMIT');
             analyticsService.queuePendingDispatch(analyticsEventIds);
 
-            // Send welcome email with login credentials (no verification needed)
             if (send_notification_email) {
-                emailService.sendWelcomeEmail(email, full_name, password, companyId)
-                    .catch(err => console.error('Failed to send welcome email:', err));
+                const inviteToken = authService.generateCompanyInviteToken({
+                    email: normalizedEmail,
+                    companyId
+                });
+                emailService.sendCompanyInviteEmail(
+                    normalizedEmail,
+                    inviteToken,
+                    memberFullName,
+                    {
+                        companyName: company.name,
+                        frontendOrigin: frontend_origin || null
+                    }
+                ).catch((err) => console.error('Failed to send company invite email:', err));
             }
 
             return {
                 id: member.id,
                 user_id: userId,
-                email,
-                full_name,
+                email: normalizedEmail,
+                full_name: memberFullName,
                 role: member.role,
                 status: member.status,
                 created_at: member.created_at
@@ -241,6 +225,72 @@ class CompanyMembersService {
         } catch (error) {
             await client.query('ROLLBACK');
             throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    async resendInvite(companyId, memberId, options = {}) {
+        const client = await pool.connect();
+        try {
+            const result = await client.query(
+                `SELECT
+                   cm.id,
+                   cm.user_id,
+                   cm.role,
+                   cm.status,
+                   u.email,
+                   u.full_name,
+                   c.name AS company_name
+                 FROM company_members cm
+                 JOIN users u ON u.id = cm.user_id
+                 JOIN companies c ON c.id = cm.company_id
+                 WHERE cm.company_id = $1 AND cm.id = $2
+                 LIMIT 1`,
+                [companyId, memberId]
+            );
+
+            const member = result.rows[0];
+            if (!member) {
+                throw createAppError('Member not found', {
+                    statusCode: 404,
+                    code: 'MEMBER_NOT_FOUND'
+                });
+            }
+
+            if (member.status !== 'invited') {
+                throw createAppError('Invite is only available for pending members', {
+                    statusCode: 409,
+                    code: 'INVITE_NOT_PENDING'
+                });
+            }
+
+            const inviteToken = authService.generateCompanyInviteToken({
+                email: member.email,
+                companyId
+            });
+            const emailSent = await emailService.sendCompanyInviteEmail(
+                member.email,
+                inviteToken,
+                member.full_name,
+                {
+                    companyName: member.company_name,
+                    frontendOrigin: options.frontend_origin || null
+                }
+            );
+
+            if (!emailSent) {
+                throw createAppError('Failed to send invite email', {
+                    statusCode: 502,
+                    code: 'INVITE_EMAIL_SEND_FAILED'
+                });
+            }
+
+            return {
+                id: member.id,
+                email: member.email,
+                email_sent: emailSent
+            };
         } finally {
             client.release();
         }

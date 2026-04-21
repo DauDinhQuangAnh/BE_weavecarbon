@@ -13,7 +13,8 @@ const {
   createMemberValidation,
   updateMemberValidation,
   deleteMemberValidation,
-  getMembersValidation
+  getMembersValidation,
+  resendInviteValidation
 } = require('../validators/companyMembersValidators');
 
 const router = express.Router();
@@ -58,13 +59,13 @@ router.post(
       return sendNoCompany(res, 'User does not belong to a company', 400);
     }
 
-    const { email, full_name, password, role, send_notification_email } = req.body;
+    const { email, full_name, role, send_notification_email, frontend_origin } = req.body;
 
     const member = await companyMembersService.createMember(req.companyId, req.userId, {
       email,
       full_name,
-      password,
       role,
+      frontend_origin,
       send_notification_email:
         send_notification_email !== undefined ? send_notification_email : true
     });
@@ -72,7 +73,28 @@ router.post(
     return sendSuccess(res, {
       status: 201,
       data: member,
-      message: 'Member created successfully. Notification email sent.'
+      message: 'Member invited successfully'
+    });
+  })
+);
+
+router.post(
+  '/:id/resend-invite',
+  requireCompanyAdmin,
+  resendInviteValidation,
+  validate,
+  asyncHandler(async (req, res) => {
+    if (!req.companyId) {
+      return sendNoCompany(res, 'User does not belong to a company', 400);
+    }
+
+    const result = await companyMembersService.resendInvite(req.companyId, req.params.id, {
+      frontend_origin: req.body?.frontend_origin
+    });
+
+    return sendSuccess(res, {
+      data: result,
+      message: 'Invite email resent successfully'
     });
   })
 );

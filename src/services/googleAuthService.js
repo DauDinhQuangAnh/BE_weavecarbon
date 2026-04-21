@@ -31,6 +31,19 @@ class GoogleAuthService {
     return validIntents.has(intent) ? intent : 'signin';
   }
 
+  normalizeRememberMe(rememberMe = true) {
+    if (typeof rememberMe === 'boolean') {
+      return rememberMe;
+    }
+
+    const normalized = String(rememberMe || '').trim().toLowerCase();
+    if (!normalized) {
+      return true;
+    }
+
+    return !['0', 'false', 'no', 'off'].includes(normalized);
+  }
+
   encodeBase64Url(value) {
     return Buffer.from(value).toString('base64url');
   }
@@ -46,11 +59,12 @@ class GoogleAuthService {
       .digest('base64url');
   }
 
-  generateState(role = 'b2c', intent = 'signin', frontendOrigin = null) {
+  generateState(role = 'b2c', intent = 'signin', frontendOrigin = null, rememberMe = true) {
     const payload = {
       role: this.normalizeRole(role),
       intent: this.normalizeIntent(intent),
       frontendOrigin: this.normalizeFrontendOrigin(frontendOrigin),
+      rememberMe: this.normalizeRememberMe(rememberMe),
       iat: Date.now(),
       nonce: crypto.randomBytes(12).toString('hex')
     };
@@ -61,7 +75,13 @@ class GoogleAuthService {
   }
 
   parseState(state) {
-    const fallback = { valid: false, role: 'b2c', intent: 'signin', reason: 'invalid_state' };
+    const fallback = {
+      valid: false,
+      role: 'b2c',
+      intent: 'signin',
+      rememberMe: true,
+      reason: 'invalid_state'
+    };
     if (!state || typeof state !== 'string') {
       return { ...fallback, reason: 'missing_state' };
     }
@@ -98,7 +118,8 @@ class GoogleAuthService {
         valid: true,
         role: this.normalizeRole(payload.role),
         intent: this.normalizeIntent(payload.intent),
-        frontendOrigin: this.normalizeFrontendOrigin(payload.frontendOrigin)
+        frontendOrigin: this.normalizeFrontendOrigin(payload.frontendOrigin),
+        rememberMe: this.normalizeRememberMe(payload.rememberMe)
       };
     } catch (error) {
       return fallback;
@@ -110,7 +131,8 @@ class GoogleAuthService {
     const role = typeof options === 'string' ? options : options.role || 'b2c';
     const intent = typeof options === 'string' ? 'signin' : options.intent || 'signin';
     const frontendOrigin = typeof options === 'string' ? null : options.frontendOrigin;
-    const state = this.generateState(role, intent, frontendOrigin);
+    const rememberMe = typeof options === 'string' ? true : options.rememberMe;
+    const state = this.generateState(role, intent, frontendOrigin, rememberMe);
     const scope = encodeURIComponent('email profile');
 
     return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(this.redirectUri)}&response_type=code&scope=${scope}&access_type=offline&prompt=select_account&state=${encodeURIComponent(state)}`;

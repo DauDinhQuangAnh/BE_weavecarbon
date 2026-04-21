@@ -84,8 +84,10 @@ const signinValidation = [
 
 const refreshValidation = [
   body('refresh_token')
+    .optional()
+    .isString()
     .notEmpty()
-    .withMessage('Refresh token is required')
+    .withMessage('Refresh token must be a non-empty string')
 ];
 
 const verifyEmailValidation = [

@@ -58,6 +58,19 @@ function buildVerificationUrl(token, email, preferredFrontendOrigin = null) {
   return verificationUrl.toString();
 }
 
+function buildCompanyInviteUrl(token, preferredFrontendOrigin = null) {
+  const apiBaseUrl = resolveBackendBaseUrl();
+  const inviteUrl = new URL(`${apiBaseUrl}/api/auth/accept-company-invite`);
+  inviteUrl.searchParams.set('token', token);
+
+  const frontendOrigin = resolveFrontendBaseUrl(preferredFrontendOrigin);
+  if (frontendOrigin) {
+    inviteUrl.searchParams.set('frontend_origin', frontendOrigin);
+  }
+
+  return inviteUrl.toString();
+}
+
 function buildVerificationEmailHtml({
   title,
   subtitle,
@@ -197,6 +210,41 @@ class EmailService {
         ? `Hi ${safeFullName}, your company account is ready. Verify your email here: ${verificationUrl}`
         : `Hi ${safeFullName}, verify your WeaveCarbon account here: ${verificationUrl}`,
       html: emailContent
+    };
+
+    return deliverEmail(mailOptions);
+  }
+
+  async sendCompanyInviteEmail(email, token, fullName, options = {}) {
+    const inviteUrl = buildCompanyInviteUrl(token, options.frontendOrigin || null);
+    const safeFullName = fullName || 'there';
+    const safeCompanyName = escapeHtml(options.companyName || 'your company');
+    const safeInviterName = escapeHtml(options.inviterName || 'your team administrator');
+
+    if (!emailConfig.enabled) {
+      return logSkippedEmail([
+        ['[Email] Email not configured - skipping company invite email'],
+        ['[Email] Company invite link for', email, ':', inviteUrl]
+      ]);
+    }
+
+    const mailOptions = {
+      from: emailConfig.from,
+      to: email,
+      subject: `You have been invited to join ${options.companyName || 'WeaveCarbon'}`,
+      text: `Hi ${safeFullName}, ${options.inviterName || 'your team administrator'} invited you to join ${options.companyName || 'WeaveCarbon'}. Accept the invite here: ${inviteUrl}`,
+      html: `
+        <h1>You're invited to WeaveCarbon</h1>
+        <p>Hi ${escapeHtml(safeFullName)},</p>
+        <p>${safeInviterName} invited you to join <strong>${safeCompanyName}</strong> on WeaveCarbon.</p>
+        <p>Use the link below to activate your access and continue to the app without signing in manually.</p>
+        <p>
+          <a href="${escapeHtml(inviteUrl)}" style="display:inline-block;padding:14px 28px;background:#16a34a;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;border-radius:10px;">
+            Accept Invite
+          </a>
+        </p>
+        <p>This invite link expires in 7 days.</p>
+      `
     };
 
     return deliverEmail(mailOptions);

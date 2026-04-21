@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../config/database');
@@ -12,6 +13,22 @@ const {
 const TRIAL_QUERY_TIMEOUT_MS = 8000;
 
 class AuthService {
+  hashRefreshToken(token) {
+    return crypto
+      .createHash('sha256')
+      .update(String(token || ''))
+      .digest('hex');
+  }
+
+  decodeJwtExpiry(token) {
+    const decoded = jwt.decode(token);
+    if (!decoded || typeof decoded.exp !== 'number') {
+      return null;
+    }
+
+    return new Date(decoded.exp * 1000);
+  }
+
   async initializeTrial(client, companyId) {
     await subscriptionService.ensureSchema(client);
     await client.query(
@@ -76,6 +93,32 @@ class AuthService {
     return await bcrypt.compare(password, hashedPassword);
   }
 
+  generateSystemPassword(length = 20) {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghijkmnopqrstuvwxyz';
+    const numbers = '23456789';
+    const symbols = '!@#$%^&*';
+    const all = `${upper}${lower}${numbers}${symbols}`;
+    const pick = (source) => source.charAt(crypto.randomInt(0, source.length));
+    const password = [
+      pick(upper),
+      pick(lower),
+      pick(numbers),
+      pick(symbols)
+    ];
+
+    while (password.length < length) {
+      password.push(pick(all));
+    }
+
+    for (let index = password.length - 1; index > 0; index -= 1) {
+      const swapIndex = crypto.randomInt(0, index + 1);
+      [password[index], password[swapIndex]] = [password[swapIndex], password[index]];
+    }
+
+    return password.join('');
+  }
+
   generateAccessToken(userId, email, roles, companyId = null, isDemo = false) {
     return jwt.sign(
       {
@@ -94,12 +137,28 @@ class AuthService {
     );
   }
 
-  generateRefreshToken(userId) {
+  generateRefreshToken(userId, rememberMe = true) {
     return jwt.sign(
-      { sub: userId, type: 'refresh' },
+      { sub: userId, type: 'refresh', jti: uuidv4(), remember_me: rememberMe !== false },
       jwtConfig.jwtRefreshSecret,
       {
         expiresIn: jwtConfig.jwtRefreshExpiresIn,
+        issuer: jwtConfig.jwtIssuer,
+        audience: jwtConfig.jwtAudience
+      }
+    );
+  }
+
+  generateCompanyInviteToken({ email, companyId }) {
+    return jwt.sign(
+      {
+        email: String(email || '').trim().toLowerCase(),
+        company_id: companyId,
+        type: 'company_invite'
+      },
+      jwtConfig.jwtSecret,
+      {
+        expiresIn: '7d',
         issuer: jwtConfig.jwtIssuer,
         audience: jwtConfig.jwtAudience
       }
@@ -128,6 +187,159 @@ class AuthService {
     }
   }
 
+  verifyCompanyInviteToken(token) {
+    try {
+      return jwt.verify(token, jwtConfig.jwtSecret, {
+        issuer: jwtConfig.jwtIssuer,
+        audience: jwtConfig.jwtAudience
+      });
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async storeRefreshToken(refreshToken, userId, metadata = {}) {
+    const expiresAt = this.decodeJwtExpiry(refreshToken);
+    if (!expiresAt) {
+      throw new Error('Refresh token expiry could not be decoded');
+    }
+
+    const tokenHash = this.hashRefreshToken(refreshToken);
+
+    await pool.query(
+      `INSERT INTO refresh_tokens (
+         user_id,
+         token_hash,
+         expires_at,
+         ip_address,
+         user_agent
+       )
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        userId,
+        tokenHash,
+        expiresAt,
+        metadata.ipAddress || null,
+        metadata.userAgent || null
+      ]
+    );
+
+    return {
+      token_hash: tokenHash,
+      expires_at: expiresAt
+    };
+  }
+
+  async getRefreshTokenRecord(refreshToken, client = pool) {
+    const tokenHash = this.hashRefreshToken(refreshToken);
+    const result = await client.query(
+      `SELECT id, user_id, token_hash, expires_at, is_revoked, revoked_at
+       FROM refresh_tokens
+       WHERE token_hash = $1
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    return result.rows[0] || null;
+  }
+
+  async isRefreshTokenActive(refreshToken, client = pool) {
+    const tokenHash = this.hashRefreshToken(refreshToken);
+    const result = await client.query(
+      `SELECT id, user_id, token_hash, expires_at, is_revoked, revoked_at
+       FROM refresh_tokens
+       WHERE token_hash = $1
+         AND is_revoked = false
+         AND expires_at > NOW()
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    return result.rows[0] || null;
+  }
+
+  async revokeRefreshToken(refreshToken, client = pool) {
+    const tokenHash = this.hashRefreshToken(refreshToken);
+    const result = await client.query(
+      `UPDATE refresh_tokens
+       SET is_revoked = true,
+           revoked_at = NOW()
+       WHERE token_hash = $1
+         AND is_revoked = false`,
+      [tokenHash]
+    );
+
+    return result.rowCount || 0;
+  }
+
+  async revokeAllRefreshTokens(userId, client = pool) {
+    const result = await client.query(
+      `UPDATE refresh_tokens
+       SET is_revoked = true,
+           revoked_at = NOW()
+       WHERE user_id = $1
+         AND is_revoked = false`,
+      [userId]
+    );
+
+    return result.rowCount || 0;
+  }
+
+  async rotateRefreshToken(currentRefreshToken, nextRefreshToken, metadata = {}) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const currentSession = await this.isRefreshTokenActive(currentRefreshToken, client);
+      if (!currentSession) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      await client.query(
+        `UPDATE refresh_tokens
+         SET is_revoked = true,
+             revoked_at = NOW()
+         WHERE id = $1`,
+        [currentSession.id]
+      );
+
+      const expiresAt = this.decodeJwtExpiry(nextRefreshToken);
+      if (!expiresAt) {
+        throw new Error('Rotated refresh token expiry could not be decoded');
+      }
+
+      await client.query(
+        `INSERT INTO refresh_tokens (
+           user_id,
+           token_hash,
+           expires_at,
+           ip_address,
+           user_agent
+         )
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          currentSession.user_id,
+          this.hashRefreshToken(nextRefreshToken),
+          expiresAt,
+          metadata.ipAddress || null,
+          metadata.userAgent || null
+        ]
+      );
+
+      await client.query('COMMIT');
+      return {
+        user_id: currentSession.user_id,
+        expires_at: expiresAt
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   generateVerificationToken(email) {
     return jwt.sign(
       { email, type: 'email_verification' },
@@ -142,6 +354,40 @@ class AuthService {
     } catch (error) {
       return null;
     }
+  }
+
+  async createInvitedCompanyUser({ client, email, fullName, companyId }) {
+    const temporaryPassword = this.generateSystemPassword();
+    const hashedPassword = await this.hashPassword(temporaryPassword);
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedFullName = String(fullName || '').trim();
+
+    const userResult = await client.query(
+      `INSERT INTO users (email, password_hash, full_name, email_verified, created_at, updated_at)
+       VALUES ($1, $2, $3, false, NOW(), NOW())
+       RETURNING id, email, full_name, email_verified, created_at`,
+      [normalizedEmail, hashedPassword, normalizedFullName]
+    );
+    const user = userResult.rows[0];
+
+    const profileResult = await client.query(
+      `INSERT INTO profiles (user_id, email, full_name, company_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW())
+       RETURNING id, user_id, email, full_name, company_id`,
+      [user.id, normalizedEmail, normalizedFullName, companyId]
+    );
+
+    await client.query(
+      `INSERT INTO user_roles (user_id, role, created_at)
+       VALUES ($1, 'b2b', NOW())`,
+      [user.id]
+    );
+
+    return {
+      user,
+      profile: profileResult.rows[0],
+      temporaryPassword
+    };
   }
 
   async createUser(email, password, fullName, role, companyData = null) {
@@ -505,6 +751,34 @@ class AuthService {
        WHERE id = $1`,
       [userId]
     );
+  }
+
+  async getCompanyMembership(companyId, userId, client = pool) {
+    const result = await client.query(
+      `SELECT company_id, user_id, role, status, invited_by, created_at, updated_at
+       FROM company_members
+       WHERE company_id = $1 AND user_id = $2
+       LIMIT 1`,
+      [companyId, userId]
+    );
+
+    return result.rows[0] || null;
+  }
+
+  async activateCompanyMembership(companyId, userId, client = pool) {
+    const result = await client.query(
+      `UPDATE company_members
+       SET status = 'active', updated_at = NOW()
+       WHERE company_id = $1 AND user_id = $2 AND status = 'invited'
+       RETURNING company_id, user_id, role, status, invited_by, created_at, updated_at`,
+      [companyId, userId]
+    );
+
+    if (result.rows.length > 0) {
+      return result.rows[0];
+    }
+
+    return this.getCompanyMembership(companyId, userId, client);
   }
 
   async createDemoUser(role, scenario = 'sample_data') {
