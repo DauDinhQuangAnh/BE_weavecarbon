@@ -23,15 +23,29 @@ const ENABLE_DEV_PLACEHOLDER_DOWNLOAD =
     process.env.NODE_ENV !== 'production' &&
     process.env.ENABLE_DOWNLOAD_PLACEHOLDER === 'true';
 
-function writeDevPlaceholderDocument(filePath, filename, marketCode) {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+function isWithinUploadsRoot(filePath) {
+    const relativePath = path.relative(UPLOADS_ROOT, filePath);
+    return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+}
+
+async function fileExists(filePath) {
+    try {
+        await fs.promises.access(filePath, fs.constants.F_OK);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function writeDevPlaceholderDocument(filePath, filename, marketCode) {
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     const content = [
         'WeaveCarbon Dev Placeholder Document',
         `Document: ${filename}`,
         `Market: ${marketCode}`,
         `Generated: ${new Date().toISOString()}`
     ].join('\n');
-    fs.writeFileSync(filePath, content);
+    await fs.promises.writeFile(filePath, content);
 }
 
 function toSafePathSegment(value, fallback = 'unknown') {
@@ -547,16 +561,16 @@ router.get(
                 const filePath = path.resolve(UPLOADS_ROOT, storageKey);
 
                 // Prevent path traversal
-                if (!filePath.startsWith(UPLOADS_ROOT)) {
+                if (!isWithinUploadsRoot(filePath)) {
                     return res.status(400).json({
                         success: false,
                         error: { code: 'INVALID_PATH', message: 'Invalid storage path' }
                     });
                 }
 
-                if (!fs.existsSync(filePath)) {
+                if (!(await fileExists(filePath))) {
                     if (ENABLE_DEV_PLACEHOLDER_DOWNLOAD) {
-                        writeDevPlaceholderDocument(filePath, originalFilename, req.params.market_code);
+                        await writeDevPlaceholderDocument(filePath, originalFilename, req.params.market_code);
                     } else {
                         return res.status(404).json({
                             success: false,
@@ -571,6 +585,7 @@ router.get(
                 res.setHeader('Content-Type', mimeType);
                 res.setHeader('Content-Disposition', `attachment; filename="${originalFilename}"`);
                 const stream = fs.createReadStream(filePath);
+                stream.on('error', next);
                 return stream.pipe(res);
             }
 

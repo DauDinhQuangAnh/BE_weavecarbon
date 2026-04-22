@@ -19,8 +19,22 @@ const ENABLE_DEV_PLACEHOLDER_DOWNLOAD =
     process.env.NODE_ENV !== 'production' &&
     process.env.DISABLE_DOWNLOAD_PLACEHOLDER !== 'true';
 
-function writeDevPlaceholderReport(filePath, reportId, filename, format) {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+function isWithinUploadsRoot(filePath) {
+    const relativePath = path.relative(UPLOADS_ROOT, filePath);
+    return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+}
+
+async function fileExists(filePath) {
+    try {
+        await fs.promises.access(filePath, fs.constants.F_OK);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function writeDevPlaceholderReport(filePath, reportId, filename, format) {
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
 
     const lowerFormat = String(format || '').toLowerCase();
     const generatedAt = new Date().toISOString();
@@ -30,7 +44,7 @@ function writeDevPlaceholderReport(filePath, reportId, filename, format) {
             'report_id,file_name,generated_at,note',
             `${reportId},${filename},${generatedAt},placeholder-generated-in-dev`
         ].join('\n');
-        fs.writeFileSync(filePath, csv);
+        await fs.promises.writeFile(filePath, csv);
         return;
     }
 
@@ -41,7 +55,7 @@ function writeDevPlaceholderReport(filePath, reportId, filename, format) {
         `Format: ${lowerFormat || 'unknown'}`,
         `Generated: ${generatedAt}`
     ].join('\n');
-    fs.writeFileSync(filePath, text);
+    await fs.promises.writeFile(filePath, text);
 }
 
 /**
@@ -521,16 +535,16 @@ router.get(
                 const filePath = path.resolve(UPLOADS_ROOT, storageKey);
 
                 // Prevent path traversal
-                if (!filePath.startsWith(UPLOADS_ROOT)) {
+                if (!isWithinUploadsRoot(filePath)) {
                     return res.status(400).json({
                         success: false,
                         error: { code: 'INVALID_PATH', message: 'Invalid storage path' }
                     });
                 }
 
-                if (!fs.existsSync(filePath)) {
+                if (!(await fileExists(filePath))) {
                     if (ENABLE_DEV_PLACEHOLDER_DOWNLOAD) {
-                        writeDevPlaceholderReport(
+                        await writeDevPlaceholderReport(
                             filePath,
                             reportId,
                             originalFilename,
@@ -550,6 +564,7 @@ router.get(
                 res.setHeader('Content-Type', mimeType);
                 res.setHeader('Content-Disposition', `attachment; filename="${originalFilename}"`);
                 const stream = fs.createReadStream(filePath);
+                stream.on('error', next);
                 return stream.pipe(res);
             }
 
