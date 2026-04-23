@@ -3,6 +3,59 @@ const jwtConfig = require('../config/jwt');
 const REFRESH_TOKEN_COOKIE_NAME = 'weavecarbon_refresh_token';
 const REFRESH_COOKIE_PATH = '/api/auth';
 
+const parseOriginList = (value) => String(value || '')
+  .split(/[,\n;]/)
+  .map((entry) => String(entry || '').trim())
+  .filter(Boolean);
+
+const normalizeCookieDomain = (value) => {
+  const raw = String(value || '').trim().replace(/^\.+/, '').toLowerCase();
+  if (!raw) return null;
+  if (raw === 'localhost' || raw === '127.0.0.1' || raw === '::1') {
+    return null;
+  }
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(raw)) {
+    return null;
+  }
+  return raw.includes('.') ? raw : null;
+};
+
+const deriveCookieDomainFromOrigin = (origin) => {
+  try {
+    const hostname = new URL(origin).hostname;
+    const normalizedHostname = normalizeCookieDomain(hostname);
+    if (!normalizedHostname) return null;
+    return normalizedHostname.startsWith('www.') ?
+      normalizedHostname.slice(4) :
+      normalizedHostname;
+  } catch {
+    return null;
+  }
+};
+
+const resolveCookieDomain = () => {
+  const explicitDomain = normalizeCookieDomain(process.env.AUTH_COOKIE_DOMAIN);
+  if (explicitDomain) {
+    return explicitDomain;
+  }
+
+  const originCandidates = [
+    process.env.FRONTEND_URL,
+    ...parseOriginList(process.env.FRONTEND_URLS),
+    process.env.AUTH_PUBLIC_BASE_URL,
+    process.env.API_BASE_URL
+  ];
+
+  for (const candidate of originCandidates) {
+    const derivedDomain = deriveCookieDomainFromOrigin(candidate);
+    if (derivedDomain) {
+      return derivedDomain;
+    }
+  }
+
+  return null;
+};
+
 const parseDurationToMs = (value) => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value * 1000;
@@ -36,12 +89,17 @@ const getRefreshCookieMaxAgeMs = () => parseDurationToMs(jwtConfig.jwtRefreshExp
 const isProduction = () => process.env.NODE_ENV === 'production';
 
 const buildRefreshCookieOptions = ({ rememberMe = true } = {}) => {
+  const domain = resolveCookieDomain();
   const options = {
     httpOnly: true,
     sameSite: 'lax',
     secure: isProduction(),
     path: REFRESH_COOKIE_PATH
   };
+
+  if (domain) {
+    options.domain = domain;
+  }
 
   if (rememberMe) {
     const maxAge = getRefreshCookieMaxAgeMs();
@@ -91,12 +149,9 @@ const setRefreshTokenCookie = (res, refreshToken, { rememberMe = true } = {}) =>
 };
 
 const clearRefreshTokenCookie = (res) => {
-  res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: isProduction(),
-    path: REFRESH_COOKIE_PATH
-  });
+  const clearOptions = buildRefreshCookieOptions({ rememberMe: false });
+  delete clearOptions.maxAge;
+  res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, clearOptions);
 };
 
 module.exports = {
