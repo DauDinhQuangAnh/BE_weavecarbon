@@ -9,7 +9,8 @@ const pool = require('../config/database');
 const { resolveFrontendBaseUrl } = require('../config/urls');
 const {
   clearRefreshTokenCookie,
-  getRefreshTokenFromRequest
+  getRefreshTokenFromRequest,
+  setRefreshTokenCookie
 } = require('../utils/authCookies');
 const {
   signupValidation,
@@ -288,11 +289,75 @@ function buildAuthResponseData({
   };
 }
 
-function sendSessionPersistenceDisabled(res) {
+function sendSessionExpired(res, message = 'Session expired. Please sign in again.') {
   clearRefreshTokenCookie(res);
   return res.status(401).json({
     success: false,
-    error: SESSION_PERSISTENCE_DISABLED_ERROR
+    error: {
+      code: 'SESSION_EXPIRED',
+      message
+    }
+  });
+}
+
+async function issueRefreshBackedSession(req, res, refreshToken, {
+  rotate = true,
+  updateMembershipLogin = false
+} = {}) {
+  const decodedRefreshToken = authService.verifyRefreshToken(refreshToken);
+  if (!decodedRefreshToken || decodedRefreshToken.type !== 'refresh') {
+    return sendSessionExpired(res, 'Invalid or expired session.');
+  }
+
+  let activeSession = null;
+  let nextRefreshToken = refreshToken;
+  const rememberMe = decodedRefreshToken.remember_me !== false;
+  const metadata = resolveRequestMetadata(req);
+
+  if (rotate) {
+    nextRefreshToken = authService.generateRefreshToken(decodedRefreshToken.sub, rememberMe);
+    activeSession = await authService.rotateRefreshToken(
+      refreshToken,
+      nextRefreshToken,
+      metadata
+    );
+  } else {
+    activeSession = await authService.isRefreshTokenActive(refreshToken);
+  }
+
+  if (!activeSession) {
+    return sendSessionExpired(res, 'Session is no longer active.');
+  }
+
+  const user = await authService.getUserById(activeSession.user_id || decodedRefreshToken.sub);
+  if (!user) {
+    return sendSessionExpired(res, 'Session user was not found.');
+  }
+
+  const { company, companyMembership, companyIdForToken } = await resolveAuthSessionContext(
+    user,
+    { updateMembershipLogin }
+  );
+
+  const accessToken = authService.generateAccessToken(
+    user.id,
+    user.email,
+    user.roles,
+    companyIdForToken,
+    user.is_demo_user
+  );
+
+  setRefreshTokenCookie(res, nextRefreshToken, { rememberMe });
+
+  return res.json({
+    success: true,
+    data: buildAuthResponseData({
+      user,
+      company,
+      companyMembership,
+      companyIdForToken,
+      accessToken
+    })
   });
 }
 
@@ -545,7 +610,7 @@ router.post('/signup', signupLimiter, signupValidation, validate, async (req, re
 router.post('/signin', signinLimiter, signinValidation, validate, async (req, res, next) => {
   try {
     const { email, password, remember_me } = req.body;
-    void remember_me;
+    const rememberMe = remember_me !== false;
 
     // Get user
     const user = await authService.getUserByEmail(email);
@@ -600,6 +665,8 @@ router.post('/signin', signinLimiter, signinValidation, validate, async (req, re
       companyIdForToken,
       user.is_demo_user
     );
+    const refreshToken = authService.generateRefreshToken(user.id, rememberMe);
+    await authService.storeRefreshToken(refreshToken, user.id, resolveRequestMetadata(req));
 
     await safeTrackAnalyticsEvent({
       event_name: 'login',
@@ -615,7 +682,7 @@ router.post('/signin', signinLimiter, signinValidation, validate, async (req, re
       }
     });
 
-    clearRefreshTokenCookie(res);
+    setRefreshTokenCookie(res, refreshToken, { rememberMe });
     res.json({
       success: true,
       data: buildAuthResponseData({
@@ -666,7 +733,14 @@ router.post('/signout', async (req, res, next) => {
 // 4. REFRESH TOKEN
 router.post('/refresh', refreshLimiter, refreshValidation, validate, async (req, res, next) => {
   try {
-    return sendSessionPersistenceDisabled(res);
+    const refreshToken = resolveRefreshTokenValue(req);
+    if (!refreshToken) {
+      return sendSessionExpired(res, 'No active session was found.');
+    }
+
+    return await issueRefreshBackedSession(req, res, refreshToken, {
+      rotate: true
+    });
   } catch (error) {
     next(error);
   }
@@ -675,7 +749,15 @@ router.post('/refresh', refreshLimiter, refreshValidation, validate, async (req,
 // 4B. SESSION BOOTSTRAP
 router.get('/session', refreshLimiter, async (req, res, next) => {
   try {
-    return sendSessionPersistenceDisabled(res);
+    const refreshToken = resolveRefreshTokenValue(req);
+    if (!refreshToken) {
+      return sendSessionExpired(res, 'No active session was found.');
+    }
+
+    return await issueRefreshBackedSession(req, res, refreshToken, {
+      rotate: true,
+      updateMembershipLogin: true
+    });
   } catch (error) {
     next(error);
   }
@@ -1186,7 +1268,7 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
       throw err;
     }
 
-    const { role, intent, frontendOrigin } = parsedState;
+    const { role, intent, frontendOrigin, rememberMe } = parsedState;
 
     // Exchange code for tokens
     const googleTokens = await googleAuthService.getGoogleTokens(code);
@@ -1289,9 +1371,18 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
       user.is_demo_user || false
     );
     const tokenPayload = buildTokenPayload(accessToken, null, { includeRefreshToken: false });
+    const refreshToken = authService.generateRefreshToken(user.id, rememberMe);
+    let cookieSessionIssued = false;
+    try {
+      await authService.storeRefreshToken(refreshToken, user.id, resolveRequestMetadata(req));
+      setRefreshTokenCookie(res, refreshToken, { rememberMe });
+      cookieSessionIssued = true;
+    } catch (sessionError) {
+      console.error('[auth] Failed to issue Google cookie session:', sessionError);
+      clearRefreshTokenCookie(res);
+    }
 
-    // Redirect to frontend with tokens in URL hash
-    clearRefreshTokenCookie(res);
+    // Redirect to frontend with public callback metadata only. Session is carried by httpOnly cookie.
     const redirectUrl = buildFrontendAuthCallbackUrl({
       access_token: accessToken,
       token_type: tokenPayload.token_type,

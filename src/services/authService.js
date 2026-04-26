@@ -11,8 +11,50 @@ const {
   normalizeCompanyMarkets
 } = require('../utils/companyMarkets');
 const TRIAL_QUERY_TIMEOUT_MS = 8000;
+let refreshTokenSchemaPromise = null;
 
 class AuthService {
+  async ensureRefreshTokenSchema(client = pool) {
+    if (client !== pool) {
+      await this.createRefreshTokenSchema(client);
+      return;
+    }
+
+    if (!refreshTokenSchemaPromise) {
+      refreshTokenSchemaPromise = this.createRefreshTokenSchema(pool).catch((error) => {
+        refreshTokenSchemaPromise = null;
+        throw error;
+      });
+    }
+
+    await refreshTokenSchemaPromise;
+  }
+
+  async createRefreshTokenSchema(client) {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS public.refresh_tokens (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        is_revoked BOOLEAN NOT NULL DEFAULT false,
+        revoked_at TIMESTAMPTZ,
+        ip_address TEXT,
+        user_agent TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON public.refresh_tokens(user_id)'
+    );
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON public.refresh_tokens(token_hash)'
+    );
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON public.refresh_tokens(expires_at)'
+    );
+  }
+
   hashRefreshToken(token) {
     return crypto
       .createHash('sha256')
@@ -199,6 +241,7 @@ class AuthService {
   }
 
   async storeRefreshToken(refreshToken, userId, metadata = {}) {
+    await this.ensureRefreshTokenSchema();
     const expiresAt = this.decodeJwtExpiry(refreshToken);
     if (!expiresAt) {
       throw new Error('Refresh token expiry could not be decoded');
@@ -231,6 +274,7 @@ class AuthService {
   }
 
   async getRefreshTokenRecord(refreshToken, client = pool) {
+    await this.ensureRefreshTokenSchema(client);
     const tokenHash = this.hashRefreshToken(refreshToken);
     const result = await client.query(
       `SELECT id, user_id, token_hash, expires_at, is_revoked, revoked_at
@@ -244,6 +288,7 @@ class AuthService {
   }
 
   async isRefreshTokenActive(refreshToken, client = pool) {
+    await this.ensureRefreshTokenSchema(client);
     const tokenHash = this.hashRefreshToken(refreshToken);
     const result = await client.query(
       `SELECT id, user_id, token_hash, expires_at, is_revoked, revoked_at
@@ -259,6 +304,7 @@ class AuthService {
   }
 
   async revokeRefreshToken(refreshToken, client = pool) {
+    await this.ensureRefreshTokenSchema(client);
     const tokenHash = this.hashRefreshToken(refreshToken);
     const result = await client.query(
       `UPDATE refresh_tokens
@@ -273,6 +319,7 @@ class AuthService {
   }
 
   async revokeAllRefreshTokens(userId, client = pool) {
+    await this.ensureRefreshTokenSchema(client);
     const result = await client.query(
       `UPDATE refresh_tokens
        SET is_revoked = true,
@@ -289,6 +336,7 @@ class AuthService {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      await this.ensureRefreshTokenSchema(client);
 
       const currentSession = await this.isRefreshTokenActive(currentRefreshToken, client);
       if (!currentSession) {

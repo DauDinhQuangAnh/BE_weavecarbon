@@ -3,6 +3,7 @@ const { setSchemaCapabilities } = require('./schemaCapabilities');
 
 const REQUIRED_TABLES = [
   'companies',
+  'refresh_tokens',
   'products',
   'shipments',
   'reports',
