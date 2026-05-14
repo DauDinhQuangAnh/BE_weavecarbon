@@ -289,12 +289,17 @@ function buildAuthResponseData({
   };
 }
 
-function sendSessionExpired(res, message = 'Session expired. Please sign in again.') {
-  clearRefreshTokenCookie(res);
+function sendSessionExpired(res, message = 'Session expired. Please sign in again.', {
+  code = 'SESSION_EXPIRED',
+  clearCookie = true
+} = {}) {
+  if (clearCookie) {
+    clearRefreshTokenCookie(res);
+  }
   return res.status(401).json({
     success: false,
     error: {
-      code: 'SESSION_EXPIRED',
+      code,
       message
     }
   });
@@ -306,7 +311,10 @@ async function issueRefreshBackedSession(req, res, refreshToken, {
 } = {}) {
   const decodedRefreshToken = authService.verifyRefreshToken(refreshToken);
   if (!decodedRefreshToken || decodedRefreshToken.type !== 'refresh') {
-    return sendSessionExpired(res, 'Invalid or expired session.');
+    return sendSessionExpired(res, 'Invalid or expired session.', {
+      code: 'INVALID_REFRESH_TOKEN',
+      clearCookie: true
+    });
   }
 
   let activeSession = null;
@@ -326,12 +334,18 @@ async function issueRefreshBackedSession(req, res, refreshToken, {
   }
 
   if (!activeSession) {
-    return sendSessionExpired(res, 'Session is no longer active.');
+    return sendSessionExpired(res, 'Session is no longer active.', {
+      code: 'SESSION_EXPIRED',
+      clearCookie: rotate
+    });
   }
 
   const user = await authService.getUserById(activeSession.user_id || decodedRefreshToken.sub);
   if (!user) {
-    return sendSessionExpired(res, 'Session user was not found.');
+    return sendSessionExpired(res, 'Session user was not found.', {
+      code: 'SESSION_USER_NOT_FOUND',
+      clearCookie: true
+    });
   }
 
   const { company, companyMembership, companyIdForToken } = await resolveAuthSessionContext(
@@ -347,7 +361,9 @@ async function issueRefreshBackedSession(req, res, refreshToken, {
     user.is_demo_user
   );
 
-  setRefreshTokenCookie(res, nextRefreshToken, { rememberMe });
+  if (rotate) {
+    setRefreshTokenCookie(res, nextRefreshToken, { rememberMe });
+  }
 
   return res.json({
     success: true,
@@ -735,7 +751,10 @@ router.post('/refresh', refreshLimiter, refreshValidation, validate, async (req,
   try {
     const refreshToken = resolveRefreshTokenValue(req);
     if (!refreshToken) {
-      return sendSessionExpired(res, 'No active session was found.');
+      return sendSessionExpired(res, 'No active session was found.', {
+        code: 'NO_ACTIVE_SESSION',
+        clearCookie: false
+      });
     }
 
     return await issueRefreshBackedSession(req, res, refreshToken, {
@@ -751,11 +770,14 @@ router.get('/session', refreshLimiter, async (req, res, next) => {
   try {
     const refreshToken = resolveRefreshTokenValue(req);
     if (!refreshToken) {
-      return sendSessionExpired(res, 'No active session was found.');
+      return sendSessionExpired(res, 'No active session was found.', {
+        code: 'NO_ACTIVE_SESSION',
+        clearCookie: false
+      });
     }
 
     return await issueRefreshBackedSession(req, res, refreshToken, {
-      rotate: true,
+      rotate: false,
       updateMembershipLogin: true
     });
   } catch (error) {

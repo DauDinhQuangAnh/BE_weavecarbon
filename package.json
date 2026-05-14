@@ -41,5 +41,14 @@
   },
   "overrides": {
     "minimatch": "^10.2.4"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DauDinhQuangAnh/BE_weavecarbon.git"
+  },
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/DauDinhQuangAnh/BE_weavecarbon/issues"
+  },
+  "homepage": "https://github.com/DauDinhQuangAnh/BE_weavecarbon#readme"
 }

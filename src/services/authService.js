@@ -11,6 +11,10 @@ const {
   normalizeCompanyMarkets
 } = require('../utils/companyMarkets');
 const TRIAL_QUERY_TIMEOUT_MS = 8000;
+const REFRESH_TOKEN_ROTATION_GRACE_SECONDS = Math.max(
+  0,
+  Number.parseInt(process.env.REFRESH_TOKEN_ROTATION_GRACE_SECONDS || '30', 10) || 30
+);
 let refreshTokenSchemaPromise = null;
 
 class AuthService {
@@ -338,19 +342,39 @@ class AuthService {
       await client.query('BEGIN');
       await this.ensureRefreshTokenSchema(client);
 
-      const currentSession = await this.isRefreshTokenActive(currentRefreshToken, client);
+      const currentTokenHash = this.hashRefreshToken(currentRefreshToken);
+      const currentSessionResult = await client.query(
+        `SELECT id, user_id, token_hash, expires_at, is_revoked, revoked_at
+         FROM refresh_tokens
+         WHERE token_hash = $1
+           AND expires_at > NOW()
+           AND (
+             is_revoked = false
+             OR (
+               is_revoked = true
+               AND revoked_at IS NOT NULL
+               AND revoked_at > NOW() - ($2::int * INTERVAL '1 second')
+             )
+           )
+         LIMIT 1
+         FOR UPDATE`,
+        [currentTokenHash, REFRESH_TOKEN_ROTATION_GRACE_SECONDS]
+      );
+      const currentSession = currentSessionResult.rows[0] || null;
       if (!currentSession) {
         await client.query('ROLLBACK');
         return null;
       }
 
-      await client.query(
-        `UPDATE refresh_tokens
-         SET is_revoked = true,
-             revoked_at = NOW()
-         WHERE id = $1`,
-        [currentSession.id]
-      );
+      if (!currentSession.is_revoked) {
+        await client.query(
+          `UPDATE refresh_tokens
+           SET is_revoked = true,
+               revoked_at = NOW()
+           WHERE id = $1`,
+          [currentSession.id]
+        );
+      }
 
       const expiresAt = this.decodeJwtExpiry(nextRefreshToken);
       if (!expiresAt) {

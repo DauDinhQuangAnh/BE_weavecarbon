@@ -245,9 +245,9 @@ const requireCompanyAdmin = createCompanyAccessGuard({
   deniedMessage: 'Company admin role required',
   logLabel: 'Company admin check',
   companyResponse: {
-    status: 401,
-    code: 'UNAUTHORIZED',
-    message: 'Authentication required'
+    status: 404,
+    code: 'COMPANY_NOT_FOUND',
+    message: 'No company associated with this user'
   }
 });
 
@@ -256,9 +256,9 @@ const requireCompanyMember = createCompanyAccessGuard({
   deniedMessage: 'Company membership required',
   logLabel: 'Company member check',
   companyResponse: {
-    status: 401,
-    code: 'UNAUTHORIZED',
-    message: 'Authentication required'
+    status: 404,
+    code: 'COMPANY_NOT_FOUND',
+    message: 'No company associated with this user'
   }
 });
 
