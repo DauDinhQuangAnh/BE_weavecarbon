@@ -95,6 +95,10 @@ jobs:
           git pull --ff-only origin main
           cd /opt/weavecarbon/BE_Carbon-main
           git checkout main
+          # The deploy clone must not keep local migration edits between releases.
+          # Limit cleanup to migrations so runtime files such as .env are preserved.
+          git restore --staged --worktree migrations || true
+          git clean -fd -- migrations || true
           git pull --ff-only origin main
           if command -v npm >/dev/null 2>&1; then
             npm ci --omit=dev
