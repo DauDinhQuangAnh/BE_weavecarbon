@@ -81,8 +81,17 @@ jobs:
         run: |
           set -euo pipefail
           DEPLOY_PORT="${DEPLOY_PORT:-22}"
-          ssh -T -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash --noprofile --norc -se' <<'EOF'
+          ssh \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=40 \
+            -o TCPKeepAlive=yes \
+            -T -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash --noprofile --norc -se' <<'EOF'
           set -eo pipefail
+
+          log_step() {
+            echo
+            echo "[deploy] === $1 ==="
+          }
 
           # Load nvm directly when present; avoid sourcing system/user profiles that can break with nounset.
           NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
@@ -90,9 +99,12 @@ jobs:
             . "$NVM_DIR/nvm.sh"
           fi
 
+          log_step "Updating FE repository"
           cd /opt/weavecarbon/FE
           git checkout main
           git pull --ff-only origin main
+
+          log_step "Updating BE repository"
           cd /opt/weavecarbon/BE_Carbon-main
           git checkout main
           # The deploy clone must not keep local migration edits between releases.
@@ -101,6 +113,7 @@ jobs:
           git clean -fd -- migrations || true
           git pull --ff-only origin main
           if command -v npm >/dev/null 2>&1; then
+            log_step "Installing BE dependencies and running migrations"
             npm ci --omit=dev
             npm run migrate
             npm cache clean --force || true
@@ -108,9 +121,13 @@ jobs:
             echo "[deploy] npm not found on VPS; skipping host-side npm install/migrate."
             echo "[deploy] Assuming BE is started via Docker/container runtime or another process manager."
           fi
+
+          log_step "Updating RAG repository"
           cd /opt/weavecarbon/rag
           git checkout main
           git pull --ff-only origin main
+
+          log_step "Rebuilding VPS stack"
           cd /opt/weavecarbon/FE
           if bash deploy/redeploy-vps.sh; then
             echo "[deploy] FE stack redeploy completed."
