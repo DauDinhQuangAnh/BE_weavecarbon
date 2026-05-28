@@ -440,6 +440,21 @@ class ChatService {
     return this.getFallbackDashboardChatConfig();
   }
 
+  async resolveRuntimeConfigForCompany(userId, companyId) {
+    const companySettings = await this.resolveChatSettings(userId, companyId);
+    if (companySettings.config) {
+      return {
+        config: companySettings.config,
+        config_source: companySettings.config_source || 'company_admin'
+      };
+    }
+
+    return {
+      config: await this.resolveGlobalRuntimeConfig(),
+      config_source: 'global'
+    };
+  }
+
   async upsertGlobalRuntimeConfig(payload) {
     const config = this.validateRuntimeConfigPayload(payload);
 
@@ -699,6 +714,173 @@ class ChatService {
     }
   }
 
+  async callRagRecommendation(config, path, payload) {
+    const baseUrl = this.resolveRagRequestBaseUrl(config.rag_base_url);
+    const requestUrl = `${baseUrl}${path}`;
+
+    try {
+      const response = await axios.post(requestUrl, payload, {
+        timeout: config.timeout_ms,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!isPlainObject(response.data)) {
+        throw createAppError('RAG backend returned an invalid response', {
+          statusCode: 502,
+          code: 'CHAT_SEND_FAILED'
+        });
+      }
+
+      return response.data;
+    } catch (error) {
+      if (error.code === 'RAG_PROXY_BASE_URL_NOT_ALLOWED') {
+        throw error;
+      }
+
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNREFUSED') {
+          throw createAppError('Unable to connect to the RAG backend service.', {
+            statusCode: 502,
+            code: 'CHAT_SEND_FAILED'
+          });
+        }
+
+        if (error.code === 'ECONNABORTED') {
+          throw createAppError('RAG backend request timed out', {
+            statusCode: 504,
+            code: 'CHAT_SEND_FAILED'
+          });
+        }
+
+        const responseData = error.response?.data;
+        const detail =
+          isPlainObject(responseData) && typeof responseData.detail === 'string' ?
+            responseData.detail :
+            Array.isArray(responseData?.detail) ?
+              JSON.stringify(responseData.detail) :
+              error.message;
+        const upstreamStatus = error.response?.status || null;
+
+        if (upstreamStatus === 400 || upstreamStatus === 422) {
+          throw createAppError(detail || 'Invalid request sent to the RAG backend', {
+            statusCode: 400,
+            code: 'CHAT_SEND_FAILED'
+          });
+        }
+
+        if (upstreamStatus === 404) {
+          throw createAppError(detail || 'Requested AI context was not found in the RAG backend.', {
+            statusCode: 502,
+            code: 'CHAT_SEND_FAILED'
+          });
+        }
+
+        if (upstreamStatus === 429) {
+          throw createAppError('RAG backend is busy. Please try again shortly.', {
+            statusCode: 503,
+            code: 'CHAT_SEND_FAILED'
+          });
+        }
+
+        throw createAppError(detail || 'Failed to fetch a response from the RAG backend', {
+          statusCode: upstreamStatus && upstreamStatus >= 500 ? 502 : 500,
+          code: 'CHAT_SEND_FAILED'
+        });
+      }
+
+      if (error.statusCode && error.code) {
+        throw error;
+      }
+
+      throw createAppError('Failed to fetch a response from the RAG backend', {
+        statusCode: 502,
+        code: 'CHAT_SEND_FAILED'
+      });
+    }
+  }
+
+  async assertCompanyAccess(companyId, requestedCompanyId, bodyCompanyId) {
+    if (bodyCompanyId && bodyCompanyId !== requestedCompanyId) {
+      throw createAppError('company_id in path and body must match.', {
+        statusCode: 400,
+        code: 'VALIDATION_ERROR'
+      });
+    }
+
+    if (requestedCompanyId !== companyId) {
+      throw createAppError('Company is outside the current user context', {
+        statusCode: 403,
+        code: 'FORBIDDEN'
+      });
+    }
+  }
+
+  async assertProductAccess(companyId, requestedProductId, bodyProductId) {
+    if (bodyProductId && bodyProductId !== requestedProductId) {
+      throw createAppError('product_id in path and body must match.', {
+        statusCode: 400,
+        code: 'VALIDATION_ERROR'
+      });
+    }
+
+    const result = await pool.query(
+      `
+        SELECT id
+        FROM public.products
+        WHERE id = $1 AND company_id = $2
+        LIMIT 1
+      `,
+      [requestedProductId, companyId]
+    );
+
+    if (result.rows.length === 0) {
+      throw createAppError('Product not found', {
+        statusCode: 404,
+        code: 'PRODUCT_NOT_FOUND'
+      });
+    }
+  }
+
+  async generateCompanyRecommendations(userId, companyId, requestedCompanyId, payload = {}) {
+    await this.assertCompanyAccess(companyId, requestedCompanyId, payload.company_id);
+
+    const runtime = await this.resolveRuntimeConfigForCompany(userId, companyId);
+    const response = await this.callRagRecommendation(
+      runtime.config,
+      `/recommendations/company/${encodeURIComponent(requestedCompanyId)}`,
+      {
+        company_id: requestedCompanyId,
+        language: compactWhitespace(payload.language) || 'vi'
+      }
+    );
+
+    return {
+      ...response,
+      config_source: runtime.config_source
+    };
+  }
+
+  async generateProductSuggestions(userId, companyId, requestedProductId, payload = {}) {
+    await this.assertProductAccess(companyId, requestedProductId, payload.product_id);
+
+    const runtime = await this.resolveRuntimeConfigForCompany(userId, companyId);
+    const response = await this.callRagRecommendation(
+      runtime.config,
+      `/recommendations/product/${encodeURIComponent(requestedProductId)}`,
+      {
+        product_id: requestedProductId,
+        language: compactWhitespace(payload.language) || 'vi'
+      }
+    );
+
+    return {
+      ...response,
+      config_source: runtime.config_source
+    };
+  }
+
   buildMissingConfigError(canEdit) {
     return createAppError(
       canEdit ?
@@ -726,7 +908,8 @@ class ChatService {
       companyId,
       payload.conversation_id
     );
-    const dashboardChatConfig = await this.resolveGlobalRuntimeConfig();
+    const runtime = await this.resolveRuntimeConfigForCompany(userId, companyId);
+    const dashboardChatConfig = runtime.config;
     const ragResult = await this.callRagQuery(dashboardChatConfig, content);
     const client = await pool.connect();
     const analyticsEventIds = [];
@@ -762,7 +945,7 @@ class ChatService {
       );
 
       const assistantMetadata = {
-        config_source: null,
+        config_source: runtime.config_source,
         collection_name: dashboardChatConfig.collection_name,
         rag_metadatas: ragResult.rag_response.metadatas ?? null
       };
@@ -842,7 +1025,7 @@ class ChatService {
             assistantMessageResult.rows[0].metadata :
             {}
         },
-        config_source: null
+        config_source: runtime.config_source
       };
     } catch (error) {
       await client.query('ROLLBACK');

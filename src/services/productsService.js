@@ -51,10 +51,37 @@ const TRANSPORT_MODE_ALIASES = {
 };
 
 const DEFAULT_EMISSION_FACTOR_BY_MODE = {
-    road: 0.105,
-    sea: 0.016,
-    air: 0.602,
-    rail: 0.028
+    road: 0.12226,
+    sea: 0.01612,
+    air: 0.89939,
+    rail: 0.02779
+};
+
+const BULK_IMPORT_ENUMS = {
+    productType: new Set(['tshirt', 'pants', 'dress', 'jacket', 'shoes', 'bag', 'accessories', 'other']),
+    material: new Set([
+        'cotton',
+        'organic_cotton',
+        'recycled_cotton',
+        'polyester',
+        'recycled_polyester',
+        'nylon',
+        'wool',
+        'silk',
+        'linen',
+        'bamboo',
+        'hemp',
+        'tencel',
+        'viscose',
+        'blend',
+        'mixed'
+    ]),
+    materialSource: new Set(['domestic', 'imported', 'unknown']),
+    process: new Set(['knitting', 'weaving', 'cutting_sewing', 'cutting', 'dyeing', 'printing', 'finishing']),
+    energySource: new Set(['grid', 'solar', 'wind', 'coal', 'gas', 'mixed']),
+    marketType: new Set(['domestic', 'export']),
+    exportCountry: new Set(['eu', 'us', 'jp', 'kr', 'other']),
+    transportMode: new Set(['road', 'sea', 'air', 'rail', 'multimodal'])
 };
 
 const buildDomesticComplianceWarning = (validationResult) => ({
@@ -1165,6 +1192,192 @@ class ProductsService {
         return parsed;
     }
 
+    _readBulkField(row, fields, fallback = '') {
+        const payload = this._toPayloadObject(row);
+        for (const field of fields) {
+            if (payload[field] !== undefined && payload[field] !== null) {
+                return payload[field];
+            }
+        }
+        return fallback;
+    }
+
+    _readBulkString(row, fields) {
+        return String(this._readBulkField(row, fields, '') || '').trim();
+    }
+
+    _readBulkNumber(row, fields, fallback = Number.NaN) {
+        return this._toNumber(this._readBulkField(row, fields, fallback), fallback);
+    }
+
+    _splitBulkList(value) {
+        if (Array.isArray(value)) {
+            return value.map((item) => String(item || '').trim()).filter(Boolean);
+        }
+        return String(value || '')
+            .split(/[,;|]/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+    }
+
+    _addBulkValidationError(errors, field, message, code = 'INVALID_FIELD') {
+        errors.push({
+            field,
+            code,
+            message,
+            severity: 'error'
+        });
+    }
+
+    async validateBulkImportRows(companyId, rows = []) {
+        const safeRows = Array.isArray(rows) ? rows : [];
+        const seenSkus = new Set();
+        const candidateSkus = safeRows
+            .map((row) => this._readBulkString(row, ['sku', 'productCode', 'product_code']))
+            .filter(Boolean);
+        const existingSkus = new Set();
+
+        if (candidateSkus.length > 0) {
+            const existingResult = await pool.query(
+                `
+                SELECT sku
+                FROM products
+                WHERE company_id = $1
+                  AND sku = ANY($2::text[])
+                `,
+                [companyId, [...new Set(candidateSkus)]]
+            );
+            existingResult.rows.forEach((row) => existingSkus.add(String(row.sku)));
+        }
+
+        const validRows = [];
+        const invalidRows = [];
+        const warnings = [];
+
+        safeRows.forEach((row, index) => {
+            const rowNumber = index + 1;
+            const errors = [];
+            const sku = this._readBulkString(row, ['sku', 'productCode', 'product_code']);
+            const productName = this._readBulkString(row, ['productName', 'product_name', 'name']);
+            const productType = this._readBulkString(row, ['productType', 'product_type', 'category']).toLowerCase();
+            const quantity = this._readBulkNumber(row, ['quantity'], Number.NaN);
+            const weightPerUnit = this._readBulkNumber(row, ['weightPerUnit', 'weight_per_unit'], Number.NaN);
+            const primaryMaterial = this._readBulkString(row, ['primaryMaterial', 'primary_material']).toLowerCase();
+            const secondaryMaterial = this._readBulkString(row, ['secondaryMaterial', 'secondary_material']).toLowerCase();
+            const primaryPct = this._readBulkNumber(
+                row,
+                ['primaryMaterialPercentage', 'primary_material_percentage'],
+                Number.NaN
+            );
+            const secondaryPct = this._readBulkNumber(
+                row,
+                ['secondaryMaterialPercentage', 'secondary_material_percentage'],
+                0
+            );
+            const materialSource = this._readBulkString(row, ['materialSource', 'material_source']).toLowerCase();
+            const processes = this._splitBulkList(this._readBulkField(row, ['processes', 'productionProcesses'], []))
+                .map((item) => item.toLowerCase());
+            const energySource = this._readBulkString(row, ['energySource', 'energy_source']).toLowerCase();
+            const marketType = this._readBulkString(row, ['marketType', 'market_type']).toLowerCase();
+            const exportCountry = this._readBulkString(row, ['exportCountry', 'export_country']).toLowerCase();
+            const transportMode = this._readBulkString(row, ['transportMode', 'transport_mode']).toLowerCase();
+            const transportDistance = this._readBulkNumber(
+                row,
+                ['transportDistanceKm', 'transport_distance_km'],
+                Number.NaN
+            );
+
+            if (!sku) {
+                this._addBulkValidationError(errors, 'sku', 'SKU is required', 'REQUIRED');
+            } else if (seenSkus.has(sku)) {
+                this._addBulkValidationError(errors, 'sku', 'Duplicate SKU in import payload', 'DUPLICATE_IN_PAYLOAD');
+            } else if (existingSkus.has(sku)) {
+                this._addBulkValidationError(errors, 'sku', 'SKU already exists', 'DUPLICATE_SKU');
+            }
+            if (sku) {
+                seenSkus.add(sku);
+            }
+
+            if (!productName) {
+                this._addBulkValidationError(errors, 'productName', 'Product name is required', 'REQUIRED');
+            }
+            if (!productType || !BULK_IMPORT_ENUMS.productType.has(productType)) {
+                this._addBulkValidationError(errors, 'productType', 'Product type is invalid');
+            }
+            if (!Number.isFinite(quantity) || quantity <= 0) {
+                this._addBulkValidationError(errors, 'quantity', 'Quantity must be greater than 0');
+            }
+            if (!Number.isFinite(weightPerUnit) || weightPerUnit <= 0) {
+                this._addBulkValidationError(errors, 'weightPerUnit', 'Weight per unit must be greater than 0');
+            }
+            if (!primaryMaterial || !BULK_IMPORT_ENUMS.material.has(primaryMaterial)) {
+                this._addBulkValidationError(errors, 'primaryMaterial', 'Primary material is invalid');
+            }
+            if (secondaryMaterial && !BULK_IMPORT_ENUMS.material.has(secondaryMaterial)) {
+                this._addBulkValidationError(errors, 'secondaryMaterial', 'Secondary material is invalid');
+            }
+            if (!Number.isFinite(primaryPct) || primaryPct <= 0 || primaryPct > 100) {
+                this._addBulkValidationError(errors, 'primaryMaterialPercentage', 'Primary material percentage must be between 1 and 100');
+            }
+            if (!Number.isFinite(secondaryPct) || secondaryPct < 0 || secondaryPct > 100) {
+                this._addBulkValidationError(errors, 'secondaryMaterialPercentage', 'Secondary material percentage must be between 0 and 100');
+            }
+            if (Number.isFinite(primaryPct) && Number.isFinite(secondaryPct) && primaryPct + secondaryPct > 100) {
+                this._addBulkValidationError(errors, 'materialPercentage', 'Material percentages cannot exceed 100');
+            }
+            if (!materialSource || !BULK_IMPORT_ENUMS.materialSource.has(materialSource)) {
+                this._addBulkValidationError(errors, 'materialSource', 'Material source is invalid');
+            }
+            if (processes.length === 0) {
+                this._addBulkValidationError(errors, 'processes', 'At least one production process is required', 'REQUIRED');
+            } else {
+                processes
+                    .filter((process) => !BULK_IMPORT_ENUMS.process.has(process))
+                    .forEach((process) => this._addBulkValidationError(errors, 'processes', `Unknown production process: ${process}`));
+            }
+            if (!energySource || !BULK_IMPORT_ENUMS.energySource.has(energySource)) {
+                this._addBulkValidationError(errors, 'energySource', 'Energy source is invalid');
+            }
+            if (!marketType || !BULK_IMPORT_ENUMS.marketType.has(marketType)) {
+                this._addBulkValidationError(errors, 'marketType', 'Market type is invalid');
+            }
+            if (marketType === 'export' && exportCountry && !BULK_IMPORT_ENUMS.exportCountry.has(exportCountry)) {
+                this._addBulkValidationError(errors, 'exportCountry', 'Export country is invalid');
+            }
+            if (transportMode && !BULK_IMPORT_ENUMS.transportMode.has(transportMode)) {
+                this._addBulkValidationError(errors, 'transportMode', 'Transport mode is invalid');
+            }
+            if (Number.isFinite(transportDistance) && transportDistance < 0) {
+                this._addBulkValidationError(errors, 'transportDistanceKm', 'Transport distance cannot be negative');
+            }
+            if (transportMode && (!Number.isFinite(transportDistance) || transportDistance <= 0)) {
+                warnings.push({
+                    row: rowNumber,
+                    field: 'transportDistanceKm',
+                    message: 'Transport mode is set but distance is missing; import will rely on route defaults where available.',
+                    severity: 'warning'
+                });
+            }
+
+            if (errors.length > 0) {
+                invalidRows.push({ row: rowNumber, data: row, errors });
+            } else {
+                validRows.push(row);
+            }
+        });
+
+        return {
+            isValid: invalidRows.length === 0,
+            totalRows: safeRows.length,
+            validCount: validRows.length,
+            errorCount: invalidRows.length,
+            warningCount: warnings.length,
+            validRows,
+            invalidRows,
+            warnings
+        };
+    }
+
     _normalizeTransportMode(value) {
         const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
         return TRANSPORT_MODE_ALIASES[raw] || 'road';
@@ -1570,7 +1783,6 @@ class ProductsService {
             const { origin, destination, transportLegs, estimatedArrival } = this._extractLogisticsFromPayload(payload);
 
             if (!origin || !destination) {
-                console.log(`Product ${productId}: No logistics data in payload, skipping shipment creation`);
                 return { 
                     shipmentId: null, 
                     shipmentReferenceNumber: null,
@@ -1581,7 +1793,6 @@ class ProductsService {
 
             // Require at least origin and destination country
             if (!origin?.country || !destination?.country) {
-                console.log(`Product ${productId}: Missing origin/destination country (origin.country=${origin?.country}, destination.country=${destination?.country}), skipping shipment creation`);
                 return { 
                     shipmentId: null, 
                     shipmentReferenceNumber: null,
@@ -1602,7 +1813,6 @@ class ProductsService {
             const fallbackTotalCo2e = Math.max(0, this._toNumber(product.total_co2e, 0));
             const legs = this._normalizeShipmentLegs(transportLegs, origin, destination, fallbackTotalCo2e);
             if (legs.length === 0) {
-                console.log(`Product ${productId}: No transport legs in payload, skipping shipment creation`);
                 return {
                     shipmentId: null,
                     shipmentReferenceNumber: null,
@@ -1741,7 +1951,6 @@ class ProductsService {
                 ]
             );
 
-            console.log(`Product ${productId}: Created shipment ${shipmentId} (${refNumber}) from origin=${origin.country} destination=${destination.country}`);
             return { 
                 shipmentId, 
                 shipmentReferenceNumber: refNumber,

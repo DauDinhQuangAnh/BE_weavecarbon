@@ -965,7 +965,6 @@ class ReportsService {
                 }
             }, 'wc_report_generated');
 
-            console.log(`[Export] Generated real CSV for report ${reportId}: ${recordCount} rows, ${fileSize} bytes`);
         } catch (error) {
             // Mark as failed
             await client.query(`
@@ -1081,7 +1080,6 @@ class ReportsService {
                 }
             }, 'wc_report_generated');
 
-            console.log(`[Report] Generated real CSV for report ${reportId}: ${rows.length} rows, ${fileSize} bytes`);
         } catch (error) {
             await client.query(`
                 UPDATE reports

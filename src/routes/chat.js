@@ -13,6 +13,8 @@ const {
   listChatConversationsValidation,
   getChatConversationValidation,
   deleteChatConversationValidation,
+  companyRecommendationValidation,
+  productSuggestionValidation,
   sendChatMessageValidation,
   updateChatSettingsValidation
 } = require('../validators/chatValidators');
@@ -65,6 +67,38 @@ router.delete(
       data,
       message: 'Conversation deleted successfully'
     });
+  })
+);
+
+router.post(
+  '/recommendations/company/:company_id',
+  companyRecommendationValidation,
+  validate,
+  asyncHandler(async (req, res) => {
+    const data = await chatService.generateCompanyRecommendations(
+      req.userId,
+      req.companyId,
+      req.params.company_id,
+      req.body
+    );
+
+    return sendSuccess(res, { data });
+  })
+);
+
+router.post(
+  '/recommendations/product/:product_id',
+  productSuggestionValidation,
+  validate,
+  asyncHandler(async (req, res) => {
+    const data = await chatService.generateProductSuggestions(
+      req.userId,
+      req.companyId,
+      req.params.product_id,
+      req.body
+    );
+
+    return sendSuccess(res, { data });
   })
 );
 

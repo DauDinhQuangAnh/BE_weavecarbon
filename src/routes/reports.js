@@ -17,7 +17,7 @@ const {
 
 const ENABLE_DEV_PLACEHOLDER_DOWNLOAD =
     process.env.NODE_ENV !== 'production' &&
-    process.env.DISABLE_DOWNLOAD_PLACEHOLDER !== 'true';
+    process.env.ENABLE_DOWNLOAD_PLACEHOLDER === 'true';
 
 function isWithinUploadsRoot(filePath) {
     const relativePath = path.relative(UPLOADS_ROOT, filePath);
@@ -568,8 +568,6 @@ router.get(
                 return stream.pipe(res);
             }
 
-            // For S3/GCS/Azure: generate signed URL and redirect (placeholder)
-            // In production: use SDK to create a short-lived signed URL
             return res.status(501).json({
                 success: false,
                 error: {

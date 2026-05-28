@@ -6,6 +6,27 @@
 const pool = require('../config/database');
 const domesticComplianceService = require('./domesticComplianceService');
 
+const DEFAULT_EMISSION_FACTOR_BY_MODE = {
+  road: 0.12226,
+  sea: 0.01612,
+  air: 0.89939,
+  rail: 0.02779
+};
+
+const TRANSPORT_MODE_ALIASES = {
+  road: 'road',
+  truck: 'road',
+  truck_light: 'road',
+  truck_heavy: 'road',
+  sea: 'sea',
+  ship: 'sea',
+  ocean: 'sea',
+  air: 'air',
+  flight: 'air',
+  rail: 'rail',
+  train: 'rail'
+};
+
 class BatchesService {
   /**
    * List batches for a company
@@ -523,6 +544,102 @@ class BatchesService {
     }
   }
 
+  _toNumber(value, fallback = 0) {
+    const parsed = typeof value === 'number' ? value : Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  _parseJsonObject(value) {
+    if (!value) return null;
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+    if (typeof value !== 'string') return null;
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  _normalizeTransportMode(value) {
+    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    return TRANSPORT_MODE_ALIASES[raw] || null;
+  }
+
+  _hasCoordinates(location) {
+    return (
+      location &&
+      Number.isFinite(this._toNumber(location.lat, Number.NaN)) &&
+      Number.isFinite(this._toNumber(location.lng, Number.NaN))
+    );
+  }
+
+  _distanceKm(origin, destination) {
+    const originLat = this._toNumber(origin.lat, Number.NaN);
+    const originLng = this._toNumber(origin.lng, Number.NaN);
+    const destLat = this._toNumber(destination.lat, Number.NaN);
+    const destLng = this._toNumber(destination.lng, Number.NaN);
+    if (![originLat, originLng, destLat, destLng].every(Number.isFinite)) {
+      return 0;
+    }
+
+    const toRadians = (value) => value * Math.PI / 180;
+    const earthRadiusKm = 6371;
+    const latDelta = toRadians(destLat - originLat);
+    const lngDelta = toRadians(destLng - originLng);
+    const a =
+      Math.sin(latDelta / 2) ** 2 +
+      Math.cos(toRadians(originLat)) *
+        Math.cos(toRadians(destLat)) *
+        Math.sin(lngDelta / 2) ** 2;
+    return Math.max(0, earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+  }
+
+  _buildBatchShipmentLegs(batch, originData, destData, totalWeightKg) {
+    const transportModes = Array.isArray(batch.transport_modes) ? batch.transport_modes : [];
+    const normalizedModes = transportModes
+      .map((mode) => this._normalizeTransportMode(mode))
+      .filter(Boolean);
+    const uniqueModes = [...new Set(normalizedModes)];
+
+    if (uniqueModes.length === 0) {
+      return { legs: [], skipReason: 'MISSING_TRANSPORT_MODE' };
+    }
+    if (uniqueModes.length > 1) {
+      return { legs: [], skipReason: 'MISSING_MULTIMODAL_LEG_DISTANCES' };
+    }
+    if (!this._hasCoordinates(originData) || !this._hasCoordinates(destData)) {
+      return { legs: [], skipReason: 'MISSING_ROUTE_DISTANCE' };
+    }
+
+    const mode = uniqueModes[0];
+    const distanceKm = this._distanceKm(originData, destData);
+    if (distanceKm <= 0) {
+      return { legs: [], skipReason: 'MISSING_ROUTE_DISTANCE' };
+    }
+
+    const emissionFactor = DEFAULT_EMISSION_FACTOR_BY_MODE[mode];
+    const co2e = Math.max(0, (totalWeightKg / 1000) * distanceKm * emissionFactor);
+
+    return {
+      legs: [
+        {
+          leg_order: 1,
+          transport_mode: mode,
+          origin_location: originData.city || originData.country,
+          destination_location: destData.city || destData.country,
+          distance_km: distanceKm,
+          duration_hours: 0,
+          co2e,
+          emission_factor_used: emissionFactor,
+          carrier_name: null,
+          vehicle_type: mode
+        }
+      ],
+      skipReason: null
+    };
+  }
+
   /**
    * Publish batch (and optionally create shipment)
    */
@@ -590,18 +707,12 @@ class BatchesService {
       let shipmentId = null;
       let shipmentCreationSkipReason = null;
 
-      // Create shipment if batch has logistics data
-      // Require at minimum: origin and destination with country
+      // Create shipment only when the batch has enough defensible route data.
       if (batch.origin_address && batch.destination_address) {
-        const originData = typeof batch.origin_address === 'string' 
-          ? JSON.parse(batch.origin_address) 
-          : batch.origin_address;
-        const destData = typeof batch.destination_address === 'string'
-          ? JSON.parse(batch.destination_address)
-          : batch.destination_address;
+        const originData = this._parseJsonObject(batch.origin_address);
+        const destData = this._parseJsonObject(batch.destination_address);
 
         if (!originData?.country || !destData?.country) {
-          console.log(`Batch ${batchId}: Origin or destination missing country, skipping shipment creation`);
           shipmentCreationSkipReason = 'MISSING_LOCATION_COUNTRY';
         } else {
           // Get batch items with products
@@ -627,56 +738,35 @@ class BatchesService {
               allocated_co2e: parseFloat(item.co2_per_unit || item.total_co2e || 0) * parseInt(item.quantity)
             }));
 
-            // Calculate totals
-            const totalWeightKg = products.reduce((sum, p) => sum + parseFloat(p.weight_kg), 0);
-            const totalCo2e = parseFloat(batch.total_co2e || 0);
+            const totalWeightKg = products.reduce(
+              (sum, p) => sum + parseFloat(p.weight_kg) * parseFloat(p.quantity),
+              0
+            );
+            const { legs, skipReason } = this._buildBatchShipmentLegs(
+              batch,
+              originData,
+              destData,
+              totalWeightKg
+            );
 
-            // Create legs from transport_modes (if available)
-            let legs = [];
-            const transportModes = batch.transport_modes || [];
-            
-            if (transportModes.length > 0) {
-              const co2ePerMode = totalCo2e / transportModes.length;
-              legs = transportModes.map((mode, index) => ({
-                leg_order: index + 1,
-                transport_mode: mode,
-                origin_location: originData.city || originData.country,
-                destination_location: destData.city || destData.country,
-                distance_km: 0,
-                duration_hours: 0,
-                co2e: co2ePerMode,
-                emission_factor_used: 0.1,
-                carrier_name: null,
-                vehicle_type: mode
-              }));
-            } else {
-              // Create default leg if no transport modes specified
-              legs = [{
-                leg_order: 1,
-                transport_mode: 'road',
-                origin_location: originData.city || originData.country,
-                destination_location: destData.city || destData.country,
-                distance_km: 0,
-                duration_hours: 0,
-                co2e: totalCo2e,
-                emission_factor_used: 0.1,
-                carrier_name: null,
-                vehicle_type: 'truck'
-              }];
+            if (skipReason) {
+              shipmentCreationSkipReason = skipReason;
             }
 
             const totalDistanceKm = legs.reduce((sum, leg) => sum + parseFloat(leg.distance_km || 0), 0);
+            const totalCo2e = legs.reduce((sum, leg) => sum + parseFloat(leg.co2e || 0), 0);
 
-            // Generate reference number
-            const countResult = await client.query(
-              'SELECT COUNT(*) as count FROM shipments WHERE company_id = $1',
-              [companyId]
-            );
-            const count = parseInt(countResult.rows[0].count) + 1;
-            const refNumber = `SHIP-${new Date().getFullYear()}-${String(count).padStart(4, '0')}`;
+            if (legs.length === 0) {
+              shipmentCreationSkipReason = shipmentCreationSkipReason || 'MISSING_ROUTE_DISTANCE';
+            } else {
+              const countResult = await client.query(
+                'SELECT COUNT(*) as count FROM shipments WHERE company_id = $1',
+                [companyId]
+              );
+              const count = parseInt(countResult.rows[0].count) + 1;
+              const refNumber = `SHIP-${new Date().getFullYear()}-${String(count).padStart(4, '0')}`;
 
-            // Insert shipment
-            const shipmentQuery = `
+              const shipmentQuery = `
               INSERT INTO shipments (
                 company_id,
                 reference_number,
@@ -699,32 +789,31 @@ class BatchesService {
               RETURNING id
             `;
 
-            const shipmentResult = await client.query(shipmentQuery, [
-              companyId,
-              refNumber,
-              'pending',
-              originData.country,
-              originData.city || null,
-              originData.address || null,
-              originData.lat || null,
-              originData.lng || null,
-              destData.country,
-              destData.city || null,
-              destData.address || null,
-              destData.lat || null,
-              destData.lng || null,
-              totalWeightKg,
-              totalDistanceKm,
-              totalCo2e,
-              null
-            ]);
+              const shipmentResult = await client.query(shipmentQuery, [
+                companyId,
+                refNumber,
+                'pending',
+                originData.country,
+                originData.city || null,
+                originData.address || null,
+                originData.lat || null,
+                originData.lng || null,
+                destData.country,
+                destData.city || null,
+                destData.address || null,
+                destData.lat || null,
+                destData.lng || null,
+                totalWeightKg,
+                totalDistanceKm,
+                totalCo2e,
+                null
+              ]);
 
-            shipmentId = shipmentResult.rows[0].id;
+              shipmentId = shipmentResult.rows[0].id;
 
-            // Insert legs
-            for (const leg of legs) {
-              await client.query(
-                `INSERT INTO shipment_legs (
+              for (const leg of legs) {
+                await client.query(
+                  `INSERT INTO shipment_legs (
                   shipment_id,
                   leg_order,
                   transport_mode,
@@ -737,47 +826,46 @@ class BatchesService {
                   carrier_name,
                   vehicle_type
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-                [
-                  shipmentId,
-                  leg.leg_order,
-                  leg.transport_mode,
-                  leg.origin_location,
-                  leg.destination_location,
-                  leg.distance_km,
-                  leg.duration_hours,
-                  leg.co2e,
-                  leg.emission_factor_used,
-                  leg.carrier_name,
-                  leg.vehicle_type
-                ]
-              );
-            }
+                  [
+                    shipmentId,
+                    leg.leg_order,
+                    leg.transport_mode,
+                    leg.origin_location,
+                    leg.destination_location,
+                    leg.distance_km,
+                    leg.duration_hours,
+                    leg.co2e,
+                    leg.emission_factor_used,
+                    leg.carrier_name,
+                    leg.vehicle_type
+                  ]
+                );
+              }
 
-            // Insert products
-            for (const product of products) {
-              await client.query(
-                `INSERT INTO shipment_products (
+              for (const product of products) {
+                await client.query(
+                  `INSERT INTO shipment_products (
                   shipment_id,
                   product_id,
                   quantity,
                   weight_kg,
                   allocated_co2e
                 ) VALUES ($1, $2, $3, $4, $5)`,
-                [
-                  shipmentId,
-                  product.product_id,
-                  product.quantity,
-                  product.weight_kg,
-                  product.allocated_co2e
-                ]
-              );
+                  [
+                    shipmentId,
+                    product.product_id,
+                    product.quantity,
+                    product.weight_kg,
+                    product.allocated_co2e
+                  ]
+                );
+              }
             }
-
-            console.log(`Batch ${batchId}: Created shipment ${shipmentId} (${refNumber}) with ${products.length} products and ${legs.length} legs`);
+          } else {
+            shipmentCreationSkipReason = 'MISSING_BATCH_ITEMS';
           }
         }
       } else {
-        console.log(`Batch ${batchId}: Missing origin_address or destination_address, skipping shipment creation`);
         shipmentCreationSkipReason = 'MISSING_LOGISTICS_DATA';
       }
 
@@ -806,11 +894,25 @@ class BatchesService {
       };
 
       if (!shipmentId && shipmentCreationSkipReason) {
+        const skipMessages = {
+          MISSING_LOGISTICS_DATA:
+            'Batch published successfully but shipment was not created (missing origin or destination address)',
+          MISSING_LOCATION_COUNTRY:
+            'Batch published successfully but shipment was not created (missing country in location data)',
+          MISSING_TRANSPORT_MODE:
+            'Batch published successfully but shipment was not created (missing transport mode)',
+          MISSING_MULTIMODAL_LEG_DISTANCES:
+            'Batch published successfully but shipment was not created (multimodal batches need explicit leg distances)',
+          MISSING_ROUTE_DISTANCE:
+            'Batch published successfully but shipment was not created (missing route coordinates or distance)',
+          MISSING_BATCH_ITEMS:
+            'Batch published successfully but shipment was not created (missing batch item details)'
+        };
         response.shipmentCreationSkipped = true;
         response.skipReason = shipmentCreationSkipReason;
-        response.message = shipmentCreationSkipReason === 'MISSING_LOGISTICS_DATA' 
-          ? 'Batch published successfully but shipment was not created (missing origin or destination address)'
-          : 'Batch published successfully but shipment was not created (missing country in location data)';
+        response.message =
+          skipMessages[shipmentCreationSkipReason] ||
+          'Batch published successfully but shipment was not created (insufficient logistics data)';
       }
 
       return response;

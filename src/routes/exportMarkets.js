@@ -589,7 +589,6 @@ router.get(
                 return stream.pipe(res);
             }
 
-            // For S3/GCS/Azure: generate signed URL and redirect (placeholder)
             return res.status(501).json({
                 success: false,
                 error: {

@@ -21,6 +21,51 @@ const router = express.Router();
 router.use(authenticate);
 router.use(requireRole('b2b'));
 
+const BULK_TEMPLATE_COLUMNS = [
+  ['sku', 'SKU *', 'SKU-20260301-001'],
+  ['productName', 'Product Name *', 'Organic Cotton T-shirt'],
+  ['productType', 'Product Type *', 'tshirt'],
+  ['quantity', 'Quantity *', '1000'],
+  ['weightPerUnit', 'Weight Per Unit (gram) *', '250'],
+  ['primaryMaterial', 'Primary Material *', 'organic_cotton'],
+  ['primaryMaterialPercentage', 'Primary Material % *', '100'],
+  ['secondaryMaterial', 'Secondary Material', 'polyester'],
+  ['secondaryMaterialPercentage', 'Secondary Material %', '0'],
+  ['accessories', 'Accessories', 'label, thread'],
+  ['accessoriesWeightGram', 'Accessories Weight (gram)', '2,5'],
+  ['certifications', 'Certifications', 'gots,grs'],
+  ['materialSource', 'Material Source *', 'domestic'],
+  ['processes', 'Production Processes *', 'knitting,cutting_sewing,dyeing'],
+  ['energySource', 'Energy Source *', 'grid'],
+  ['manufacturingLocation', 'Manufacturing Location', 'Bien Hoa, Dong Nai'],
+  ['wasteRecovery', 'Waste Recovery', 'partial'],
+  ['marketType', 'Market Type *', 'export'],
+  ['exportCountry', 'Export Country', 'eu'],
+  ['exportComplianceDocuments', 'Export Compliance Documents', 'textile_fibre_composition_labeling'],
+  ['transportMode', 'Transport Mode', 'sea'],
+  ['transportOrigin', 'Transport Origin / Street', 'Tan Hiep Industrial Zone'],
+  ['transportOriginCity', 'Origin City', 'Bien Hoa'],
+  ['transportOriginStateRegion', 'Origin State / Province', 'Dong Nai'],
+  ['transportOriginCountry', 'Origin Country', 'Vietnam'],
+  ['transportDestination', 'Transport Destination / Street', 'Port of Rotterdam'],
+  ['transportDestinationCity', 'Destination City', 'Rotterdam'],
+  ['transportDestinationStateRegion', 'Destination State / Province', 'South Holland'],
+  ['transportDestinationCountry', 'Destination Country', 'Netherlands'],
+  ['transportDistanceKm', 'Transport Distance (km)', '11922']
+];
+
+function escapeCsvValue(value) {
+  const text = String(value ?? '');
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function buildBulkTemplateCsv() {
+  const header = BULK_TEMPLATE_COLUMNS.map((column) => escapeCsvValue(column[0])).join(',');
+  const labels = BULK_TEMPLATE_COLUMNS.map((column) => escapeCsvValue(column[1])).join(',');
+  const sample = BULK_TEMPLATE_COLUMNS.map((column) => escapeCsvValue(column[2])).join(',');
+  return [header, labels, sample].join('\n');
+}
+
 function ensureCompanyId(req, res) {
   if (req.companyId) {
     return req.companyId;
@@ -78,10 +123,26 @@ router.get('/', listProductsValidation, validate, asyncHandler(async (req, res) 
 }));
 
 router.get('/bulk-template', bulkTemplateValidation, validate, asyncHandler(async (req, res) => {
+  const format = req.query.format || 'csv';
+  if (format !== 'csv') {
+    return sendError(res, {
+      status: 501,
+      code: 'NOT_IMPLEMENTED',
+      message: 'XLSX template download is not enabled on the backend. Use format=csv.'
+    });
+  }
+
+  const csv = buildBulkTemplateCsv();
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="weavecarbon-products-template.csv"');
+  return res.status(200).send(csv);
+}));
+
+router.get('/bulk-template.xlsx', bulkTemplateValidation, validate, asyncHandler(async (req, res) => {
   return sendError(res, {
     status: 501,
     code: 'NOT_IMPLEMENTED',
-    message: 'Template download not yet implemented. Please install exceljs: npm install exceljs'
+    message: 'XLSX template download is not enabled on the backend. Use /bulk-template?format=csv.'
   });
 }));
 
@@ -95,20 +156,12 @@ router.post(
       return;
     }
 
-    const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+    const result = await productsService.validateBulkImportRows(
+      companyId,
+      Array.isArray(req.body.rows) ? req.body.rows : []
+    );
 
-    return sendSuccess(res, {
-      data: {
-        isValid: true,
-        totalRows: rows.length,
-        validCount: rows.length,
-        errorCount: 0,
-        warningCount: 0,
-        validRows: rows,
-        invalidRows: [],
-        warnings: []
-      }
-    });
+    return sendSuccess(res, { data: result });
   })
 );
 

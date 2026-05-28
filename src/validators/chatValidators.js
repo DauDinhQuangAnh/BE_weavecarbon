@@ -24,6 +24,42 @@ const deleteChatConversationValidation = [
     .withMessage('Conversation id must be a valid UUID')
 ];
 
+const companyRecommendationValidation = [
+  param('company_id')
+    .isUUID()
+    .withMessage('company_id must be a valid UUID'),
+
+  body('company_id')
+    .optional()
+    .isUUID()
+    .withMessage('company_id must be a valid UUID'),
+
+  body('language')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 2, max: 10 })
+    .withMessage('language must be between 2 and 10 characters')
+];
+
+const productSuggestionValidation = [
+  param('product_id')
+    .isUUID()
+    .withMessage('product_id must be a valid UUID'),
+
+  body('product_id')
+    .optional()
+    .isUUID()
+    .withMessage('product_id must be a valid UUID'),
+
+  body('language')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 2, max: 10 })
+    .withMessage('language must be between 2 and 10 characters')
+];
+
 const sendChatMessageValidation = [
   body('conversation_id')
     .optional()
@@ -83,6 +119,8 @@ module.exports = {
   listChatConversationsValidation,
   getChatConversationValidation,
   deleteChatConversationValidation,
+  companyRecommendationValidation,
+  productSuggestionValidation,
   sendChatMessageValidation,
   updateChatSettingsValidation
 };
