@@ -282,6 +282,7 @@ class ProductsService {
                         snapshot.shipment_reference_number ||
                         latestShipment?.referenceNumber ||
                         null,
+                    ...this._extractV2MetadataFromPayload(snapshot),
                     carbonResults: {
                         perProduct: {
                             materials: parseFloat(row.materials_co2e) || 0,
@@ -1206,6 +1207,22 @@ class ProductsService {
         return String(this._readBulkField(row, fields, '') || '').trim();
     }
 
+    _extractV2MetadataFromPayload(payload = {}) {
+        const snapshot = this._toPayloadObject(payload);
+        return {
+            hsCode: snapshot.hsCode || snapshot.hs_code || snapshot.cnCode || snapshot.cn_code || null,
+            cnCode: snapshot.cnCode || snapshot.cn_code || snapshot.hsCode || snapshot.hs_code || null,
+            facility: snapshot.facility || snapshot.factory || null,
+            evidenceLookupCode: snapshot.evidenceLookupCode || snapshot.evidence_lookup_code || null,
+            supplierCountry: snapshot.supplierCountry || snapshot.supplier_country || null,
+            supplyGap: Boolean(snapshot.supplyGap || snapshot.supply_gap),
+            customsDeclarationNo: snapshot.customsDeclarationNo || snapshot.customs_declaration_no || null,
+            poContractId: snapshot.poContractId || snapshot.po_contract_id || null,
+            billOfLadingNo: snapshot.billOfLadingNo || snapshot.bill_of_lading_no || null,
+            containerNo: snapshot.containerNo || snapshot.container_no || null
+        };
+    }
+
     _readBulkNumber(row, fields, fallback = Number.NaN) {
         return this._toNumber(this._readBulkField(row, fields, fallback), fallback);
     }
@@ -1260,6 +1277,12 @@ class ProductsService {
             const sku = this._readBulkString(row, ['sku', 'productCode', 'product_code']);
             const productName = this._readBulkString(row, ['productName', 'product_name', 'name']);
             const productType = this._readBulkString(row, ['productType', 'product_type', 'category']).toLowerCase();
+            const hsCode = this._readBulkString(row, ['hsCode', 'hs_code', 'cnCode', 'cn_code']);
+            const evidenceLookupCode = this._readBulkString(row, ['evidenceLookupCode', 'evidence_lookup_code']);
+            const supplyGap = this._readBulkString(row, ['supplyGap', 'supply_gap']).toLowerCase();
+            const poContractId = this._readBulkString(row, ['poContractId', 'po_contract_id']);
+            const billOfLadingNo = this._readBulkString(row, ['billOfLadingNo', 'bill_of_lading_no']);
+            const containerNo = this._readBulkString(row, ['containerNo', 'container_no']);
             const quantity = this._readBulkNumber(row, ['quantity'], Number.NaN);
             const weightPerUnit = this._readBulkNumber(row, ['weightPerUnit', 'weight_per_unit'], Number.NaN);
             const primaryMaterial = this._readBulkString(row, ['primaryMaterial', 'primary_material']).toLowerCase();
@@ -1303,6 +1326,12 @@ class ProductsService {
             }
             if (!productType || !BULK_IMPORT_ENUMS.productType.has(productType)) {
                 this._addBulkValidationError(errors, 'productType', 'Product type is invalid');
+            }
+            if (hsCode && !/^[0-9]{6,10}$/.test(hsCode)) {
+                this._addBulkValidationError(errors, 'hsCode', 'HS/CN code must contain 6 to 10 digits');
+            }
+            if (supplyGap && !['true', 'false', 'yes', 'no', '1', '0', 'missing', 'gap'].includes(supplyGap)) {
+                this._addBulkValidationError(errors, 'supplyGap', 'Supply gap must be true/false');
             }
             if (!Number.isFinite(quantity) || quantity <= 0) {
                 this._addBulkValidationError(errors, 'quantity', 'Quantity must be greater than 0');
@@ -1355,6 +1384,22 @@ class ProductsService {
                     row: rowNumber,
                     field: 'transportDistanceKm',
                     message: 'Transport mode is set but distance is missing; import will rely on route defaults where available.',
+                    severity: 'warning'
+                });
+            }
+            if (marketType === 'export' && (!poContractId || !billOfLadingNo || !containerNo)) {
+                warnings.push({
+                    row: rowNumber,
+                    field: 'exportDocuments',
+                    message: 'Export product is missing PO/Bill of Lading/Container metadata for the v2 export portal.',
+                    severity: 'warning'
+                });
+            }
+            if (!evidenceLookupCode) {
+                warnings.push({
+                    row: rowNumber,
+                    field: 'evidenceLookupCode',
+                    message: 'Evidence lookup code is missing; audit readiness will be lower until evidence is linked.',
                     severity: 'warning'
                 });
             }

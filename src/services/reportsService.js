@@ -6,6 +6,13 @@ const { UPLOADS_ROOT } = require('../config/runtime');
 const analyticsService = require('./analyticsService');
 const reportJobQueue = require('./reportJobQueue');
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const normalizeUuid = (value) => {
+    const text = String(value || '').trim();
+    return UUID_REGEX.test(text) ? text : null;
+};
+
 const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope) => {
     try {
         const event = await analyticsService.enqueueEvent(client, payload);
@@ -26,6 +33,65 @@ const safeTrackAnalyticsEvent = async (payload, scope) => {
 };
 
 class ReportsService {
+    async getActiveV2Template() {
+        const result = await pool.query(
+            `
+                SELECT id, template_key, version, title, config
+                FROM report_templates
+                WHERE template_key = 'WEAVE_CARBON_TEMPLATE_v2.0'
+                ORDER BY updated_at DESC
+                LIMIT 1
+            `
+        );
+        return result.rows[0] || null;
+    }
+
+    async createV2Snapshot(companyId, userId, snapshotData = {}) {
+        const template = await this.getActiveV2Template();
+        const payload = snapshotData.payload || {};
+        const sku = snapshotData.sku || payload?.sku?.sku || payload?.sku || null;
+        const requestedProductId = normalizeUuid(snapshotData.product_id || snapshotData.productId);
+        let productId = null;
+
+        if (requestedProductId) {
+            const productResult = await pool.query(
+                'SELECT id FROM products WHERE id = $1 AND company_id = $2',
+                [requestedProductId, companyId]
+            );
+            productId = productResult.rows[0]?.id || null;
+        }
+
+        const result = await pool.query(
+            `
+                INSERT INTO report_snapshots (
+                    company_id,
+                    product_id,
+                    report_template_id,
+                    sku,
+                    snapshot_type,
+                    payload,
+                    style_config,
+                    chart_data,
+                    formulas,
+                    created_by
+                ) VALUES ($1,$2,$3,$4,'weave_carbon_v2',$5,$6,$7,$8,$9)
+                RETURNING id, sku, snapshot_type, created_at
+            `,
+            [
+                companyId,
+                productId,
+                template?.id || null,
+                sku,
+                JSON.stringify(payload),
+                JSON.stringify(snapshotData.style_config || snapshotData.styleConfig || {}),
+                JSON.stringify(snapshotData.chart_data || snapshotData.chartData || {}),
+                JSON.stringify(snapshotData.formulas || {}),
+                userId
+            ]
+        );
+        return result.rows[0];
+    }
+
     /**
      * List reports for a company with filters and pagination
      */

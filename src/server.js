@@ -21,6 +21,8 @@ const productsRoutes = require('./routes/products');
 const batchesRoutes = require('./routes/batches');
 const logisticsRoutes = require('./routes/logistics');
 const exportMarketsRoutes = require('./routes/exportMarkets');
+const exportV2Routes = require('./routes/exportV2');
+const evidenceRoutes = require('./routes/evidence');
 const chatRoutes = require('./routes/chat');
 const aiConfigRoutes = require('./routes/aiConfig');
 const contactRoutes = require('./routes/contact');
@@ -41,7 +43,9 @@ const apiRoutes = [
   ['/api/products', productsRoutes],
   ['/api/product-batches', batchesRoutes],
   ['/api/logistics', logisticsRoutes],
+  ['/api/export', exportV2Routes],
   ['/api/export/markets', exportMarketsRoutes],
+  ['/api/evidence', evidenceRoutes],
   ['/api/chat', chatRoutes],
   ['/api/ai-config', aiConfigRoutes],
   ['/api/contact', contactRoutes],

@@ -355,6 +355,60 @@ router.get(
     }
 );
 
+router.get(
+    '/v2/template',
+    authenticate,
+    requireRole('b2b'),
+    async (req, res, next) => {
+        try {
+            if (!req.companyId) {
+                return res.status(404).json({
+                    success: false,
+                    error: {
+                        code: 'NO_COMPANY',
+                        message: 'No company associated with this user'
+                    }
+                });
+            }
+
+            const template = await reportsService.getActiveV2Template();
+            return res.status(200).json({
+                success: true,
+                data: template
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+);
+
+router.post(
+    '/v2/snapshots',
+    authenticate,
+    requireRole('b2b'),
+    async (req, res, next) => {
+        try {
+            if (!req.companyId) {
+                return res.status(404).json({
+                    success: false,
+                    error: {
+                        code: 'NO_COMPANY',
+                        message: 'No company associated with this user'
+                    }
+                });
+            }
+
+            const snapshot = await reportsService.createV2Snapshot(req.companyId, req.userId, req.body || {});
+            return res.status(201).json({
+                success: true,
+                data: snapshot
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+);
+
 /**
  * GET /api/reports/:id
  * Get report detail

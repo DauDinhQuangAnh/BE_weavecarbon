@@ -10,6 +10,7 @@
     "migrate": "node scripts/migrate.js",
     "analytics:flush": "node scripts/flush-analytics-outbox.js",
     "build:release": "node scripts/build-release.js",
+    "clean:local": "node scripts/clean-local.js",
     "check:syntax": "node scripts/check-syntax.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
