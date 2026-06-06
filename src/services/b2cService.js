@@ -14,6 +14,14 @@ const DONATION_IMAGE_LEVELS = [
 const ALLOWED_CATEGORIES = new Set(['charity', 'recycle']);
 const ALLOWED_DELIVERY_METHODS = new Set(['drop_off', 'shipping']);
 const MAX_GPS_DISTANCE_KM = 0.2;
+const IMAGE_ANALYSIS_ITEM_KEYWORDS = [
+  { pattern: /(shirt|tee|tshirt|t-shirt|áo)/i, itemName: 'Textile shirt', itemType: 'shirt', weightKg: 0.25, materialHint: 'cotton' },
+  { pattern: /(jean|pants|trouser|quần)/i, itemName: 'Pants', itemType: 'pants', weightKg: 0.6, materialHint: 'cotton' },
+  { pattern: /(jacket|coat|áo khoác)/i, itemName: 'Jacket', itemType: 'jacket', weightKg: 0.9, materialHint: 'polyester' },
+  { pattern: /(bag|tote|túi)/i, itemName: 'Reusable bag', itemType: 'bag', weightKg: 0.35, materialHint: 'cotton' },
+  { pattern: /(shoe|sneaker|giày)/i, itemName: 'Shoes', itemType: 'shoes', weightKg: 0.8, materialHint: 'leather' },
+  { pattern: /(dress|váy|đầm)/i, itemName: 'Dress', itemType: 'dress', weightKg: 0.45, materialHint: 'polyester' }
+];
 
 let schemaReadyPromise = null;
 
@@ -90,6 +98,47 @@ const mapMaterialReward = (row) => ({
   description: row.description,
   is_active: row.is_active === true
 });
+
+const resolveAnalysisMaterial = (materials, hint) => {
+  const normalizedHint = String(hint || '').toLowerCase();
+
+  if (normalizedHint) {
+    const matched = materials.find((material) =>
+      String(material.material_name || '').toLowerCase().includes(normalizedHint) ||
+      String(material.material_category || '').toLowerCase().includes(normalizedHint)
+    );
+
+    if (matched) return matched;
+  }
+
+  return (
+    materials.find((material) =>
+      String(material.material_name || '').toLowerCase().includes('other')
+    ) ||
+    materials[0] ||
+    null
+  );
+};
+
+const inferAnalysisItems = (fileName, category) => {
+  const normalizedFileName = String(fileName || '').toLowerCase();
+  const matchedItems = IMAGE_ANALYSIS_ITEM_KEYWORDS
+    .filter((candidate) => candidate.pattern.test(normalizedFileName))
+    .slice(0, 3);
+
+  if (matchedItems.length > 0) {
+    return matchedItems;
+  }
+
+  return [
+    {
+      itemName: category === 'charity' ? 'Donation textile item' : 'Recyclable textile item',
+      itemType: 'textile',
+      weightKg: category === 'charity' ? 0.45 : 0.6,
+      materialHint: 'other'
+    }
+  ];
+};
 
 const mapCoupon = (row) => ({
   id: row.id,
@@ -374,6 +423,58 @@ class B2CService {
 
     return {
       items: result.rows.map(mapMaterialReward)
+    };
+  }
+
+  async analyzeDonationImage(file, category = 'recycle') {
+    await this.ensureSchema();
+
+    if (!file) {
+      throw createBusinessError(
+        'DONATION_IMAGE_REQUIRED',
+        'Donation image is required for analysis',
+        422
+      );
+    }
+
+    const mimeType = String(file.mimetype || '').toLowerCase();
+    if (!mimeType.startsWith('image/')) {
+      throw createBusinessError(
+        'INVALID_DONATION_IMAGE',
+        'Only image files can be analyzed',
+        400
+      );
+    }
+
+    const normalizedCategory = ALLOWED_CATEGORIES.has(category) ? category : 'recycle';
+    const materialsPayload = await this.listMaterialRewards();
+    const materials = materialsPayload.items.filter((material) => material.is_active);
+    const inferredItems = inferAnalysisItems(file.originalname, normalizedCategory);
+    const products = inferredItems.map((item) => {
+      const material = resolveAnalysisMaterial(materials, item.materialHint);
+
+      return {
+        item_name: item.itemName,
+        item_type: item.itemType,
+        material_id: material?.id || 'other',
+        custom_material_name: material ? undefined : 'Other Material',
+        condition: normalizedCategory === 'charity' ? 'good' : 'fair',
+        weight_kg: item.weightKg,
+        confidence: 0.62
+      };
+    });
+
+    return {
+      products,
+      total_items_detected: products.length,
+      overall_confidence: products.length > 1 ? 0.66 : 0.62,
+      raw_analysis: {
+        provider: 'heuristic',
+        file_name: file.originalname,
+        mime_type: file.mimetype,
+        size_bytes: file.size,
+        category: normalizedCategory
+      }
     };
   }
 

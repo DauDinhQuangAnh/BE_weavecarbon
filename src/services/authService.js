@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const pool = require('../config/database');
 const jwtConfig = require('../config/jwt');
 const subscriptionService = require('./subscriptionService');
+const b2cDefaultsService = require('./b2cDefaultsService');
 const {
   DEFAULT_DOMESTIC_MARKET,
   ensureCompaniesDomesticMarketColumn,
@@ -853,6 +854,250 @@ class AuthService {
     return this.getCompanyMembership(companyId, userId, client);
   }
 
+  _getDemoB2CLevel(totalPoints) {
+    if (totalPoints >= 2000) return 'Champion';
+    if (totalPoints >= 1000) return 'Advocate';
+    if (totalPoints >= 400) return 'Explorer';
+    return 'Beginner';
+  }
+
+  _buildDemoB2CItem(material, itemName, itemType, condition, weightKg) {
+    const pointsEarned = Math.round(Number(material.points_per_kg || 0) * weightKg);
+    const co2Saved = Number((Number(material.co2_saved_per_kg || 0) * weightKg).toFixed(4));
+
+    return {
+      item_name: itemName,
+      item_type: itemType,
+      condition,
+      material_id: material.id,
+      weight_kg: weightKg,
+      points_earned: pointsEarned,
+      co2_saved: co2Saved
+    };
+  }
+
+  async seedDemoB2CData(client, userId) {
+    await b2cDefaultsService.ensureSeedData(client);
+
+    const materialResult = await client.query(
+      `
+        SELECT id, material_name, material_category, points_per_kg, co2_saved_per_kg
+        FROM public.material_rewards
+        WHERE is_active = true
+        ORDER BY
+          CASE
+            WHEN material_name ILIKE '%cotton%' THEN 1
+            WHEN material_name ILIKE '%polyester%' THEN 2
+            WHEN material_name ILIKE '%linen%' THEN 3
+            ELSE 4
+          END,
+          material_name ASC
+        LIMIT 6
+      `
+    );
+
+    if (materialResult.rows.length < 2) {
+      await client.query(
+        `INSERT INTO public.user_rewards (user_id, total_points, created_at, updated_at)
+         VALUES ($1, 100, NOW(), NOW())
+         ON CONFLICT (user_id) DO NOTHING`,
+        [userId]
+      );
+      return;
+    }
+
+    const collectionPointResult = await client.query(
+      `
+        SELECT id
+        FROM public.collection_points
+        WHERE is_active = true
+          AND accepts_charity = true
+          AND accepts_recycle = true
+        ORDER BY name ASC
+        LIMIT 1
+      `
+    );
+
+    const collectionPointId = collectionPointResult.rows[0]?.id || null;
+    const [cotton, polyester, linen = materialResult.rows[1]] = materialResult.rows;
+    const donationSpecs = [
+      {
+        category: 'charity',
+        status: 'received',
+        daysAgo: 3,
+        description: 'Demo donation: cotton shirts and recycled fabric',
+        items: [
+          this._buildDemoB2CItem(cotton, 'Cotton shirts', 'shirt', 'good', 5.0),
+          this._buildDemoB2CItem(polyester, 'Reusable tote bags', 'bag', 'good', 3.0)
+        ]
+      },
+      {
+        category: 'recycle',
+        status: 'processed',
+        daysAgo: 1,
+        description: 'Demo recycling: mixed textile batch',
+        items: [
+          this._buildDemoB2CItem(polyester, 'Polyester jackets', 'jacket', 'worn', 4.0),
+          this._buildDemoB2CItem(linen, 'Linen scraps', 'fabric', 'worn', 2.0)
+        ]
+      }
+    ];
+
+    let totalPoints = 0;
+    let totalItems = 0;
+    let totalWeightKg = 0;
+    let totalCo2Saved = 0;
+
+    for (const donation of donationSpecs) {
+      const basePoints = donation.items.reduce((sum, item) => sum + item.points_earned, 0);
+      const bonusPoints = donation.category === 'charity' ? Math.round(basePoints * 0.5) : 0;
+      const donationPoints = basePoints + bonusPoints;
+      const donationWeight = Number(
+        donation.items.reduce((sum, item) => sum + item.weight_kg, 0).toFixed(4)
+      );
+      const donationCo2Saved = Number(
+        donation.items.reduce((sum, item) => sum + item.co2_saved, 0).toFixed(4)
+      );
+      const createdAt = new Date(Date.now() - donation.daysAgo * 24 * 60 * 60 * 1000);
+
+      const donationResult = await client.query(
+        `
+          INSERT INTO public.donations (
+            user_id,
+            category,
+            delivery_method,
+            status,
+            item_description,
+            material_id,
+            estimated_weight_kg,
+            actual_weight_kg,
+            collection_point_id,
+            base_points,
+            bonus_points,
+            total_points,
+            co2_saved,
+            confirmed_at,
+            confirmation_method,
+            completed_at,
+            created_at,
+            updated_at
+          ) VALUES (
+            $1, $2, 'drop_off', $3, $4, $5, $6, $6, $7, $8, $9, $10, $11,
+            $12, 'staff', $13, $14, $14
+          )
+          RETURNING id
+        `,
+        [
+          userId,
+          donation.category,
+          donation.status,
+          donation.description,
+          donation.items.length === 1 ? donation.items[0].material_id : null,
+          donationWeight,
+          collectionPointId,
+          basePoints,
+          bonusPoints,
+          donationPoints,
+          donationCo2Saved,
+          createdAt,
+          donation.status === 'processed' ? createdAt : null,
+          createdAt
+        ]
+      );
+
+      const donationId = donationResult.rows[0].id;
+
+      for (const item of donation.items) {
+        await client.query(
+          `
+            INSERT INTO public.donation_items (
+              donation_id,
+              item_name,
+              item_type,
+              condition,
+              material_id,
+              weight_kg,
+              points_earned,
+              co2_saved,
+              created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          `,
+          [
+            donationId,
+            item.item_name,
+            item.item_type,
+            item.condition,
+            item.material_id,
+            item.weight_kg,
+            item.points_earned,
+            item.co2_saved,
+            createdAt
+          ]
+        );
+      }
+
+      await client.query(
+        `
+          INSERT INTO public.reward_transactions (
+            user_id,
+            donation_id,
+            transaction_type,
+            points,
+            description,
+            created_at
+          ) VALUES ($1, $2, 'earn', $3, $4, $5)
+        `,
+        [
+          userId,
+          donationId,
+          donationPoints,
+          donation.category === 'charity'
+            ? 'Demo charity donation reward'
+            : 'Demo textile recycling reward',
+          createdAt
+        ]
+      );
+
+      totalPoints += donationPoints;
+      totalItems += donation.items.length;
+      totalWeightKg += donationWeight;
+      totalCo2Saved += donationCo2Saved;
+    }
+
+    await client.query(
+      `
+        INSERT INTO public.user_rewards (
+          user_id,
+          total_points,
+          total_donations,
+          total_items_donated,
+          total_weight_kg,
+          total_co2_saved,
+          current_level,
+          created_at,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+        ON CONFLICT (user_id) DO UPDATE SET
+          total_points = EXCLUDED.total_points,
+          total_donations = EXCLUDED.total_donations,
+          total_items_donated = EXCLUDED.total_items_donated,
+          total_weight_kg = EXCLUDED.total_weight_kg,
+          total_co2_saved = EXCLUDED.total_co2_saved,
+          current_level = EXCLUDED.current_level,
+          updated_at = NOW()
+      `,
+      [
+        userId,
+        totalPoints,
+        donationSpecs.length,
+        totalItems,
+        Number(totalWeightKg.toFixed(4)),
+        Number(totalCo2Saved.toFixed(4)),
+        this._getDemoB2CLevel(totalPoints)
+      ]
+    );
+  }
+
   async createDemoUser(role, scenario = 'sample_data') {
     const client = await pool.connect();
     try {
@@ -928,11 +1173,7 @@ class AuthService {
       }
 
       if (role === 'b2c') {
-        await client.query(
-          `INSERT INTO user_rewards (user_id, total_points, created_at, updated_at)
-           VALUES ($1, 100, NOW(), NOW())`,
-          [user.id]
-        );
+        await this.seedDemoB2CData(client, user.id);
       }
 
       await client.query('COMMIT');

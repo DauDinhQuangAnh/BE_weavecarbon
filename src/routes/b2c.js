@@ -95,6 +95,46 @@ const uploadDonationImage = (req, res, next) => {
   });
 };
 
+const analysisImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024
+  },
+  fileFilter: (_req, file, callback) => {
+    const mimeType = String(file.mimetype || '').toLowerCase();
+    if (!mimeType.startsWith('image/')) {
+      callback(new Error('Only image files are allowed.'));
+      return;
+    }
+
+    callback(null, true);
+  }
+});
+
+const uploadAnalysisImage = (req, res, next) => {
+  analysisImageUpload.single('image')(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      sendError(res, {
+        status: 400,
+        code: 'FILE_TOO_LARGE',
+        message: 'Donation image is too large. Maximum size is 10MB.'
+      });
+      return;
+    }
+
+    sendError(res, {
+      status: 400,
+      code: 'INVALID_DONATION_IMAGE',
+      message: error.message || 'Invalid donation image upload.'
+    });
+  });
+};
+
 const parseDonationPayload = (rawPayload) => {
   if (typeof rawPayload !== 'string' || rawPayload.trim().length === 0) {
     throw new Error('Donation payload is required.');
@@ -185,6 +225,25 @@ router.get(
     return sendSuccess(res, {
       data: payload
     });
+  })
+);
+
+router.post(
+  '/analyze-donation-image',
+  uploadAnalysisImage,
+  asyncHandler(async (req, res) => {
+    try {
+      const payload = await b2cService.analyzeDonationImage(req.file, req.body?.category);
+
+      return sendSuccess(res, {
+        data: payload
+      });
+    } catch (error) {
+      if (handleB2CError(res, error)) {
+        return;
+      }
+      throw error;
+    }
   })
 );
 
