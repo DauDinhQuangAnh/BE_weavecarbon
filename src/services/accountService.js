@@ -109,7 +109,7 @@ class AccountService {
         FROM company_members cm
         JOIN companies c ON c.id = cm.company_id
         WHERE cm.user_id = $1
-          AND cm.status IN ('active', 'invited')
+          AND cm.status = 'active'
         ORDER BY
           CASE WHEN cm.status = 'active' THEN 0 ELSE 1 END,
           CASE WHEN cm.role = 'admin' THEN 0 ELSE 1 END,

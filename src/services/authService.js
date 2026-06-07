@@ -170,6 +170,7 @@ class AuthService {
     return jwt.sign(
       {
         sub: userId,
+        type: 'access',
         email,
         roles,
         is_demo: isDemo,
@@ -672,7 +673,13 @@ class AuthService {
     }
   }
 
-  async handleGoogleAuth({ email, fullName, avatarUrl, role = 'b2c', intent = 'signin' }) {
+  async handleGoogleAuth({
+    email,
+    fullName,
+    avatarUrl,
+    role = 'b2c',
+    intent = 'signin'
+  }) {
     const normalizedEmail = (email || '').trim().toLowerCase();
     const normalizedIntent = intent === 'signup' ? 'signup' : 'signin';
     const fallbackRole = normalizedIntent === 'signup' ? 'b2b' : 'b2c';
@@ -698,7 +705,7 @@ class AuthService {
       effectiveRole,
       {
         skipCompanyCreation: shouldSkipCompanyCreation,
-        markEmailVerified: false
+        markEmailVerified: true
       }
     );
 
@@ -1199,7 +1206,8 @@ class AuthService {
     }
   }
 
-  async getPrimaryCompanyMembership(userId) {
+  async getPrimaryCompanyMembership(userId, options = {}) {
+    const { includeInactive = false } = options;
     const client = await pool.connect();
     try {
       await ensureCompaniesDomesticMarketColumn(client);
@@ -1220,12 +1228,13 @@ class AuthService {
        FROM company_members cm
        JOIN companies c ON c.id = cm.company_id
        WHERE cm.user_id = $1
+         AND ($2::boolean OR cm.status = 'active')
        ORDER BY
          CASE WHEN cm.status = 'active' THEN 0 ELSE 1 END,
          CASE WHEN cm.role = 'admin' THEN 0 ELSE 1 END,
          cm.created_at DESC
        LIMIT 1`,
-        [userId]
+        [userId, includeInactive]
       );
 
       return result.rows[0] || null;

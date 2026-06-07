@@ -46,6 +46,11 @@ const GOOGLE_AUTH_ERROR_MESSAGES = {
   GOOGLE_AUTH_FAILED: 'Google authentication failed. Please retry.'
 };
 
+router.use((_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
 const attachAnalyticsCompany = (company) => {
   if (!company) {
     return null;
@@ -278,7 +283,7 @@ function buildAuthResponseData({
     },
     profile: {
       id: user.profile_id,
-      company_id: user.company_id,
+      company_id: companyIdForToken || user.company_id || null,
       is_demo_user: user.is_demo_user
     },
     roles: user.roles,
@@ -373,6 +378,44 @@ async function issueRefreshBackedSession(req, res, refreshToken, {
       companyMembership,
       companyIdForToken,
       accessToken
+    })
+  });
+}
+
+async function issueAccessBackedSession(req, res, accessToken, {
+  updateMembershipLogin = false
+} = {}) {
+  const decodedAccessToken = authService.verifyAccessToken(accessToken);
+  // Older access tokens did not include type; accept them until they naturally expire.
+  if (!decodedAccessToken || (decodedAccessToken.type && decodedAccessToken.type !== 'access')) {
+    return sendSessionExpired(res, 'Invalid or expired session.', {
+      code: 'INVALID_TOKEN',
+      clearCookie: false
+    });
+  }
+
+  const user = await authService.getUserById(decodedAccessToken.sub);
+  if (!user) {
+    return sendSessionExpired(res, 'Session user was not found.', {
+      code: 'SESSION_USER_NOT_FOUND',
+      clearCookie: true
+    });
+  }
+
+  const { company, companyMembership, companyIdForToken } = await resolveAuthSessionContext(
+    user,
+    { updateMembershipLogin }
+  );
+
+  return res.json({
+    success: true,
+    data: buildAuthResponseData({
+      user,
+      company,
+      companyMembership,
+      companyIdForToken,
+      accessToken,
+      includeRefreshToken: false
     })
   });
 }
@@ -518,7 +561,9 @@ router.post('/signup', signupLimiter, signupValidation, validate, async (req, re
     if (existingUser) {
       // If email exists but NOT verified, allow re-registration (delete old account)
       if (!existingUser.email_verified) {
-        const pendingMembership = await authService.getPrimaryCompanyMembership(existingUser.id);
+        const pendingMembership = await authService.getPrimaryCompanyMembership(existingUser.id, {
+          includeInactive: true
+        });
         if (pendingMembership?.member_status === 'invited') {
           return res.status(409).json({
             success: false,
@@ -770,6 +815,13 @@ router.get('/session', refreshLimiter, async (req, res, next) => {
   try {
     const refreshToken = resolveRefreshTokenValue(req);
     if (!refreshToken) {
+      const accessToken = extractBearerAccessToken(req);
+      if (accessToken) {
+        return await issueAccessBackedSession(req, res, accessToken, {
+          updateMembershipLogin: true
+        });
+      }
+
       return sendSessionExpired(res, 'No active session was found.', {
         code: 'NO_ACTIVE_SESSION',
         clearCookie: false
@@ -1347,6 +1399,8 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
       const verificationRequiredRedirect = buildFrontendAuthCallbackUrl({
         provider: 'google',
         auth_intent: intent,
+        role,
+        type: role,
         is_new_user: isNewUser ? 1 : 0,
         email: user.email,
         requires_email_verification: 1,
@@ -1394,11 +1448,9 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
     );
     const tokenPayload = buildTokenPayload(accessToken, null, { includeRefreshToken: false });
     const refreshToken = authService.generateRefreshToken(user.id, rememberMe);
-    let cookieSessionIssued = false;
     try {
       await authService.storeRefreshToken(refreshToken, user.id, resolveRequestMetadata(req));
       setRefreshTokenCookie(res, refreshToken, { rememberMe });
-      cookieSessionIssued = true;
     } catch (sessionError) {
       console.error('[auth] Failed to issue Google cookie session:', sessionError);
       clearRefreshTokenCookie(res);
@@ -1412,6 +1464,8 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
       expires_at: tokenPayload.expires_at,
       provider: 'google',
       auth_intent: intent,
+      role,
+      type: role,
       is_new_user: isNewUser ? 1 : 0,
       requires_company_setup: shouldSetupCompany ? 1 : 0,
       requires_email_verification: requiresEmailVerification ? 1 : 0,
@@ -1427,13 +1481,16 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
 
     res.redirect(redirectUrl);
   } catch (error) {
+    const parsedState = googleAuthService.parseState(state);
     const errorCode = error.code || 'GOOGLE_AUTH_FAILED';
     const errorDescription =
       GOOGLE_AUTH_ERROR_MESSAGES[errorCode] || GOOGLE_AUTH_ERROR_MESSAGES.GOOGLE_AUTH_FAILED;
     const errorUrl = buildFrontendAuthCallbackUrl({
       error: errorCode,
-      error_description: errorDescription
-    }, googleAuthService.parseState(state).frontendOrigin);
+      error_description: errorDescription,
+      role: parsedState.valid ? parsedState.role : undefined,
+      type: parsedState.valid ? parsedState.role : undefined
+    }, parsedState.frontendOrigin);
 
     processedGoogleAuthCodes.set(code, {
       redirectUrl: errorUrl,
