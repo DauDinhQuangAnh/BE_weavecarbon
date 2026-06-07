@@ -15,10 +15,19 @@ function requireCompany(req, res) {
   return null;
 }
 
-function sendCsv(res, filename, csv) {
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+function sendXlsx(res, filename, buffer) {
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  return res.status(200).send(`\ufeff${csv}`);
+  return res.status(200).send(buffer);
+}
+
+function sendTemplateError(res, error) {
+  return sendError(res, {
+    status: 500,
+    code: 'TEMPLATE_EXPORT_FAILED',
+    message: 'Export XLSX template could not be generated.',
+    details: process.env.NODE_ENV === 'production' ? undefined : error.message
+  });
 }
 
 router.get('/configuration', asyncHandler(async (req, res) => {
@@ -82,24 +91,36 @@ router.get('/documents/commercial-invoice', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
 
-  const result = await exportV2Service.buildCommercialInvoice(companyId);
-  return sendCsv(res, result.filename, result.csv);
+  try {
+    const result = await exportV2Service.buildCommercialInvoice(companyId);
+    return sendXlsx(res, result.filename, result.buffer);
+  } catch (error) {
+    return sendTemplateError(res, error);
+  }
 }));
 
 router.get('/documents/packing-list', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
 
-  const result = await exportV2Service.buildPackingList(companyId);
-  return sendCsv(res, result.filename, result.csv);
+  try {
+    const result = await exportV2Service.buildPackingList(companyId);
+    return sendXlsx(res, result.filename, result.buffer);
+  } catch (error) {
+    return sendTemplateError(res, error);
+  }
 }));
 
 router.get('/documents/bill-of-lading', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
 
-  const result = await exportV2Service.buildBillOfLading(companyId);
-  return sendCsv(res, result.filename, result.csv);
+  try {
+    const result = await exportV2Service.buildBillOfLading(companyId);
+    return sendXlsx(res, result.filename, result.buffer);
+  } catch (error) {
+    return sendTemplateError(res, error);
+  }
 }));
 
 router.post('/buyer-webhook-payload', asyncHandler(async (req, res) => {

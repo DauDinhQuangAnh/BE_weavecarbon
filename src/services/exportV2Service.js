@@ -1,5 +1,13 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const JSZip = require('jszip');
 const pool = require('../config/database');
+
+const EXPORT_TEMPLATE_PATH = path.resolve(
+  __dirname,
+  '../../templates/export/Weave_Carbon_Export_Production_Template_Production.xlsx'
+);
 
 const DEFAULT_EXPORT_CONFIG = {
   customsDeclarationNo: '106429381040',
@@ -47,15 +55,6 @@ function normalizeConfig(row) {
   };
 }
 
-function csvEscape(value) {
-  const text = String(value ?? '');
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-function toCsv(rows) {
-  return rows.map((row) => row.map(csvEscape).join(',')).join('\n');
-}
-
 function asNumber(value, fallback = 0) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim()) {
@@ -68,6 +67,352 @@ function asNumber(value, fallback = 0) {
 function asObject(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return value;
+}
+
+function asText(value, fallback = '') {
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+}
+
+function numberOrBlank(value) {
+  const number = asNumber(value, NaN);
+  return Number.isFinite(number) ? number : '';
+}
+
+function round(value, digits = 4) {
+  const number = asNumber(value, 0);
+  return Number(number.toFixed(digits));
+}
+
+function ensureExportTemplateAvailable() {
+  if (!fs.existsSync(EXPORT_TEMPLATE_PATH)) {
+    const error = new Error('Export XLSX template was not found.');
+    error.code = 'TEMPLATE_EXPORT_FAILED';
+    throw error;
+  }
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+async function loadTemplateZip() {
+  ensureExportTemplateAvailable();
+  const buffer = await fs.promises.readFile(EXPORT_TEMPLATE_PATH);
+  return JSZip.loadAsync(buffer);
+}
+
+function getCellStyle(cellXml) {
+  const style = cellXml.match(/\ss="([^"]+)"/);
+  return style ? ` s="${style[1]}"` : '';
+}
+
+function getCellFormula(cellXml) {
+  const formula = cellXml.match(/<x:f[^>]*>[\s\S]*?<\/x:f>/);
+  return formula ? formula[0] : '';
+}
+
+function buildCellXml(ref, style, value, formula = '') {
+  if (formula) {
+    return `<x:c r="${ref}"${style} t="n">${formula}</x:c>`;
+  }
+  if (value === '' || value === null || value === undefined) {
+    return `<x:c r="${ref}"${style} />`;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return `<x:c r="${ref}"${style} t="n"><x:v>${value}</x:v></x:c>`;
+  }
+  return `<x:c r="${ref}"${style} t="str"><x:v>${escapeXml(value)}</x:v></x:c>`;
+}
+
+function replaceCellValue(sheetXml, ref, value, options = {}) {
+  const escapedRef = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`<x:c\\b(?=[^>]*\\br="${escapedRef}")[^>]*/>|<x:c\\b(?=[^>]*\\br="${escapedRef}")[^>]*>[\\s\\S]*?<\\/x:c>`);
+  const match = sheetXml.match(regex);
+  if (!match) return sheetXml;
+  const original = match[0];
+  const style = getCellStyle(original);
+  const formula = options.keepFormula ? getCellFormula(original) : '';
+  return sheetXml.replace(regex, buildCellXml(ref, style, value, formula));
+}
+
+function setXmlCell(sheetXml, ref, value) {
+  return replaceCellValue(sheetXml, ref, value);
+}
+
+function clearXmlCells(sheetXml, rowNumber, columns) {
+  let next = sheetXml;
+  for (const column of columns) {
+    next = setXmlCell(next, `${column}${rowNumber}`, '');
+  }
+  return next;
+}
+
+function clearFormulaCache(sheetXml, rowNumber, columns) {
+  let next = sheetXml;
+  for (const column of columns) {
+    next = replaceCellValue(next, `${column}${rowNumber}`, '', { keepFormula: true });
+  }
+  return next;
+}
+
+async function readSheetXml(zip, sheetPath) {
+  const file = zip.file(sheetPath);
+  if (!file) {
+    const error = new Error(`${sheetPath} was not found in export template.`);
+    error.code = 'TEMPLATE_EXPORT_FAILED';
+    throw error;
+  }
+  return file.async('string');
+}
+
+function writeSheetXml(zip, sheetPath, xml) {
+  zip.file(sheetPath, xml);
+}
+
+async function finalizeTemplateZip(zip) {
+  const workbookFile = zip.file('xl/workbook.xml');
+  if (workbookFile) {
+    let workbookXml = await workbookFile.async('string');
+    workbookXml = workbookXml.replace(/<x:calcPr[^>]*\/>|<x:calcPr[^>]*>[\s\S]*?<\/x:calcPr>|<calcPr[^>]*\/>|<calcPr[^>]*>[\s\S]*?<\/calcPr>/g, '');
+    if (workbookXml.includes('</x:workbook>')) {
+      workbookXml = workbookXml.replace(
+        '</x:workbook>',
+        '<x:calcPr calcId="999999" calcMode="auto" fullCalcOnLoad="1" forceFullCalc="1" /></x:workbook>'
+      );
+    } else {
+      workbookXml = workbookXml.replace(
+        '</workbook>',
+        '<calcPr calcId="999999" calcMode="auto" fullCalcOnLoad="1" forceFullCalc="1" /></workbook>'
+      );
+    }
+    zip.file('xl/workbook.xml', workbookXml);
+  }
+  if (zip.file('xl/calcChain.xml')) {
+    zip.remove('xl/calcChain.xml');
+  }
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+
+function getInputNumber(payload, keys, fallback = '') {
+  for (const key of keys) {
+    const value = payload[key];
+    const number = numberOrBlank(value);
+    if (number !== '') return number;
+  }
+  return fallback;
+}
+
+function getPcsPerCarton(product) {
+  return Math.max(1, Math.trunc(getInputNumber(product.rawPayload, ['pcsPerCarton', 'pcs_per_carton', 'cartonQty', 'carton_qty'], 40)));
+}
+
+function getUnitPrice(product) {
+  return getInputNumber(product.rawPayload, ['unitPrice', 'unit_price', 'priceUsd', 'price_usd'], '');
+}
+
+function getCurrency(cfg, product) {
+  return (
+    product.rawPayload.currency ||
+    cfg.metadata?.currency ||
+    cfg.metadata?.invoiceCurrency ||
+    'USD'
+  );
+}
+
+function getProductDppUrl(ctx, product) {
+  const bySku = ctx.dppLocksBySku.get(product.sku);
+  return bySku?.decentralizedUrl || ctx.defaultDppUrl || '';
+}
+
+function normalizeTransportLeg(product, leg, index, embeddedKgForLeg) {
+  const payload = asObject(leg);
+  const mode = payload.mode || payload.transportMode || payload.transport_mode || 'Transport leg';
+  const origin = payload.origin || payload.from || '';
+  const destination = payload.destination || payload.to || '';
+  const distanceKm = numberOrBlank(payload.distanceKm ?? payload.distance_km ?? payload.distance);
+  const cargoWeightT = numberOrBlank(payload.cargoWeightT ?? payload.cargo_weight_t ?? payload.weightTonnes ?? payload.weight_tonnes);
+  const factor = numberOrBlank(payload.kgCo2ePerTkm ?? payload.kg_co2e_per_tkm ?? payload.emissionFactor ?? payload.emission_factor ?? payload.factor);
+  const factorKey = payload.factorKey || payload.factor_key || payload.defraKey || payload.defra_key || mode;
+
+  return {
+    routeLeg: payload.routeLeg || payload.route_leg || `${index + 1}. ${mode}`,
+    origin,
+    destination,
+    mode,
+    cargoWeightT: cargoWeightT === '' ? round((product.quantity * product.weightKg) / 1000, 4) : cargoWeightT,
+    distanceKm,
+    factorKey,
+    factor,
+    embeddedKg: embeddedKgForLeg,
+    notes: payload.notes || ''
+  };
+}
+
+function getBillOfLadingRows(products) {
+  const rows = [];
+  for (const product of products) {
+    const embeddedKg = product.kgPerUnit * product.quantity;
+    if (product.transportLegs.length) {
+      product.transportLegs.forEach((leg, index) => {
+        rows.push(normalizeTransportLeg(product, leg, index, index === 0 ? round(embeddedKg, 4) : ''));
+      });
+    } else {
+      rows.push({
+        routeLeg: `${product.sku} embedded product carbon`,
+        origin: '',
+        destination: '',
+        mode: 'Logistics data pending',
+        cargoWeightT: round((product.quantity * product.weightKg) / 1000, 4),
+        distanceKm: '',
+        factorKey: '',
+        factor: '',
+        embeddedKg: round(embeddedKg, 4),
+        notes: 'Missing route/factor data; logistics carbon is intentionally left blank.'
+      });
+    }
+  }
+  return rows.slice(0, 20);
+}
+
+function fillCommonMetadataXml(sheetXml, cfg, ctx, options = {}) {
+  let xml = sheetXml;
+  const exporterName = cfg.metadata?.exporterName || cfg.metadata?.factoryName || 'Weave Carbon Exporter';
+  const exporterAddress = cfg.metadata?.exporterAddress || cfg.metadata?.factoryAddress || '';
+  const buyerAddress = cfg.metadata?.buyerAddress || '';
+  const issuedDate = cfg.metadata?.issuedDate || new Date().toISOString().slice(0, 10);
+
+  xml = setXmlCell(xml, 'B5', exporterName);
+  xml = setXmlCell(xml, 'B6', exporterAddress);
+  xml = setXmlCell(xml, 'I5', cfg.buyerBrand);
+  xml = setXmlCell(xml, 'I6', buyerAddress);
+  xml = setXmlCell(xml, 'B10', options.documentNo || `${options.prefix || 'DOC'}-${cfg.poContractId}`);
+  xml = setXmlCell(xml, 'E10', issuedDate);
+  xml = setXmlCell(xml, 'E11', cfg.poContractId);
+  xml = setXmlCell(xml, 'I11', cfg.customsDeclarationNo);
+  xml = setXmlCell(xml, 'L11', cfg.billOfLadingNo);
+  xml = setXmlCell(xml, 'B12', cfg.containerNo);
+  xml = setXmlCell(xml, 'B14', ctx.payloadSha256);
+  xml = setXmlCell(xml, 'I14', ctx.defaultDppUrl);
+  return xml;
+}
+
+function fillCommercialInvoiceXml(sheetXml, ctx) {
+  const { cfg, products } = ctx;
+  let xml = fillCommonMetadataXml(sheetXml, cfg, ctx, {
+    prefix: 'CI',
+    documentNo: cfg.metadata?.commercialInvoiceNo
+  });
+
+  for (let row = 18; row <= 37; row += 1) {
+    xml = clearXmlCells(xml, row, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'I', 'J', 'M']);
+    xml = clearFormulaCache(xml, row, ['H', 'K', 'L']);
+  }
+
+  products.slice(0, 20).forEach((product, index) => {
+    const row = 18 + index;
+    xml = setXmlCell(xml, `A${row}`, index + 1);
+    xml = setXmlCell(xml, `B${row}`, product.sku);
+    xml = setXmlCell(xml, `C${row}`, product.name);
+    xml = setXmlCell(xml, `D${row}`, product.hsCode);
+    xml = setXmlCell(xml, `E${row}`, product.quantity);
+    xml = setXmlCell(xml, `F${row}`, product.rawPayload.unit || product.rawPayload.uom || 'pcs');
+    xml = setXmlCell(xml, `G${row}`, getUnitPrice(product));
+    xml = setXmlCell(xml, `I${row}`, getCurrency(cfg, product));
+    xml = setXmlCell(xml, `J${row}`, round(product.kgPerUnit, 4));
+    xml = setXmlCell(xml, `M${row}`, getProductDppUrl(ctx, product));
+  });
+
+  return xml;
+}
+
+function fillPackingListXml(sheetXml, ctx) {
+  const { cfg, products } = ctx;
+  let xml = fillCommonMetadataXml(sheetXml, cfg, ctx, {
+    prefix: 'PL',
+    documentNo: cfg.metadata?.packingListNo
+  });
+
+  for (let row = 18; row <= 37; row += 1) {
+    xml = clearXmlCells(xml, row, ['A', 'B', 'C', 'D', 'E', 'F', 'H', 'I', 'J', 'K', 'N']);
+    xml = clearFormulaCache(xml, row, ['G', 'L', 'M']);
+  }
+  for (let row = 43; row <= 48; row += 1) {
+    xml = setXmlCell(xml, `A${row}`, '');
+  }
+
+  products.slice(0, 20).forEach((product, index) => {
+    const row = 18 + index;
+    const pcsPerCarton = getPcsPerCarton(product);
+    const cartons = Math.max(1, Math.ceil(product.quantity / pcsPerCarton));
+    const netWeightKg = product.quantity * product.weightKg;
+    const grossWeightKg = getInputNumber(product.rawPayload, ['grossWeightKg', 'gross_weight_kg'], netWeightKg || '');
+    const cbm = getInputNumber(product.rawPayload, ['cbm', 'cartonCbm', 'carton_cbm'], '');
+    const note = product.rawPayload.packingNotes || product.rawPayload.packing_notes || (grossWeightKg === netWeightKg && netWeightKg ? 'Gross weight fallback equals net weight; update actual carton data if available.' : '');
+
+    xml = setXmlCell(xml, `A${row}`, index + 1);
+    xml = setXmlCell(xml, `B${row}`, product.sku);
+    xml = setXmlCell(xml, `C${row}`, cartons === 1 ? 'CTN-0001' : `CTN-0001-${String(cartons).padStart(4, '0')}`);
+    xml = setXmlCell(xml, `D${row}`, cfg.containerNo);
+    xml = setXmlCell(xml, `E${row}`, pcsPerCarton);
+    xml = setXmlCell(xml, `F${row}`, cartons);
+    xml = setXmlCell(xml, `H${row}`, grossWeightKg === '' ? '' : round(grossWeightKg, 3));
+    xml = setXmlCell(xml, `I${row}`, round(netWeightKg, 3));
+    xml = setXmlCell(xml, `J${row}`, cbm === '' ? '' : round(cbm, 3));
+    xml = setXmlCell(xml, `K${row}`, round(product.kgPerUnit * pcsPerCarton, 4));
+    xml = setXmlCell(xml, `N${row}`, note);
+  });
+
+  const containers = [...new Set([cfg.containerNo, ...products.map((product) => product.rawPayload.containerNo || product.rawPayload.container_no).filter(Boolean)])].slice(0, 6);
+  containers.forEach((containerNo, index) => {
+    xml = setXmlCell(xml, `A${43 + index}`, containerNo);
+  });
+
+  return xml;
+}
+
+function fillBillOfLadingXml(sheetXml, ctx) {
+  const { cfg, products } = ctx;
+  let xml = fillCommonMetadataXml(sheetXml, cfg, ctx, {
+    prefix: 'BL',
+    documentNo: cfg.billOfLadingNo
+  });
+
+  for (let row = 18; row <= 37; row += 1) {
+    xml = clearXmlCells(xml, row, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'M', 'P']);
+    xml = clearFormulaCache(xml, row, ['L', 'N', 'O']);
+  }
+
+  getBillOfLadingRows(products).forEach((leg, index) => {
+    const row = 18 + index;
+    xml = setXmlCell(xml, `A${row}`, index + 1);
+    xml = setXmlCell(xml, `B${row}`, cfg.billOfLadingNo);
+    xml = setXmlCell(xml, `C${row}`, cfg.containerNo);
+    xml = setXmlCell(xml, `D${row}`, leg.routeLeg);
+    xml = setXmlCell(xml, `E${row}`, leg.origin);
+    xml = setXmlCell(xml, `F${row}`, leg.destination);
+    xml = setXmlCell(xml, `G${row}`, leg.mode);
+    xml = setXmlCell(xml, `H${row}`, leg.cargoWeightT);
+    xml = setXmlCell(xml, `I${row}`, leg.distanceKm);
+    xml = setXmlCell(xml, `J${row}`, leg.factorKey);
+    xml = setXmlCell(xml, `K${row}`, leg.factor);
+    xml = setXmlCell(xml, `M${row}`, leg.embeddedKg);
+    xml = setXmlCell(xml, `P${row}`, leg.notes);
+  });
+
+  return xml;
+}
+
+async function buildTemplateDocumentBuffer(ctx, sheetPath, fillSheetXml) {
+  const zip = await loadTemplateZip();
+  const sheetXml = await readSheetXml(zip, sheetPath);
+  writeSheetXml(zip, sheetPath, fillSheetXml(sheetXml, ctx));
+  return finalizeTemplateZip(zip);
 }
 
 function normalizeProduct(row) {
@@ -183,96 +528,71 @@ class ExportV2Service {
     return result.rows.map(normalizeProduct);
   }
 
-  async buildCommercialInvoice(companyId) {
+  async listLatestDppLocks(companyId) {
+    const result = await pool.query(
+      `
+        SELECT DISTINCT ON (sku) *
+        FROM dpp_locks
+        WHERE company_id = $1
+        ORDER BY sku, locked_at DESC, updated_at DESC
+      `,
+      [companyId]
+    );
+    return result.rows.map((row) => this._formatDppLock(row));
+  }
+
+  async buildExportWorkbookContext(companyId) {
     const cfg = await this.getConfiguration(companyId);
     const products = await this.listProductsForExport(companyId);
-    const header = [
-      'Line',
-      'SKU',
-      'HS Code (CN)',
-      'Description',
-      'Qty (pcs)',
-      'Embedded Carbon Intensity (kg CO2e/pc)',
-      'Embedded Carbon Total (kg CO2e)',
-      'PO / Contract',
-      'Customs Declaration No',
-      'B/L No'
-    ];
-    const rows = products.map((product, index) => [
-      index + 1,
-      product.sku,
-      product.hsCode,
-      product.name,
-      product.quantity,
-      product.kgPerUnit.toFixed(4),
-      (product.kgPerUnit * product.quantity).toFixed(4),
-      cfg.poContractId,
-      cfg.customsDeclarationNo,
-      cfg.billOfLadingNo
-    ]);
-    return { filename: `commercial_invoice_carbon_${cfg.poContractId}.csv`, csv: toCsv([header, ...rows]) };
+    const dppLocks = await this.listLatestDppLocks(companyId);
+    const dppLocksBySku = new Map(dppLocks.map((lock) => [lock.sku, lock]));
+    const firstLock = dppLocks[0];
+    const defaultDppUrl = firstLock?.decentralizedUrl || cfg.metadata?.dppUrl || cfg.metadata?.dppQrUrl || '';
+    const payloadSha256 =
+      firstLock?.payloadSha256 ||
+      sha256Json({
+        type: 'weave-carbon-export-documents',
+        cfg,
+        products: products.map((product) => ({
+          id: product.id,
+          sku: product.sku,
+          hsCode: product.hsCode,
+          quantity: product.quantity,
+          kgPerUnit: product.kgPerUnit
+        }))
+      });
+
+    return {
+      cfg,
+      products,
+      dppLocks,
+      dppLocksBySku,
+      defaultDppUrl,
+      payloadSha256
+    };
+  }
+
+  async buildCommercialInvoice(companyId) {
+    const ctx = await this.buildExportWorkbookContext(companyId);
+    return {
+      filename: `commercial_invoice_carbon_${ctx.cfg.poContractId}.xlsx`,
+      buffer: await buildTemplateDocumentBuffer(ctx, 'xl/worksheets/sheet1.xml', fillCommercialInvoiceXml)
+    };
   }
 
   async buildPackingList(companyId) {
-    const cfg = await this.getConfiguration(companyId);
-    const products = await this.listProductsForExport(companyId);
-    const header = [
-      'Carton No',
-      'SKU',
-      'Pcs / Carton',
-      'Net Weight (kg)',
-      'Embedded Carbon / Carton (kg CO2e)',
-      'Container No',
-      'B/L No'
-    ];
-    const rows = [];
-    let cartonNo = 1;
-    for (const product of products) {
-      const pcsPerCarton = 40;
-      const cartons = Math.ceil(product.quantity / pcsPerCarton);
-      for (let i = 0; i < cartons; i += 1) {
-        const pcs = Math.min(pcsPerCarton, product.quantity - i * pcsPerCarton);
-        rows.push([
-          `CTN-${String(cartonNo).padStart(4, '0')}`,
-          product.sku,
-          pcs,
-          (pcs * product.weightKg).toFixed(3),
-          (pcs * product.kgPerUnit).toFixed(3),
-          cfg.containerNo,
-          cfg.billOfLadingNo
-        ]);
-        cartonNo += 1;
-      }
-    }
-    return { filename: `packing_list_carbon_${cfg.containerNo}.csv`, csv: toCsv([header, ...rows]) };
+    const ctx = await this.buildExportWorkbookContext(companyId);
+    return {
+      filename: `packing_list_carbon_${ctx.cfg.containerNo}.xlsx`,
+      buffer: await buildTemplateDocumentBuffer(ctx, 'xl/worksheets/sheet2.xml', fillPackingListXml)
+    };
   }
 
   async buildBillOfLading(companyId) {
-    const cfg = await this.getConfiguration(companyId);
-    const products = await this.listProductsForExport(companyId);
-    const totals = products.reduce(
-      (acc, product) => {
-        acc.units += product.quantity;
-        acc.netWeight += product.quantity * product.weightKg;
-        acc.embeddedTonnes += product.totalTonnes;
-        return acc;
-      },
-      { units: 0, netWeight: 0, embeddedTonnes: 0 }
-    );
+    const ctx = await this.buildExportWorkbookContext(companyId);
     return {
-      filename: `bill_of_lading_carbon_${cfg.billOfLadingNo}.csv`,
-      csv: toCsv([
-        ['B/L Field', 'Value'],
-        ['B/L No', cfg.billOfLadingNo],
-        ['Container No', cfg.containerNo],
-        ['Customs Declaration No', cfg.customsDeclarationNo],
-        ['PO / Contract', cfg.poContractId],
-        ['Consignee / Buyer Brand', cfg.buyerBrand],
-        ['Total Units', totals.units],
-        ['Total Net Weight (kg)', totals.netWeight.toFixed(3)],
-        ['Total Embedded Emissions (tCO2e)', totals.embeddedTonnes.toFixed(4)],
-        ['Methodology', 'Ecoinvent v3.10; DEFRA 2024; ISO 14067; Bo TN&MT VN']
-      ])
+      filename: `bill_of_lading_carbon_${ctx.cfg.billOfLadingNo}.xlsx`,
+      buffer: await buildTemplateDocumentBuffer(ctx, 'xl/worksheets/sheet3.xml', fillBillOfLadingXml)
     };
   }
 
