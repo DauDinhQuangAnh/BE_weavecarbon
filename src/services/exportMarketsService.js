@@ -51,6 +51,48 @@ const normalizeDocumentToken = (value) =>
 
 const normalizeLooseDocumentToken = (value) => normalizeDocumentToken(value).replace(/_/g, '');
 
+const parseJsonObject = (value) => {
+    if (!value || typeof value !== 'string') return null;
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+};
+
+const toNullableTrimmedString = (value) => {
+    if (value === undefined || value === null) return null;
+    const text = String(value).trim();
+    return text.length > 0 ? text : null;
+};
+
+const toNonNegativeNumberOrNull = (value) => {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+
+const buildProductScopeNotes = (productData = {}, existingNotes = null) => {
+    const previous = parseJsonObject(existingNotes) || {};
+    const legacyNote = previous.note || (existingNotes && !parseJsonObject(existingNotes) ? existingNotes : null);
+    const metadata = {
+        note: toNullableTrimmedString(productData.notes) || legacyNote || null,
+        production_site:
+            toNullableTrimmedString(productData.production_site) ||
+            toNullableTrimmedString(previous.production_site),
+        export_volume:
+            toNonNegativeNumberOrNull(productData.export_volume) ??
+            toNonNegativeNumberOrNull(previous.export_volume),
+        unit:
+            toNullableTrimmedString(productData.unit) ||
+            toNullableTrimmedString(previous.unit) ||
+            'pcs'
+    };
+
+    return JSON.stringify(metadata);
+};
+
 const resolveComplianceDocumentGroup = (document = {}) => {
     const normalizedCode = normalizeDocumentToken(document.document_code || document.code || document.id);
     const normalizedType = normalizeDocumentToken(document.document_type || document.type);
@@ -758,15 +800,21 @@ class ExportMarketsService {
                             ? `/api/export/markets/${market.market_code}/documents/${d.id}/download`
                             : null
                     })),
-                    product_scope: (scopeMap[market.id] || []).map(s => ({
-                        id: s.id,
-                        product_id: s.product_id,
-                        product_name: s.product_name,
-                        sku: s.sku,
-                        total_co2e: s.total_co2e,
-                        hs_code: s.hs_code,
-                        notes: s.notes
-                    })),
+                    product_scope: (scopeMap[market.id] || []).map(s => {
+                        const scopeNotes = parseJsonObject(s.notes) || {};
+                        return {
+                            id: s.id,
+                            product_id: s.product_id,
+                            product_name: s.product_name,
+                            sku: s.sku,
+                            total_co2e: s.total_co2e,
+                            hs_code: s.hs_code,
+                            production_site: scopeNotes.production_site || '',
+                            export_volume: toNonNegativeNumberOrNull(scopeNotes.export_volume) || 0,
+                            unit: scopeNotes.unit || 'pcs',
+                            notes: scopeNotes.note || s.notes
+                        };
+                    }),
                     carbon_data: (carbonMap[market.id] || []).map(c => ({
                         id: c.id,
                         scope: c.scope,
@@ -887,6 +935,7 @@ class ExportMarketsService {
                 return { success: false, error: 'PRODUCT_NOT_FOUND' };
             }
 
+            const scopeNotes = buildProductScopeNotes(productData);
             const insertQuery = `
                 INSERT INTO market_product_scope (market_id, product_id, hs_code, notes)
                 VALUES ($1, $2, $3, $4)
@@ -898,7 +947,7 @@ class ExportMarketsService {
                 market.id,
                 productData.product_id,
                 productData.hs_code || null,
-                productData.notes || null
+                scopeNotes
             ]);
 
             await this._recalculateMarketScore(client, market.id, companyId, marketCode);
@@ -938,6 +987,20 @@ class ExportMarketsService {
                 return { success: false, error: 'MARKET_NOT_FOUND' };
             }
 
+            const existingScope = await client.query(
+                `
+                SELECT notes
+                FROM market_product_scope
+                WHERE market_id = $1 AND product_id = $2
+                `,
+                [market.id, productId]
+            );
+
+            if (existingScope.rows.length === 0) {
+                return { success: false, error: 'PRODUCT_SCOPE_NOT_FOUND' };
+            }
+
+            const scopeNotes = buildProductScopeNotes(updateData, existingScope.rows[0].notes);
             const updateQuery = `
                 UPDATE market_product_scope
                 SET hs_code = COALESCE($1, hs_code),
@@ -948,15 +1011,12 @@ class ExportMarketsService {
             `;
             const updateResult = await client.query(updateQuery, [
                 updateData.hs_code,
-                updateData.notes,
+                scopeNotes,
                 market.id,
                 productId
             ]);
 
-            if (updateResult.rows.length === 0) {
-                return { success: false, error: 'PRODUCT_SCOPE_NOT_FOUND' };
-            }
-
+            await this._recalculateMarketScore(client, market.id, companyId, marketCode);
             await client.query('COMMIT');
             this.invalidateListCache(companyId);
 

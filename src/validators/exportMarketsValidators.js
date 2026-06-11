@@ -39,6 +39,23 @@ const addProductToScopeValidation = [
         .isLength({ max: 50 })
         .withMessage('HS code must not exceed 50 characters'),
 
+    body('production_site')
+        .optional()
+        .trim()
+        .isLength({ max: 255 })
+        .withMessage('Production site must not exceed 255 characters'),
+
+    body('export_volume')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Export volume must be a non-negative number'),
+
+    body('unit')
+        .optional()
+        .trim()
+        .isLength({ max: 30 })
+        .withMessage('Unit must not exceed 30 characters'),
+
     body('notes')
         .optional()
         .trim()
@@ -64,6 +81,23 @@ const updateProductInScopeValidation = [
         .trim()
         .isLength({ max: 50 })
         .withMessage('HS code must not exceed 50 characters'),
+
+    body('production_site')
+        .optional()
+        .trim()
+        .isLength({ max: 255 })
+        .withMessage('Production site must not exceed 255 characters'),
+
+    body('export_volume')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Export volume must be a non-negative number'),
+
+    body('unit')
+        .optional()
+        .trim()
+        .isLength({ max: 30 })
+        .withMessage('Unit must not exceed 30 characters'),
 
     body('notes')
         .optional()

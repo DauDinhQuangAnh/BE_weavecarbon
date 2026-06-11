@@ -687,12 +687,15 @@ Tat ca endpoint module nay: Auth Yes + role `b2b`.
 - Body:
   - `product_id` (required)
   - `hs_code?`
+  - `production_site?`
+  - `export_volume?` (number >= 0)
+  - `unit?`
   - `notes?`
 - Success: `201`
 
 ### `PATCH /:market_code/products/:product_id`
 
-- Body: `hs_code?`, `notes?`
+- Body: `hs_code?`, `production_site?`, `export_volume?`, `unit?`, `notes?`
 
 ### `DELETE /:market_code/products/:product_id`
 

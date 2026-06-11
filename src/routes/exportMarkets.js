@@ -281,6 +281,9 @@ router.post(
                 {
                     product_id: req.body.product_id,
                     hs_code: req.body.hs_code,
+                    production_site: req.body.production_site,
+                    export_volume: req.body.export_volume,
+                    unit: req.body.unit,
                     notes: req.body.notes,
                     user_id: req.userId
                 }
@@ -321,6 +324,9 @@ router.patch(
                 req.params.product_id,
                 {
                     hs_code: req.body.hs_code,
+                    production_site: req.body.production_site,
+                    export_volume: req.body.export_volume,
+                    unit: req.body.unit,
                     notes: req.body.notes
                 }
             );
