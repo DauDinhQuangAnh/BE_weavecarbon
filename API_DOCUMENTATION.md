@@ -137,8 +137,11 @@ Tat ca `/api/*` di qua `apiLimiter`:
 
 - Window: 15 phut
 - Max:
-  - Dev: 1000 requests
-  - Production: 100 requests
+  - Dev: 10000 requests
+  - Production: 10000 requests
+- Co the cau hinh bang `API_RATE_LIMIT_WINDOW_MS` va `API_RATE_LIMIT_MAX`.
+- Co the tat limiter tong bang `API_RATE_LIMIT_DISABLED=1`.
+- Request co Bearer token hop le duoc tinh theo user; request khong xac thuc fallback theo IP.
 
 Limiter dac thu:
 

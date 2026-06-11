@@ -1,12 +1,52 @@
 const rateLimit = require('express-rate-limit');
+const authService = require('../services/authService');
 
 const isDev = process.env.NODE_ENV !== 'production';
 
+const parsePositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const apiWindowMs = parsePositiveInt(
+  process.env.API_RATE_LIMIT_WINDOW_MS,
+  15 * 60 * 1000
+);
+const apiMax = parsePositiveInt(
+  process.env.API_RATE_LIMIT_MAX,
+  isDev ? 10000 : 10000
+);
+const isApiRateLimitDisabled =
+  String(process.env.API_RATE_LIMIT_DISABLED || '').toLowerCase() === 'true' ||
+  process.env.API_RATE_LIMIT_DISABLED === '1';
+
+const getBearerToken = (req) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+  return authHeader.slice(7).trim();
+};
+
+const getAuthenticatedRateLimitKey = (req) => {
+  if (req.userId) {
+    return `user_${req.userId}`;
+  }
+
+  const token = getBearerToken(req);
+  if (!token) {
+    return null;
+  }
+
+  const decoded = authService.verifyAccessToken(token);
+  return decoded?.sub ? `user_${decoded.sub}` : null;
+};
+
 // General API rate limiter
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDev ? 1000 : 100, // Much higher limit in dev
-  skip: (req) => req.method === 'OPTIONS', // Skip OPTIONS requests
+  windowMs: apiWindowMs,
+  max: apiMax,
+  skip: (req) => isApiRateLimitDisabled || req.method === 'OPTIONS',
   message: {
     success: false,
     error: {
@@ -16,11 +56,10 @@ const apiLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Key by user_id if authenticated, otherwise IP
+  // Key by authenticated user when possible. This limiter runs before route auth.
   keyGenerator: (req) => {
-    if (req.userId) {
-      return `user_${req.userId}`;
-    }
+    const authenticatedKey = getAuthenticatedRateLimitKey(req);
+    if (authenticatedKey) return authenticatedKey;
     return req.ip || req.connection.remoteAddress;
   }
 });
