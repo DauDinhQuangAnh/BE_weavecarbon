@@ -309,27 +309,49 @@ class AccountService {
     /**
      * Change password
      */
-    async changePassword(userId, newPassword) {
+    async changePassword(userId, currentPassword, newPassword) {
         const client = await pool.connect();
         try {
-            const hashedPassword = await bcrypt.hash(newPassword, 10);
+            const userResult = await client.query(
+                'SELECT password_hash FROM users WHERE id = $1',
+                [userId]
+            );
 
-            const query = `
-        UPDATE users 
-        SET 
-          password_hash = $1,
-          updated_at = NOW()
-        WHERE id = $2
-        RETURNING id
-      `;
-            const result = await client.query(query, [hashedPassword, userId]);
-
-            if (result.rows.length === 0) {
+            if (userResult.rows.length === 0) {
                 throw createAppError('User not found', {
                     statusCode: 404,
                     code: 'USER_NOT_FOUND'
                 });
             }
+
+            const currentPasswordHash = userResult.rows[0].password_hash;
+            if (typeof currentPasswordHash !== 'string' || currentPasswordHash.trim().length === 0) {
+                throw createAppError('Password login is unavailable for this account', {
+                    statusCode: 400,
+                    code: 'PASSWORD_LOGIN_UNAVAILABLE'
+                });
+            }
+
+            const currentPasswordMatches = await bcrypt.compare(currentPassword, currentPasswordHash);
+            if (!currentPasswordMatches) {
+                throw createAppError('Current password is invalid', {
+                    statusCode: 400,
+                    code: 'CURRENT_PASSWORD_INVALID'
+                });
+            }
+
+            const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+            await client.query(
+                `
+        UPDATE users
+        SET
+          password_hash = $1,
+          updated_at = NOW()
+        WHERE id = $2
+      `,
+                [hashedPassword, userId]
+            );
 
             return true;
         } finally {

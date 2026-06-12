@@ -100,7 +100,11 @@ router.post(
   changePasswordValidation,
   validate,
   asyncHandler(async (req, res) => {
-    await accountService.changePassword(req.userId, req.body.new_password);
+    await accountService.changePassword(
+      req.userId,
+      req.body.current_password,
+      req.body.new_password
+    );
 
     return sendSuccess(res, {
       message: 'Password changed successfully'

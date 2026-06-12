@@ -107,6 +107,17 @@ const updateCompanyValidation = [
 ];
 
 const changePasswordValidation = [
+    body('current_password')
+        .exists({ checkFalsy: true })
+        .withMessage('Current password is required')
+        .bail()
+        .isString()
+        .withMessage('Current password must be a string')
+        .bail()
+        .trim()
+        .notEmpty()
+        .withMessage('Current password is required'),
+
     body('new_password')
         .isLength({ min: 8 })
         .withMessage('Password must be at least 8 characters')
