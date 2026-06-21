@@ -12,6 +12,7 @@ const reportJobQueue = require('./reportJobQueue');
 const TtlCache = require('../utils/ttlCache');
 
 const DEFAULT_MARKET_CODES = ['VN', 'EU', 'US', 'JP', 'KR', 'AU', 'ASEAN'];
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MATERIAL_CERTIFICATION_TYPE_HINTS = new Set([
     'material_certification',
     'material_certificate',
@@ -1160,14 +1161,34 @@ class ExportMarketsService {
                 .replace(/\.\./g, '_')
                 .replace(/^\/+/, '');
             const storageKey = explicitStorageKey ||
-                `compliance/${companyId}/${normalizedMarketCode}/${documentId}/${timestamp}_${safeFilename}`;
+                `compliance/${companyId}/${normalizedMarketCode}/${String(documentId || 'document').replace(/[^a-zA-Z0-9._:-]/g, '_')}/${timestamp}_${safeFilename}`;
             const normalizedDocumentStatus = this._toDocumentStatus(fileData.status);
+            const documentTarget = this._resolveDocumentTarget(
+                normalizedMarketCode,
+                documentId,
+                fileData
+            );
 
             // Check if document exists
-            const docCheck = await client.query(
-                'SELECT id, document_code, document_name, document_type FROM compliance_documents WHERE id = $1 AND company_id = $2 AND UPPER(market_code) = $3',
-                [documentId, companyId, normalizedMarketCode]
-            );
+            let docCheck;
+            if (documentTarget.id) {
+                docCheck = await client.query(
+                    'SELECT id, document_code, document_name FROM compliance_documents WHERE id = $1 AND company_id = $2 AND UPPER(market_code) = $3',
+                    [documentTarget.id, companyId, normalizedMarketCode]
+                );
+            } else {
+                docCheck = await client.query(
+                    `
+                    SELECT id, document_code, document_name
+                    FROM compliance_documents
+                    WHERE company_id = $1
+                      AND UPPER(market_code) = $2
+                      AND LOWER(COALESCE(document_code, '')) = $3
+                    LIMIT 1
+                    `,
+                    [companyId, normalizedMarketCode, documentTarget.document_code]
+                );
+            }
 
             let result;
             if (docCheck.rows.length > 0) {
@@ -1199,7 +1220,7 @@ class ExportMarketsService {
                     fileData.file_size_bytes || 0,
                     fileData.checksum_sha256 || null,
                     userId,
-                    documentId,
+                    docCheck.rows[0].id,
                     companyId,
                     normalizedMarketCode
                 ]);
@@ -1217,11 +1238,11 @@ class ExportMarketsService {
                               original_filename, mime_type, file_size_bytes, checksum_sha256, uploaded_at
                 `;
                 result = await client.query(insertQuery, [
-                    documentId,
+                    documentTarget.id || randomUUID(),
                     companyId,
                     normalizedMarketCode,
-                    fileData.document_code || null,
-                    fileData.document_name || 'Untitled Document',
+                    documentTarget.document_code || null,
+                    documentTarget.document_name || 'Untitled Document',
                     normalizedDocumentStatus,
                     fileData.storage_provider || 'local',
                     fileData.storage_bucket || null,
@@ -1236,11 +1257,17 @@ class ExportMarketsService {
 
             const resolvedDocumentMetadata =
                 result.rows[0] || docCheck.rows[0] || {
-                    document_code: fileData.document_code || null,
-                    document_name: fileData.document_name || null,
-                    document_type: fileData.document_type || null,
-                    id: documentId
+                    document_code: documentTarget.document_code || null,
+                    document_name: documentTarget.document_name || null,
+                    id: documentTarget.id || documentId
                 };
+            resolvedDocumentMetadata.document_type =
+                this._resolveDocumentTypeForMarket(
+                    normalizedMarketCode,
+                    resolvedDocumentMetadata.document_code || fileData.document_code
+                ) ||
+                fileData.document_type ||
+                null;
 
             const productIds = Array.isArray(options.product_ids)
                 ? options.product_ids
@@ -2182,6 +2209,59 @@ class ExportMarketsService {
             document_type: doc.document_type || null,
             regulation_reference: doc.regulation_reference || null
         }));
+    }
+
+    _resolveDocumentTypeForMarket(marketCode, documentCode) {
+        const normalizedDocumentCode = this._normalizeDocumentCode(documentCode);
+        if (!normalizedDocumentCode) {
+            return null;
+        }
+
+        const template = this._getRequiredDocumentsForMarket(marketCode)
+            .find(doc => this._normalizeDocumentCode(doc.code) === normalizedDocumentCode);
+        return template?.document_type || null;
+    }
+
+    _resolveDocumentTarget(marketCode, documentId, fileData = {}) {
+        const rawDocumentId = String(documentId || '').trim();
+        const normalizedMarketCode = String(marketCode || '').trim().toUpperCase();
+        const explicitDocumentCode = this._normalizeDocumentCode(fileData.document_code);
+        const templates = this._getRequiredDocumentsForMarket(normalizedMarketCode);
+
+        if (UUID_REGEX.test(rawDocumentId)) {
+            const template = templates.find(doc => this._normalizeDocumentCode(doc.code) === explicitDocumentCode);
+            return {
+                id: rawDocumentId,
+                document_code: explicitDocumentCode || template?.code || null,
+                document_name: fileData.document_name || template?.name || null
+            };
+        }
+
+        const syntheticMatch = rawDocumentId.match(/^([a-z]{2,12}):(\d+)$/i);
+        if (syntheticMatch) {
+            const targetIndex = Number.parseInt(syntheticMatch[2], 10) - 1;
+            const template = templates[targetIndex] || null;
+            if (template) {
+                return {
+                    id: null,
+                    document_code: template.code,
+                    document_name: fileData.document_name || template.name
+                };
+            }
+        }
+
+        const normalizedDocumentCode =
+            explicitDocumentCode ||
+            this._normalizeDocumentCode(rawDocumentId) ||
+            this._normalizeDocumentCode(fileData.document_name) ||
+            `document_${Date.now()}`;
+        const template = templates.find(doc => this._normalizeDocumentCode(doc.code) === normalizedDocumentCode);
+
+        return {
+            id: null,
+            document_code: normalizedDocumentCode,
+            document_name: fileData.document_name || template?.name || normalizedDocumentCode
+        };
     }
 
     _normalizeDocumentCode(documentCode) {

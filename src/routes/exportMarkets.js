@@ -456,7 +456,7 @@ router.post(
             }
 
             const fileData = {
-                document_name: body.document_name || uploadedFile?.originalname || 'Uploaded Document',
+                document_name: body.document_name || null,
                 document_code: body.document_code || null,
                 original_filename: body.original_filename || uploadedFile?.originalname || body.document_name || 'document.pdf',
                 storage_provider: 'local',
