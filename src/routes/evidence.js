@@ -3,6 +3,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendError, sendNoCompany, sendSuccess } = require('../utils/http');
 const evidenceService = require('../services/evidenceService');
+const pool = require('../config/database');
 
 const router = express.Router();
 
@@ -63,6 +64,44 @@ router.post('/:id/lock', asyncHandler(async (req, res) => {
   }
 
   return sendSuccess(res, { data: evidence });
+}));
+
+// GET /api/evidence/:id/fields — return AI-extracted fields from extracted_json
+router.get('/:id/fields', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+
+  const { rows } = await pool.query(
+    `SELECT id, extracted_json FROM evidence_documents WHERE id = $1 AND company_id = $2`,
+    [req.params.id, companyId]
+  );
+
+  if (!rows.length) {
+    return sendError(res, { status: 404, code: 'EVIDENCE_NOT_FOUND', message: 'Evidence document not found.' });
+  }
+
+  const extracted = rows[0]?.extracted_json ?? {};
+  const fields = Object.entries(extracted).map(([key, value]) => ({
+    id: key,
+    label: key,
+    ai_value: String(value ?? ''),
+    confirmed_value: null
+  }));
+
+  return sendSuccess(res, { data: fields });
+}));
+
+// POST /api/evidence/:id/confirm — mark evidence as reviewed
+router.post('/:id/confirm', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+
+  const result = await evidenceService.lockEvidence(companyId, req.userId, req.params.id);
+  if (!result) {
+    return sendError(res, { status: 404, code: 'EVIDENCE_NOT_FOUND', message: 'Evidence document not found.' });
+  }
+
+  return sendSuccess(res, { data: result });
 }));
 
 router.get('/product/:product_id', asyncHandler(async (req, res) => {

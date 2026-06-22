@@ -28,6 +28,12 @@ const aiConfigRoutes = require('./routes/aiConfig');
 const contactRoutes = require('./routes/contact');
 const b2cRoutes = require('./routes/b2c');
 const passportRoutes = require('./routes/passport');
+const suppliersRoutes = require('./routes/suppliers');
+const dataGapsRoutes = require('./routes/dataGaps');
+const auditTrailRoutes = require('./routes/auditTrail');
+const electricityInvoicesRoutes = require('./routes/electricityInvoices');
+const fuelInvoicesRoutes = require('./routes/fuelInvoices');
+const carbonCalculationsRoutes = require('./routes/carbonCalculations');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -50,7 +56,13 @@ const apiRoutes = [
   ['/api/ai-config', aiConfigRoutes],
   ['/api/contact', contactRoutes],
   ['/api/b2c', b2cRoutes],
-  ['/api/passport', passportRoutes]
+  ['/api/passport', passportRoutes],
+  ['/api/suppliers', suppliersRoutes],
+  ['/api/data-gaps', dataGapsRoutes],
+  ['/api/audit-trail', auditTrailRoutes],
+  ['/api/electricity-invoices', electricityInvoicesRoutes],
+  ['/api/fuel-invoices', fuelInvoicesRoutes],
+  ['/api/carbon-calculations', carbonCalculationsRoutes]
 ];
 
 function createCorsOptions(frontendOrigins) {

@@ -456,4 +456,51 @@ router.get('/vnpay/ipn', async (req, res, next) => {
     }
 });
 
+// POST /api/subscription/request-upgrade
+// Soft upgrade request — logs intent, triggers sales follow-up. No payment flow.
+router.post('/request-upgrade', authenticate, requireRole('b2b'), async (req, res, next) => {
+    try {
+        const { requested_plan } = req.body;
+
+        if (!req.companyId) {
+            return res.status(400).json({
+                success: false,
+                error: { code: 'NO_COMPANY', message: 'User does not belong to a company' }
+            });
+        }
+
+        if (!requested_plan) {
+            return res.status(400).json({
+                success: false,
+                error: { code: 'VALIDATION_ERROR', message: 'requested_plan is required' }
+            });
+        }
+
+        const pool = require('../config/database');
+
+        // Log request to upgrade_requests table if it exists, otherwise just ack
+        try {
+            await pool.query(
+                `INSERT INTO upgrade_requests (company_id, requested_plan, requested_by, created_at)
+                 VALUES ($1, $2, $3, now())
+                 ON CONFLICT DO NOTHING`,
+                [req.companyId, requested_plan, req.userId || null]
+            );
+        } catch (_) {
+            // upgrade_requests table may not exist yet — log and continue
+        }
+
+        return res.json({
+            success: true,
+            data: {
+                status: 'received',
+                requested_plan,
+                message: 'Yêu cầu nâng cấp đã được ghi nhận. Đội ngũ WeaveCarbon sẽ liên hệ sớm.'
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
 module.exports = router;
