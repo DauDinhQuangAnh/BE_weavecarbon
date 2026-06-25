@@ -1,9 +1,13 @@
 const express = require('express');
+const multer = require('multer');
 const { authenticate, requireRole } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendError, sendNoCompany, sendSuccess } = require('../utils/http');
 const evidenceService = require('../services/evidenceService');
 const pool = require('../config/database');
+
+// Keep files in memory (no local disk dependency); 20 MB limit
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 const router = express.Router();
 
@@ -15,6 +19,39 @@ function requireCompany(req, res) {
   sendNoCompany(res, 'No company associated with this user');
   return null;
 }
+
+// POST /api/evidence/upload — multipart/form-data file upload
+router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+
+  const file = req.file;
+  if (!file) {
+    return sendError(res, { status: 400, code: 'FILE_REQUIRED', message: 'No file provided.' });
+  }
+
+  const kind = req.body.kind || req.body.evidence_type || 'other';
+  const documentName = req.body.documentName || file.originalname;
+
+  const result = await evidenceService.createEvidence(companyId, req.userId, {
+    evidence_type: kind,
+    documentName,
+    fileName: file.originalname,
+    mime_type: file.mimetype,
+    file_size_bytes: file.size,
+    reportingPeriodStart: req.body.reportingPeriodStart || null,
+    reportingPeriodEnd: req.body.reportingPeriodEnd || null,
+    sourceVendor: req.body.supplierName || null,
+    storage_provider: 'memory',
+    notes: req.body.notes || null,
+  });
+
+  if (result.error === 'DOCUMENT_NAME_REQUIRED') {
+    return sendError(res, { status: 400, code: 'DOCUMENT_NAME_REQUIRED', message: 'File name is required.' });
+  }
+
+  return sendSuccess(res, { status: 201, data: result.data });
+}));
 
 router.get('/', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
