@@ -31,7 +31,7 @@ CREATE TYPE public.transport_mode AS ENUM ('road', 'sea', 'air', 'rail');
 CREATE TYPE public.shipment_status AS ENUM ('pending', 'in_transit', 'delivered', 'cancelled');
 
 -- Reports & Compliance
-CREATE TYPE public.report_type AS ENUM ('carbon_audit', 'compliance', 'export_declaration', 'sustainability', 'dataset_export', 'manual', 'export_data');
+CREATE TYPE public.report_type AS ENUM ('carbon_audit', 'compliance', 'export_declaration', 'sustainability', 'dataset_export', 'manual', 'export_data', 'product_carbon', 'batch_export', 'facility_emission');
 CREATE TYPE public.report_status AS ENUM ('processing', 'completed', 'failed');
 CREATE TYPE public.market_compliance_status AS ENUM ('draft', 'incomplete', 'ready', 'verified');
 CREATE TYPE public.impact_level AS ENUM ('high', 'medium', 'low');
