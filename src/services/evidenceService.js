@@ -42,7 +42,7 @@ class EvidenceService {
 
     if (filters.productId) {
       const safeProductId = toUuidOrNull(filters.productId);
-      if (!safeProductId) return [];
+      if (!safeProductId) return { items: [], total: 0 };
       conditions.push(`product_id = $${index}`);
       params.push(safeProductId);
       index += 1;
@@ -54,18 +54,26 @@ class EvidenceService {
       index += 1;
     }
 
-    const result = await pool.query(
-      `
-        SELECT *
-        FROM evidence_documents
-        WHERE ${conditions.join(' AND ')}
-        ORDER BY created_at DESC
-        LIMIT 200
-      `,
-      params
-    );
+    const where = conditions.join(' AND ');
+    const page = Math.max(1, Number.parseInt(filters.page, 10) || 1);
+    const pageSize = Math.min(200, Math.max(1, Number.parseInt(filters.pageSize, 10) || 50));
+    const offset = (page - 1) * pageSize;
 
-    return result.rows.map((row) => this.formatEvidence(row));
+    const [result, countResult] = await Promise.all([
+      pool.query(
+        `SELECT * FROM evidence_documents WHERE ${where} ORDER BY created_at DESC LIMIT $${index} OFFSET $${index + 1}`,
+        [...params, pageSize, offset]
+      ),
+      pool.query(
+        `SELECT COUNT(*) FROM evidence_documents WHERE ${where}`,
+        params
+      )
+    ]);
+
+    return {
+      items: result.rows.map((row) => this.formatEvidence(row)),
+      total: parseInt(countResult.rows[0].count, 10)
+    };
   }
 
   async createEvidence(companyId, userId, payload = {}) {
@@ -158,6 +166,7 @@ class EvidenceService {
       companyId: row.company_id,
       productId: row.product_id,
       shipmentId: row.shipment_id,
+      kind: row.evidence_type,
       evidenceType: row.evidence_type,
       documentName: row.document_name,
       lookupCode: row.lookup_code,

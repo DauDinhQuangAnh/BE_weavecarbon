@@ -5,6 +5,9 @@ const fs = require('fs');
 const { UPLOADS_ROOT } = require('../config/runtime');
 const analyticsService = require('./analyticsService');
 const reportJobQueue = require('./reportJobQueue');
+const pdfReportService = require('./pdfReportService');
+
+const PDF_REPORT_TYPES = new Set(['product_carbon', 'batch_export', 'facility_emission', 'compliance']);
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -1058,7 +1061,8 @@ class ReportsService {
 
     /**
      * Generate real report file (manual report type).
-     * For now produces a CSV summary; Phase 2 will add XLSX/PDF.
+     * PDF types (product_carbon, batch_export, facility_emission, compliance) use pdfkit.
+     * Legacy types (carbon_audit, sustainability, export_declaration) produce CSV.
      */
     async _generateRealReport(reportId, companyId) {
         const client = await pool.connect();
@@ -1071,54 +1075,70 @@ class ReportsService {
             if (reportRes.rows.length === 0) throw new Error('Report not found');
 
             const report = reportRes.rows[0];
+            const isPdf = PDF_REPORT_TYPES.has(report.report_type) || report.file_format === 'pdf';
 
-            // Build a summary CSV based on report type
-            let columns, rows;
+            let storageKey, filePath, fileSize, recordCount, originalFilename, ext;
 
-            if (report.report_type === 'carbon_audit' || report.report_type === 'sustainability') {
-                // Products + CO2 summary
-                const dataRes = await client.query(`
-                    SELECT p.sku, p.name, p.category, p.status, p.weight_kg,
-                           p.total_co2e, p.materials_co2e, p.production_co2e,
-                           p.transport_co2e, p.packaging_co2e, p.created_at
-                    FROM products p
-                    WHERE p.company_id = $1
-                      AND p.status <> 'archived'
-                    ORDER BY p.total_co2e DESC NULLS LAST
-                `, [companyId]);
-                columns = ['sku', 'name', 'category', 'status', 'weight_kg',
-                            'total_co2e', 'materials_co2e', 'production_co2e',
-                            'transport_co2e', 'packaging_co2e', 'created_at'];
-                rows = dataRes.rows;
-            } else if (report.report_type === 'compliance' || report.report_type === 'export_declaration') {
-                // Export compliance data
-                const dataRes = await client.query(`
-                    SELECT em.market_code, em.market_name, em.status, em.score,
-                           em.verification_status, em.verification_date, em.created_at
-                    FROM export_markets em
-                    WHERE em.company_id = $1
-                    ORDER BY em.market_code
-                `, [companyId]);
-                columns = ['market_code', 'market_name', 'status', 'score',
-                            'verification_status', 'verification_date', 'created_at'];
-                rows = dataRes.rows;
+            if (isPdf) {
+                // ── PDF path ───────────────────────────────────────────────
+                ext = 'pdf';
+                storageKey = `reports/${companyId}/${new Date().getFullYear()}/${reportId}.${ext}`;
+                filePath = path.resolve(UPLOADS_ROOT, storageKey);
+
+                const { buffer, recordCount: rc } = await pdfReportService.generatePdf(report.report_type, companyId);
+                recordCount = rc;
+
+                await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+                await fs.promises.writeFile(filePath, buffer);
+                fileSize = buffer.length;
+
+                originalFilename = `${report.report_type}_${new Date().toISOString().split('T')[0]}.pdf`;
             } else {
-                // Generic: list products
-                const dataRes = await client.query(`
-                    SELECT p.sku, p.name, p.category, p.total_co2e, p.created_at
-                    FROM products p
-                    WHERE p.company_id = $1
-                      AND p.status <> 'archived'
-                    ORDER BY p.created_at DESC
-                `, [companyId]);
-                columns = ['sku', 'name', 'category', 'total_co2e', 'created_at'];
-                rows = dataRes.rows;
-            }
+                // ── CSV path ───────────────────────────────────────────────
+                let columns, rows;
 
-            const storageKey = `reports/${companyId}/${new Date().getFullYear()}/${reportId}.csv`;
-            const filePath = path.resolve(UPLOADS_ROOT, storageKey);
-            const fileSize = await this._writeCsvFile(filePath, columns, rows);
-            const originalFilename = `report_${reportId}_${new Date().toISOString().split('T')[0]}.csv`;
+                if (report.report_type === 'carbon_audit' || report.report_type === 'sustainability') {
+                    const dataRes = await client.query(`
+                        SELECT p.sku, p.name, p.category, p.status, p.weight_kg,
+                               p.total_co2e, p.materials_co2e, p.production_co2e,
+                               p.transport_co2e, p.packaging_co2e, p.created_at
+                        FROM products p
+                        WHERE p.company_id = $1 AND p.status <> 'archived'
+                        ORDER BY p.total_co2e DESC NULLS LAST
+                    `, [companyId]);
+                    columns = ['sku', 'name', 'category', 'status', 'weight_kg',
+                               'total_co2e', 'materials_co2e', 'production_co2e',
+                               'transport_co2e', 'packaging_co2e', 'created_at'];
+                    rows = dataRes.rows;
+                } else if (report.report_type === 'export_declaration') {
+                    const dataRes = await client.query(`
+                        SELECT em.market_code, em.market_name, em.status, em.score,
+                               em.verification_status, em.verification_date, em.created_at
+                        FROM export_markets em
+                        WHERE em.company_id = $1
+                        ORDER BY em.market_code
+                    `, [companyId]);
+                    columns = ['market_code', 'market_name', 'status', 'score',
+                               'verification_status', 'verification_date', 'created_at'];
+                    rows = dataRes.rows;
+                } else {
+                    const dataRes = await client.query(`
+                        SELECT p.sku, p.name, p.category, p.total_co2e, p.created_at
+                        FROM products p
+                        WHERE p.company_id = $1 AND p.status <> 'archived'
+                        ORDER BY p.created_at DESC
+                    `, [companyId]);
+                    columns = ['sku', 'name', 'category', 'total_co2e', 'created_at'];
+                    rows = dataRes.rows;
+                }
+
+                ext = 'csv';
+                storageKey = `reports/${companyId}/${new Date().getFullYear()}/${reportId}.${ext}`;
+                filePath = path.resolve(UPLOADS_ROOT, storageKey);
+                fileSize = await this._writeCsvFile(filePath, columns, rows);
+                recordCount = rows.length;
+                originalFilename = `report_${reportId}_${new Date().toISOString().split('T')[0]}.${ext}`;
+            }
 
             await client.query(`
                 UPDATE reports
@@ -1129,11 +1149,11 @@ class ReportsService {
                     download_url = $3,
                     file_size_bytes = $4,
                     records = $5,
-                    file_format = 'csv',
+                    file_format = $8,
                     generated_at = NOW(),
                     updated_at = NOW()
                 WHERE id = $6 AND company_id = $7
-            `, [storageKey, originalFilename, `/api/reports/${reportId}/download`, fileSize, rows.length, reportId, companyId]);
+            `, [storageKey, originalFilename, `/api/reports/${reportId}/download`, fileSize, recordCount, reportId, companyId, ext]);
 
             await safeTrackAnalyticsEvent({
                 event_name: 'wc_report_generated',

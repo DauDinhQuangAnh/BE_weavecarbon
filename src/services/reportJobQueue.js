@@ -25,7 +25,8 @@ class ReportJobQueue {
       };
     }
 
-    if (row.report_type === 'compliance') {
+    // Legacy compliance report (export-markets simulation) — only when NOT PDF
+    if (row.report_type === 'compliance' && row.file_format !== 'pdf') {
       return {
         type: 'market_compliance_report',
         reportId: row.id,

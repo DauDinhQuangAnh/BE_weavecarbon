@@ -57,11 +57,13 @@ router.get('/', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
 
-  const items = await evidenceService.listEvidence(companyId, {
+  const result = await evidenceService.listEvidence(companyId, {
     productId: req.query.product_id || req.query.productId,
-    lookupCode: req.query.lookup_code || req.query.lookupCode
+    lookupCode: req.query.lookup_code || req.query.lookupCode,
+    page: req.query.page,
+    pageSize: req.query.page_size || req.query.pageSize
   });
-  sendSuccess(res, { data: { items, total: items.length } });
+  sendSuccess(res, { data: { items: result.items, total: result.total } });
 }));
 
 router.post('/', asyncHandler(async (req, res) => {
@@ -154,8 +156,8 @@ router.get('/product/:product_id', asyncHandler(async (req, res) => {
     });
   }
 
-  const items = await evidenceService.listEvidence(companyId, { productId });
-  return sendSuccess(res, { data: { items, total: items.length } });
+  const result = await evidenceService.listEvidence(companyId, { productId });
+  return sendSuccess(res, { data: { items: result.items, total: result.total } });
 }));
 
 module.exports = router;

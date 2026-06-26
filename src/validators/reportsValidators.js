@@ -12,7 +12,11 @@ const listReportsValidation = [
 
     query('type')
         .optional()
-        .isIn(['carbon_audit', 'compliance', 'export_declaration', 'sustainability', 'dataset_export', 'manual', 'export_data'])
+        .isIn([
+            'carbon_audit', 'compliance', 'export_declaration', 'sustainability',
+            'dataset_export', 'manual', 'export_data',
+            'product_carbon', 'batch_export', 'facility_emission',
+        ])
         .withMessage('Invalid report type'),
 
     query('status')
@@ -67,7 +71,11 @@ const createReportValidation = [
     body('report_type')
         .notEmpty()
         .withMessage('Report type is required')
-        .isIn(['carbon_audit', 'compliance', 'export_declaration', 'sustainability', 'manual', 'export_data'])
+        .isIn([
+            'carbon_audit', 'compliance', 'export_declaration', 'sustainability',
+            'manual', 'export_data',
+            'product_carbon', 'batch_export', 'facility_emission',
+        ])
         .withMessage('Invalid report type'),
 
     body('title')
