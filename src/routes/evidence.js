@@ -20,6 +20,19 @@ function requireCompany(req, res) {
   return null;
 }
 
+// POST /api/evidence/:id/verify — mark evidence as verified (alias for lock)
+router.post('/:id/verify', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+
+  const result = await evidenceService.lockEvidence(companyId, req.userId, req.params.id);
+  if (!result) {
+    return sendError(res, { status: 404, code: 'EVIDENCE_NOT_FOUND', message: 'Evidence document not found.' });
+  }
+
+  return sendSuccess(res, { data: result });
+}));
+
 // POST /api/evidence/upload — multipart/form-data file upload
 router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);

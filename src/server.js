@@ -121,13 +121,17 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use('/api', apiLimiter);
 
-app.get('/health', (req, res) => sendSuccess(res, {
-  data: {
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+app.get('/health', async (req, res) => {
+  try {
+    const pool = require('./config/database');
+    await pool.query('SELECT 1');
+    sendSuccess(res, {
+      data: { status: 'healthy', timestamp: new Date().toISOString(), uptime: process.uptime(), db: 'ok' }
+    });
+  } catch {
+    res.status(503).json({ success: false, error: { code: 'DB_UNAVAILABLE', message: 'Database not reachable' } });
   }
-}));
+});
 
 apiRoutes.forEach(([basePath, routeHandler]) => {
   app.use(basePath, routeHandler);
@@ -167,6 +171,16 @@ function shutdown(signal) {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[fatal] Unhandled promise rejection:', reason);
+  shutdown('unhandledRejection');
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[fatal] Uncaught exception:', err);
+  shutdown('uncaughtException');
+});
 
 app.startupReady = startupReady;
 
