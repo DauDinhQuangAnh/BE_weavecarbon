@@ -6,6 +6,7 @@ const pool = require('../config/database');
 const jwtConfig = require('../config/jwt');
 const subscriptionService = require('./subscriptionService');
 const b2cDefaultsService = require('./b2cDefaultsService');
+const { seedDemoB2BData } = require('./demoB2BSeeder');
 const {
   DEFAULT_DOMESTIC_MARKET,
   ensureCompaniesDomesticMarketColumn,
@@ -1118,10 +1119,10 @@ class AuthService {
       const demoExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
       const userResult = await client.query(
-        `INSERT INTO users (email, password_hash, full_name, email_verified, is_demo_user, created_at, updated_at)
-         VALUES ($1, $2, $3, true, true, NOW(), NOW())
+        `INSERT INTO users (email, password_hash, full_name, email_verified, is_demo_user, demo_expires_at, created_at, updated_at)
+         VALUES ($1, $2, $3, true, true, $4, NOW(), NOW())
          RETURNING id, email, full_name, created_at`,
-        [demoEmail, passwordHash, 'Demo User']
+        [demoEmail, passwordHash, 'Demo User', demoExpiresAt]
       );
 
       const user = userResult.rows[0];
@@ -1175,6 +1176,19 @@ class AuthService {
           console.warn(
             `[authService] Demo standard init failed for company ${company.id}:`,
             trialError.message
+          );
+        }
+
+        await client.query('SAVEPOINT demo_b2b_seed');
+        try {
+          await seedDemoB2BData(client, company.id, user.id);
+          await client.query('RELEASE SAVEPOINT demo_b2b_seed');
+        } catch (seedError) {
+          await client.query('ROLLBACK TO SAVEPOINT demo_b2b_seed');
+          await client.query('RELEASE SAVEPOINT demo_b2b_seed');
+          console.warn(
+            `[authService] Demo B2B seed failed for company ${company.id}:`,
+            seedError.message
           );
         }
       }
