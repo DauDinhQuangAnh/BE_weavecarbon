@@ -9,7 +9,12 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    concurrency:
+      group: backend-ci-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
       - name: Checkout
