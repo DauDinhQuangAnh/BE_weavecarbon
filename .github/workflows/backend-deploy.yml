@@ -29,8 +29,8 @@ jobs:
       DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-      GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
-      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+      GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout
@@ -136,7 +136,11 @@ jobs:
 
           if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN_B64:-}" ]; then
             GHCR_TOKEN="$(printf '%s' "$GHCR_TOKEN_B64" | base64 -d)"
+            echo "[deploy] Logging in to GHCR as ${GHCR_USERNAME}"
             printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+          else
+            echo "[deploy] ERROR: Missing GHCR credentials. Set GHCR_USERNAME/GHCR_TOKEN or allow GITHUB_TOKEN package access."
+            exit 1
           fi
 
           cd /opt/weavecarbon/FE
