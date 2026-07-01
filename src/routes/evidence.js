@@ -28,23 +28,23 @@ function getEvidenceRagCollectionName(companyId) {
   return `${prefix}_${String(companyId).replace(/[^a-zA-Z0-9_]/g, '_')}`;
 }
 
-// Fire-and-forget: call RAG /extract then persist fields — never blocks the upload response
-function extractFieldsAsync(docId, file, kind) {
+// Fire-and-forget: AI extraction + RAG ingest — both run in background, never block upload response
+function processFileAsync(docId, file, kind, companyId) {
   if (!docId || !file?.buffer?.length) return;
   (async () => {
+    const blob = new Blob([file.buffer], { type: file.mimetype || 'application/octet-stream' });
+    const filename = file.originalname || 'document';
+
+    // 1. AI field extraction → extracted_json
     try {
-      const formData = new FormData();
-      formData.append(
-        'file',
-        new Blob([file.buffer], { type: file.mimetype || 'application/octet-stream' }),
-        file.originalname || 'document'
-      );
-      formData.append('kind', kind);
-      formData.append('language', 'vi');
+      const extractForm = new FormData();
+      extractForm.append('file', blob, filename);
+      extractForm.append('kind', kind);
+      extractForm.append('language', 'vi');
 
       const result = await chatService.callGlobalRagEndpoint('/extract', {
         method: 'POST',
-        data: formData,
+        data: extractForm,
       });
 
       const fields = result?.fields ?? result ?? {};
@@ -53,6 +53,21 @@ function extractFieldsAsync(docId, file, kind) {
       }
     } catch (e) {
       console.warn(`[evidence] AI field extraction failed for ${docId}:`, e?.message ?? e);
+    }
+
+    // 2. RAG ingest → knowledge base (non-fatal)
+    try {
+      const ingestForm = new FormData();
+      ingestForm.append('file', blob, filename);
+      ingestForm.append('collection_name', getEvidenceRagCollectionName(companyId));
+      ingestForm.append('chunking_profile', 'hybrid');
+
+      await chatService.callGlobalRagEndpoint('/ingest', {
+        method: 'POST',
+        data: ingestForm,
+      });
+    } catch (e) {
+      console.warn(`[evidence] RAG ingest failed for ${docId}:`, e?.message ?? e);
     }
   })();
 }
@@ -123,8 +138,8 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
     notes: `Uploaded ${kind} evidence: ${file.originalname}`
   });
 
-  // Kick off AI extraction in background — response returns immediately
-  extractFieldsAsync(result.data?.id, file, kind);
+  // Kick off AI extraction + RAG ingest in background — response returns immediately
+  processFileAsync(result.data?.id, file, kind, companyId);
 
   return sendSuccess(res, { status: 201, data: result.data });
 }));
