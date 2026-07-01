@@ -114,7 +114,7 @@ function slowRequestLogger(req, res, next) {
 app.disable('x-powered-by');
 app.use(helmet());
 app.use(cors(createCorsOptions(allowedOrigins)));
-app.use(morgan('combined'));
+app.use(morgan('[http] :method :url -> :status'));
 app.use(slowRequestLogger);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

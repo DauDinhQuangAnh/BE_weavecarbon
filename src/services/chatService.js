@@ -23,6 +23,36 @@ const toPositiveInt = (value, fallback, min, max) => {
 };
 
 const compactWhitespace = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+const truncateForLog = (value, maxLength = 120) => {
+  const text = compactWhitespace(value);
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+};
+
+const pickMetadataText = (metadata, keys) => {
+  if (!isPlainObject(metadata)) return null;
+
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === 'string' || typeof value === 'number') {
+      const text = truncateForLog(value);
+      if (text) return text;
+    }
+  }
+
+  return null;
+};
+
+const summarizeRagMetadatas = (metadatas) => {
+  const items = Array.isArray(metadatas) ? metadatas : [];
+  return {
+    count: items.length,
+    samples: items.slice(0, 3).map((metadata) => ({
+      source: pickMetadataText(metadata, ['source', 'file_name', 'filename', 'document_name', 'title']),
+      page: pickMetadataText(metadata, ['page', 'page_number']),
+      collection: pickMetadataText(metadata, ['collection', 'collection_name'])
+    }))
+  };
+};
 
 const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope) => {
   try {
@@ -947,7 +977,7 @@ class ChatService {
       const assistantMetadata = {
         config_source: runtime.config_source,
         collection_name: dashboardChatConfig.collection_name,
-        rag_metadatas: ragResult.rag_response.metadatas ?? null
+        rag_metadatas: summarizeRagMetadatas(ragResult.rag_response.metadatas)
       };
 
       const assistantMessageResult = await client.query(

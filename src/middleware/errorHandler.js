@@ -1,5 +1,14 @@
 const { sendError } = require('../utils/http');
 
+function buildErrorLogEntry(err, req) {
+  return {
+    code: err.code || 'INTERNAL_ERROR',
+    message: err.message || 'An unexpected error occurred',
+    path: `${req.method} ${req.originalUrl}`,
+    status: err.statusCode || 500
+  };
+}
+
 function applyDatabaseError(error) {
   if (error.code === '23505') {
     error.statusCode = 409;
@@ -36,11 +45,14 @@ function applyValidationError(error) {
 }
 
 const errorHandler = (err, req, res, next) => {
-  console.error('Error:', err);
-
   applyDatabaseError(err);
   applyJwtError(err);
   applyValidationError(err);
+
+  console.error('[error]', buildErrorLogEntry(err, req));
+  if (process.env.LOG_ERROR_STACK === 'true' && err.stack) {
+    console.error(err.stack);
+  }
 
   return sendError(res, {
     status: err.statusCode || 500,
