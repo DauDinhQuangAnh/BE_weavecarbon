@@ -28,6 +28,35 @@ function getEvidenceRagCollectionName(companyId) {
   return `${prefix}_${String(companyId).replace(/[^a-zA-Z0-9_]/g, '_')}`;
 }
 
+// Fire-and-forget: call RAG /extract then persist fields — never blocks the upload response
+function extractFieldsAsync(docId, file, kind) {
+  if (!docId || !file?.buffer?.length) return;
+  (async () => {
+    try {
+      const formData = new FormData();
+      formData.append(
+        'file',
+        new Blob([file.buffer], { type: file.mimetype || 'application/octet-stream' }),
+        file.originalname || 'document'
+      );
+      formData.append('kind', kind);
+      formData.append('language', 'vi');
+
+      const result = await chatService.callGlobalRagEndpoint('/extract', {
+        method: 'POST',
+        data: formData,
+      });
+
+      const fields = result?.fields ?? result ?? {};
+      if (typeof fields === 'object' && Object.keys(fields).length > 0) {
+        await evidenceService.updateExtractedJson(docId, fields, 'ocr_parsed');
+      }
+    } catch (e) {
+      console.warn(`[evidence] AI field extraction failed for ${docId}:`, e?.message ?? e);
+    }
+  })();
+}
+
 // POST /api/evidence/:id/verify — mark evidence as verified (alias for lock)
 router.post('/:id/verify', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
@@ -93,6 +122,9 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
     reason: 'evidence.upload',
     notes: `Uploaded ${kind} evidence: ${file.originalname}`
   });
+
+  // Kick off AI extraction in background — response returns immediately
+  extractFieldsAsync(result.data?.id, file, kind);
 
   return sendSuccess(res, { status: 201, data: result.data });
 }));

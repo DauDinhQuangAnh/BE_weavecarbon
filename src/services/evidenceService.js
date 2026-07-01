@@ -144,6 +144,15 @@ class EvidenceService {
     return { data: this.formatEvidence(result.rows[0]) };
   }
 
+  async updateExtractedJson(evidenceId, extractedJson, newStatus = 'ocr_parsed') {
+    await pool.query(
+      `UPDATE evidence_documents
+       SET extracted_json = $1, status = $2, updated_at = now()
+       WHERE id = $3`,
+      [JSON.stringify(extractedJson || {}), newStatus, evidenceId]
+    );
+  }
+
   async lockEvidence(companyId, userId, evidenceId) {
     const result = await pool.query(
       `
