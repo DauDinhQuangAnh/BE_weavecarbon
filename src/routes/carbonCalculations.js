@@ -5,6 +5,24 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess, sendError, sendNoCompany, parsePositiveInt } = require('../utils/http');
 
+const formatCalc = (row) => ({
+  id: row.id,
+  productId: row.product_id,
+  shipmentId: row.shipment_id,
+  calculationType: row.calculation_type,
+  periodStart: row.period_start,
+  periodEnd: row.period_end,
+  materialsCo2e: row.materials_co2e,
+  productionCo2e: row.production_co2e,
+  transportCo2e: row.transport_co2e,
+  packagingCo2e: row.packaging_co2e,
+  totalCo2e: row.total_co2e,
+  methodology: row.methodology,
+  emissionFactorVersion: row.emission_factor_version,
+  notes: row.notes,
+  createdAt: row.created_at,
+});
+
 router.use(authenticate);
 router.use(requireRole('b2b'));
 
@@ -51,7 +69,7 @@ router.get('/', asyncHandler(async (req, res) => {
   );
 
   return sendSuccess(res, {
-    data: rows,
+    data: rows.map(formatCalc),
     meta: { total: parseInt(countRows[0].count, 10), page, limit }
   });
 }));
@@ -62,22 +80,33 @@ router.post('/', asyncHandler(async (req, res) => {
   if (!companyId) return sendNoCompany(res);
 
   const {
-    product_id,
-    shipment_id,
-    calculation_type,
-    period_start,
-    period_end,
-    materials_co2e = 0,
-    production_co2e = 0,
-    transport_co2e = 0,
-    packaging_co2e = 0,
-    total_co2e,
+    product_id, productId,
+    shipment_id, shipmentId,
+    calculation_type, calculationType,
+    period_start, periodStart,
+    period_end, periodEnd,
+    materials_co2e, materialsCo2e,
+    production_co2e, productionCo2e,
+    transport_co2e, transportCo2e,
+    packaging_co2e, packagingCo2e,
+    total_co2e, totalCo2e,
     methodology,
-    emission_factor_version = '2024',
-    notes
+    emission_factor_version, emissionFactorVersion,
+    notes,
   } = req.body;
+  const calcProductId = productId ?? product_id ?? null;
+  const calcShipmentId = shipmentId ?? shipment_id ?? null;
+  const calcType = calculationType ?? calculation_type;
+  const calcPeriodStart = periodStart ?? period_start ?? null;
+  const calcPeriodEnd = periodEnd ?? period_end ?? null;
+  const calcMaterials = materialsCo2e ?? materials_co2e ?? 0;
+  const calcProduction = productionCo2e ?? production_co2e ?? 0;
+  const calcTransport = transportCo2e ?? transport_co2e ?? 0;
+  const calcPackaging = packagingCo2e ?? packaging_co2e ?? 0;
+  const calcTotal = totalCo2e ?? total_co2e;
+  const calcEfVersion = emissionFactorVersion ?? emission_factor_version ?? '2024';
 
-  if (!calculation_type || total_co2e === undefined || total_co2e === null) {
+  if (!calcType || calcTotal === undefined || calcTotal === null) {
     return sendError(res, {
       status: 400,
       code: 'VALIDATION_ERROR',
@@ -92,19 +121,19 @@ router.post('/', asyncHandler(async (req, res) => {
         materials_co2e, production_co2e, transport_co2e, packaging_co2e,
         total_co2e, methodology, emission_factor_version, notes, calculated_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-     RETURNING id, product_id, calculation_type, total_co2e,
+     RETURNING id, product_id, shipment_id, calculation_type, total_co2e,
                materials_co2e, production_co2e, transport_co2e, packaging_co2e,
-               period_start, period_end, created_at`,
+               period_start, period_end, methodology, emission_factor_version, notes, created_at`,
     [
-      companyId, product_id || null, shipment_id || null, calculation_type,
-      period_start || null, period_end || null,
-      materials_co2e, production_co2e, transport_co2e, packaging_co2e,
-      total_co2e, methodology || null, emission_factor_version, notes || null,
+      companyId, calcProductId, calcShipmentId, calcType,
+      calcPeriodStart, calcPeriodEnd,
+      calcMaterials, calcProduction, calcTransport, calcPackaging,
+      calcTotal, methodology || null, calcEfVersion, notes || null,
       req.userId || null
     ]
   );
 
-  return sendSuccess(res, { status: 201, data: rows[0] });
+  return sendSuccess(res, { status: 201, data: formatCalc(rows[0]) });
 }));
 
 module.exports = router;

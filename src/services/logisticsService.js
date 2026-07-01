@@ -23,49 +23,73 @@ const parseCoordinate = (value) => {
 
 const mapShipmentSummaryRow = (row) => ({
   id: row.id,
-  reference_number: row.reference_number,
+  referenceNumber: row.reference_number,
   status: row.status,
   origin: {
     country: row.origin_country,
     city: row.origin_city,
     address: row.origin_address,
     lat: parseCoordinate(row.origin_lat),
-    lng: parseCoordinate(row.origin_lng)
+    lng: parseCoordinate(row.origin_lng),
   },
   destination: {
     country: row.destination_country,
     city: row.destination_city,
     address: row.destination_address,
     lat: parseCoordinate(row.destination_lat),
-    lng: parseCoordinate(row.destination_lng)
+    lng: parseCoordinate(row.destination_lng),
   },
-  total_weight_kg: toFloat(row.total_weight_kg),
-  total_distance_km: toFloat(row.total_distance_km),
-  total_co2e: toFloat(row.total_co2e),
-  estimated_arrival: row.estimated_arrival,
-  estimated_arrival_at: row.estimated_arrival_at,
-  actual_arrival: row.actual_arrival,
-  actual_arrival_at: row.actual_arrival_at,
-  pending_until: row.pending_until,
-  simulation_enabled: row.simulation_enabled === true,
-  legs_count: Number.parseInt(row.legs_count || 0, 10),
-  products_count: Number.parseInt(row.products_count || 0, 10),
-  created_at: row.created_at,
-  updated_at: row.updated_at
+  totalWeightKg: toFloat(row.total_weight_kg),
+  totalDistanceKm: toFloat(row.total_distance_km),
+  totalCo2e: toFloat(row.total_co2e),
+  estimatedArrival: row.estimated_arrival,
+  estimatedArrivalAt: row.estimated_arrival_at,
+  actualArrival: row.actual_arrival,
+  actualArrivalAt: row.actual_arrival_at,
+  pendingUntil: row.pending_until,
+  simulationEnabled: row.simulation_enabled === true,
+  legsCount: Number.parseInt(row.legs_count || 0, 10),
+  productsCount: Number.parseInt(row.products_count || 0, 10),
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
 });
 
 const mapShipmentMutationRow = (row) => ({
   id: row.id,
-  reference_number: row.reference_number || null,
+  referenceNumber: row.reference_number || null,
   status: row.status,
-  created_at: row.created_at,
-  updated_at: row.updated_at,
-  estimated_arrival: row.estimated_arrival,
-  estimated_arrival_at: row.estimated_arrival_at,
-  actual_arrival: row.actual_arrival,
-  actual_arrival_at: row.actual_arrival_at,
-  pending_until: row.pending_until,
-  simulation_enabled: row.simulation_enabled === true
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  estimatedArrival: row.estimated_arrival,
+  estimatedArrivalAt: row.estimated_arrival_at,
+  actualArrival: row.actual_arrival,
+  actualArrivalAt: row.actual_arrival_at,
+  pendingUntil: row.pending_until,
+  simulationEnabled: row.simulation_enabled === true,
+});
+
+const mapShipmentLeg = (row) => ({
+  id: row.id,
+  legOrder: row.leg_order,
+  transportMode: row.transport_mode,
+  originLocation: row.origin_location,
+  destinationLocation: row.destination_location,
+  distanceKm: toFloat(row.distance_km),
+  durationHours: row.duration_hours != null ? toFloat(row.duration_hours) : null,
+  co2e: toFloat(row.co2e),
+  emissionFactorUsed: row.emission_factor_used != null ? toFloat(row.emission_factor_used) : null,
+  carrierName: row.carrier_name || null,
+  vehicleType: row.vehicle_type || null,
+});
+
+const mapShipmentProduct = (row) => ({
+  id: row.id,
+  productId: row.product_id,
+  quantity: toFloat(row.quantity),
+  weightKg: toFloat(row.weight_kg),
+  allocatedCo2e: toFloat(row.allocated_co2e),
+  sku: row.sku || null,
+  productName: row.product_name || null,
 });
 
 const getUserIsDemo = async (client, userId) => {
@@ -366,36 +390,36 @@ async function getShipmentById(shipmentId, companyId) {
 
       return {
         id: shipment.id,
-        company_id: shipment.company_id,
-        reference_number: shipment.reference_number,
+        companyId: shipment.company_id,
+        referenceNumber: shipment.reference_number,
         status: shipment.status,
         origin: {
           country: shipment.origin_country,
           city: shipment.origin_city,
           address: shipment.origin_address,
           lat: parseCoordinate(shipment.origin_lat),
-          lng: parseCoordinate(shipment.origin_lng)
+          lng: parseCoordinate(shipment.origin_lng),
         },
         destination: {
           country: shipment.destination_country,
           city: shipment.destination_city,
           address: shipment.destination_address,
           lat: parseCoordinate(shipment.destination_lat),
-          lng: parseCoordinate(shipment.destination_lng)
+          lng: parseCoordinate(shipment.destination_lng),
         },
-        total_weight_kg: toFloat(shipment.total_weight_kg),
-        total_distance_km: toFloat(shipment.total_distance_km),
-        total_co2e: toFloat(shipment.total_co2e),
-        pending_until: shipment.pending_until,
-        estimated_arrival: shipment.estimated_arrival,
-        estimated_arrival_at: shipment.estimated_arrival_at,
-        actual_arrival: shipment.actual_arrival,
-        actual_arrival_at: shipment.actual_arrival_at,
-        simulation_enabled: shipment.simulation_enabled === true,
-        created_at: shipment.created_at,
-        updated_at: shipment.updated_at,
-        legs,
-        products
+        totalWeightKg: toFloat(shipment.total_weight_kg),
+        totalDistanceKm: toFloat(shipment.total_distance_km),
+        totalCo2e: toFloat(shipment.total_co2e),
+        pendingUntil: shipment.pending_until,
+        estimatedArrival: shipment.estimated_arrival,
+        estimatedArrivalAt: shipment.estimated_arrival_at,
+        actualArrival: shipment.actual_arrival,
+        actualArrivalAt: shipment.actual_arrival_at,
+        simulationEnabled: shipment.simulation_enabled === true,
+        createdAt: shipment.created_at,
+        updatedAt: shipment.updated_at,
+        legs: legs.map(mapShipmentLeg),
+        products: products.map(mapShipmentProduct),
       };
     } finally {
       client.release();

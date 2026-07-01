@@ -5,6 +5,19 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess, sendError, sendNoCompany, parsePositiveInt } = require('../utils/http');
 
+const formatAuditEntry = (row) => ({
+  id: row.id,
+  evidenceDocumentId: row.evidence_document_id,
+  dataGroup: row.data_group,
+  changedField: row.changed_field,
+  oldValue: row.old_value,
+  newValue: row.new_value,
+  reason: row.reason,
+  notes: row.notes,
+  changedBy: row.changed_by,
+  createdAt: row.created_at,
+});
+
 router.use(authenticate);
 router.use(requireRole('b2b'));
 
@@ -62,7 +75,7 @@ router.get(
     );
 
     return sendSuccess(res, {
-      data: rows,
+      data: rows.map(formatAuditEntry),
       meta: {
         total: parseInt(countRows[0].count, 10),
         page,
@@ -118,7 +131,7 @@ router.post(
       ]
     );
 
-    return sendSuccess(res, { status: 201, data: rows[0] });
+    return sendSuccess(res, { status: 201, data: formatAuditEntry(rows[0]) });
   })
 );
 

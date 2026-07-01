@@ -11,8 +11,9 @@ const DEFAULT_TIMEOUT_MS = 30000;
 const TITLE_MAX_LENGTH = 80;
 const PREVIEW_MAX_LENGTH = 120;
 const DASHBOARD_CHAT_COLLECTION_NAME = 'weaveCarbon_1';
-const DASHBOARD_CHAT_COLUMNS_TO_ANSWER = ['Question'];
+const DASHBOARD_CHAT_COLUMNS_TO_ANSWER = ['chunk'];
 const GLOBAL_AI_RUNTIME_KEY = 'global';
+const RAG_INTERNAL_API_KEY_HEADER = 'X-Internal-API-Key';
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -77,6 +78,18 @@ const trimTrailingSlash = (value) => value.replace(/\/+$/, '');
 const isPlainObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 class ChatService {
+  logAiRequest(level, entry) {
+    if (process.env.AI_REQUEST_LOGS === 'off') {
+      return;
+    }
+
+    const logEntry = Object.fromEntries(
+      Object.entries(entry).filter(([, value]) => value !== undefined && value !== null && value !== '')
+    );
+    const logger = level === 'warn' ? console.warn : console.info;
+    logger('[ai]', logEntry);
+  }
+
   normalizeRagBaseUrl(value) {
     const raw = compactWhitespace(value);
     if (!raw) {
@@ -154,6 +167,105 @@ class ChatService {
     return this.normalizeRagBaseUrl(internalOverride);
   }
 
+  buildRagRequestHeaders(headers = {}) {
+    const nextHeaders = { ...headers };
+    const internalApiKey = compactWhitespace(process.env.RAG_INTERNAL_API_KEY || '');
+
+    if (internalApiKey) {
+      nextHeaders[RAG_INTERNAL_API_KEY_HEADER] = internalApiKey;
+    }
+
+    return nextHeaders;
+  }
+
+  getRagErrorDetail(error) {
+    const responseData = error.response?.data;
+    if (isPlainObject(responseData) && typeof responseData.detail === 'string') {
+      return responseData.detail;
+    }
+    if (Array.isArray(responseData?.detail)) {
+      return JSON.stringify(responseData.detail);
+    }
+    return error.message;
+  }
+
+  async callRagEndpoint(config, path, options = {}) {
+    const baseUrl = this.resolveRagRequestBaseUrl(config.rag_base_url);
+    const requestUrl = `${baseUrl}${path}`;
+    const method = String(options.method || 'GET').toUpperCase();
+    const startedAt = process.hrtime.bigint();
+    const target = `${method} ${path}`;
+
+    try {
+      const response = await axios.request({
+        url: requestUrl,
+        method,
+        data: options.data,
+        params: options.params,
+        timeout: options.timeout || config.timeout_ms || DEFAULT_TIMEOUT_MS,
+        headers: this.buildRagRequestHeaders(options.headers || {})
+      });
+
+      const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+      this.logAiRequest('info', {
+        target,
+        status: response.status,
+        duration_ms: Number(durationMs.toFixed(1))
+      });
+
+      return response.data;
+    } catch (error) {
+      if (error.code === 'RAG_PROXY_BASE_URL_NOT_ALLOWED') {
+        throw error;
+      }
+
+      if (axios.isAxiosError(error)) {
+        const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+        this.logAiRequest('warn', {
+          target,
+          status: error.response?.status || 'network',
+          duration_ms: Number(durationMs.toFixed(1)),
+          code: error.code || 'RAG_BACKEND_ERROR'
+        });
+
+        if (error.code === 'ECONNREFUSED') {
+          throw createAppError('Unable to connect to the RAG backend service.', {
+            statusCode: 502,
+            code: 'RAG_BACKEND_UNAVAILABLE'
+          });
+        }
+
+        if (error.code === 'ECONNABORTED') {
+          throw createAppError('RAG backend request timed out', {
+            statusCode: 504,
+            code: 'RAG_BACKEND_TIMEOUT'
+          });
+        }
+
+        const upstreamStatus = error.response?.status || null;
+        const detail = this.getRagErrorDetail(error);
+        throw createAppError(detail || 'Failed to fetch a response from the RAG backend', {
+          statusCode: upstreamStatus && upstreamStatus >= 400 && upstreamStatus < 500 ? upstreamStatus : 502,
+          code: 'RAG_BACKEND_ERROR'
+        });
+      }
+
+      if (error.statusCode && error.code) {
+        throw error;
+      }
+
+      throw createAppError('Failed to fetch a response from the RAG backend', {
+        statusCode: 502,
+        code: 'RAG_BACKEND_ERROR'
+      });
+    }
+  }
+
+  async callGlobalRagEndpoint(path, options = {}) {
+    const config = await this.resolveGlobalRuntimeConfig();
+    return this.callRagEndpoint(config, path, options);
+  }
+
   getFallbackDashboardChatConfig() {
     const allowedBaseUrl = Array.from(this.getAllowedRagBaseUrls())[0] || null;
 
@@ -213,10 +325,13 @@ class ChatService {
 
     if (
       !compactWhitespace(config.rag_base_url) ||
-      !compactWhitespace(config.collection_name) ||
-      config.columns_to_answer.length === 0
+      !compactWhitespace(config.collection_name)
     ) {
       return null;
+    }
+
+    if (config.columns_to_answer.length === 0) {
+      config.columns_to_answer = [...DASHBOARD_CHAT_COLUMNS_TO_ANSWER];
     }
 
     return config;
@@ -234,17 +349,11 @@ class ChatService {
       });
     }
 
-    if (columnsToAnswer.length === 0) {
-      throw createAppError('columns_to_answer must contain at least one column', {
-        statusCode: 400,
-        code: 'VALIDATION_ERROR'
-      });
-    }
-
     return {
       rag_base_url: normalizedBaseUrl,
       collection_name: collectionName,
-      columns_to_answer: columnsToAnswer,
+      columns_to_answer:
+        columnsToAnswer.length > 0 ? columnsToAnswer : [...DASHBOARD_CHAT_COLUMNS_TO_ANSWER],
       number_docs_retrieval: toPositiveInt(
         payload.number_docs_retrieval,
         DEFAULT_NUMBER_DOCS_RETRIEVAL,
@@ -642,27 +751,24 @@ class ChatService {
   }
 
   async callRagQuery(config, content) {
-    const baseUrl = this.resolveRagRequestBaseUrl(config.rag_base_url);
-    const requestUrl = `${baseUrl}/collections/${encodeURIComponent(config.collection_name)}/query`;
-
     try {
-      const response = await axios.post(
-        requestUrl,
+      const payload = await this.callRagEndpoint(
+        config,
+        `/collections/${encodeURIComponent(config.collection_name)}/query`,
         {
-          query: content,
-          columns_to_answer: config.columns_to_answer,
-          number_docs_retrieval: config.number_docs_retrieval
-        },
-        {
-          timeout: config.timeout_ms,
+          method: 'POST',
+          data: {
+            query: content,
+            number_docs_retrieval: config.number_docs_retrieval
+          },
           headers: {
             'Content-Type': 'application/json'
           }
         }
       );
 
-      const payload = isObject(response.data) ? response.data : {};
-      const answer = compactWhitespace(payload.answer || payload.retrieved_data || '');
+      const responsePayload = isObject(payload) ? payload : {};
+      const answer = compactWhitespace(responsePayload.answer || responsePayload.retrieved_data || '');
       if (!answer) {
         throw createAppError('RAG backend returned an empty answer', {
           statusCode: 502,
@@ -672,11 +778,18 @@ class ChatService {
 
       return {
         answer,
-        rag_response: payload
+        rag_response: responsePayload
       };
     } catch (error) {
       if (error.code === 'RAG_PROXY_BASE_URL_NOT_ALLOWED') {
         throw error;
+      }
+
+      if (error.code === 'RAG_BACKEND_ERROR' || error.code === 'RAG_BACKEND_TIMEOUT' || error.code === 'RAG_BACKEND_UNAVAILABLE') {
+        throw createAppError(error.message, {
+          statusCode: error.statusCode,
+          code: 'CHAT_SEND_FAILED'
+        });
       }
 
       if (axios.isAxiosError(error)) {
@@ -745,28 +858,33 @@ class ChatService {
   }
 
   async callRagRecommendation(config, path, payload) {
-    const baseUrl = this.resolveRagRequestBaseUrl(config.rag_base_url);
-    const requestUrl = `${baseUrl}${path}`;
-
     try {
-      const response = await axios.post(requestUrl, payload, {
-        timeout: config.timeout_ms,
+      const response = await this.callRagEndpoint(config, path, {
+        method: 'POST',
+        data: payload,
         headers: {
           'Content-Type': 'application/json'
         }
       });
 
-      if (!isPlainObject(response.data)) {
+      if (!isPlainObject(response)) {
         throw createAppError('RAG backend returned an invalid response', {
           statusCode: 502,
           code: 'CHAT_SEND_FAILED'
         });
       }
 
-      return response.data;
+      return response;
     } catch (error) {
       if (error.code === 'RAG_PROXY_BASE_URL_NOT_ALLOWED') {
         throw error;
+      }
+
+      if (error.code === 'RAG_BACKEND_ERROR' || error.code === 'RAG_BACKEND_TIMEOUT' || error.code === 'RAG_BACKEND_UNAVAILABLE') {
+        throw createAppError(error.message, {
+          statusCode: error.statusCode,
+          code: 'CHAT_SEND_FAILED'
+        });
       }
 
       if (axios.isAxiosError(error)) {

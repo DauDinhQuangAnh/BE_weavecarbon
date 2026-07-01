@@ -91,12 +91,12 @@ const buildMarketReadinessDisplay = (
     : [];
 
   return {
-    preview_items: visibleItems,
-    remaining_items: hiddenItems,
-    remaining_count: hiddenItems.length,
-    remaining_label: hiddenItems.length > 0 ? `+${hiddenItems.length}` : '',
-    preview_limit: previewLimit,
-    has_more: hiddenItems.length > 0
+    previewItems: visibleItems,
+    remainingItems: hiddenItems,
+    remainingCount: hiddenItems.length,
+    remainingLabel: hiddenItems.length > 0 ? `+${hiddenItems.length}` : '',
+    previewLimit,
+    hasMore: hiddenItems.length > 0
   };
 };
 
@@ -410,17 +410,17 @@ async function getOverview(companyId, trendMonths) {
 
   const statsRow = statsResult.rows[0] || {};
   const stats = {
-    total_co2e: toNumber(statsRow.total_co2e),
-    total_skus: parseInt(statsRow.total_skus, 10) || 0,
-    avg_export_readiness: parseFloat(exportReadinessRow.avg_export_readiness) || 0,
-    data_confidence: toNumber(statsRow.data_confidence)
+    totalCo2e: toNumber(statsRow.total_co2e),
+    totalSkus: parseInt(statsRow.total_skus, 10) || 0,
+    avgExportReadiness: parseFloat(exportReadinessRow.avg_export_readiness) || 0,
+    dataConfidence: toNumber(statsRow.data_confidence)
   };
 
   const carbonTrend = trendResult.rows.map((row) => ({
     month: row.month_key,
     label: row.label,
-    actual_emissions: toNumber(row.actual_emissions),
-    target_emissions: toNumber(row.target_emissions)
+    actualEmissions: toNumber(row.actual_emissions),
+    targetEmissions: toNumber(row.target_emissions)
   }));
 
   const materials = toNumber(statsRow.materials);
@@ -466,12 +466,12 @@ async function getOverview(companyId, trendMonths) {
   ];
 
   const marketReadiness = marketRows.map((row) => ({
-    market_code: row.market_code,
-    market_name: row.market_name,
+    marketCode: row.market_code,
+    marketName: row.market_name,
     score: parseFloat(row.score) || 0,
     status: row.status,
-    requirements_met: row.requirements_met,
-    requirements_missing: row.requirements_missing
+    requirementsMet: row.requirements_met,
+    requirementsMissing: row.requirements_missing
   }));
 
   const marketReadinessDisplay = buildMarketReadinessDisplay(marketReadiness);
@@ -499,23 +499,23 @@ async function getOverview(companyId, trendMonths) {
       id: row.id,
       title,
       description: row.description,
-      impact_level: row.impact_level,
-      reduction_percentage: parseFloat(row.reduction_percentage) || 0,
-      estimated_cost_savings: parseFloat(row.estimated_cost_savings) || 0,
+      impactLevel: row.impact_level,
+      reductionPercentage: parseFloat(row.reduction_percentage) || 0,
+      estimatedCostSavings: parseFloat(row.estimated_cost_savings) || 0,
       category: row.category,
-      product_id: row.product_id
+      productId: row.product_id
     };
   });
 
   const payload = {
     stats,
-    carbon_trend: carbonTrend,
-    emission_breakdown: emissionBreakdown,
-    market_readiness: marketReadiness,
-    market_readiness_preview: marketReadinessDisplay.preview_items,
-    market_readiness_remaining_count: marketReadinessDisplay.remaining_count,
-    market_readiness_remaining_label: marketReadinessDisplay.remaining_label,
-    market_readiness_display: marketReadinessDisplay,
+    carbonTrend,
+    emissionBreakdown,
+    marketReadiness,
+    marketReadinessPreview: marketReadinessDisplay.previewItems,
+    marketReadinessRemainingCount: marketReadinessDisplay.remainingCount,
+    marketReadinessRemainingLabel: marketReadinessDisplay.remainingLabel,
+    marketReadinessDisplay,
     recommendations
   };
 

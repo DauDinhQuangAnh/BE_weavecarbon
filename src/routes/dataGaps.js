@@ -5,6 +5,19 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess, sendError, sendNoCompany } = require('../utils/http');
 
+const formatDataGap = (row) => ({
+  id: row.id,
+  dataGroup: row.data_group,
+  requiredForAudit: row.required_for_audit,
+  currentStatus: row.current_status,
+  riskLevel: row.risk_level,
+  requiredAction: row.required_action,
+  owner: row.owner,
+  deadline: row.deadline,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
 router.use(authenticate);
 router.use(requireRole('b2b'));
 
@@ -29,7 +42,7 @@ router.get(
       [companyId]
     );
 
-    return sendSuccess(res, { data: rows });
+    return sendSuccess(res, { data: rows.map(formatDataGap) });
   })
 );
 
@@ -75,7 +88,7 @@ router.post(
       params
     );
 
-    return sendSuccess(res, { data: { seeded: inserted.length, rows: inserted } });
+    return sendSuccess(res, { data: { seeded: inserted.length, rows: inserted.map(formatDataGap) } });
   })
 );
 
@@ -87,16 +100,21 @@ router.post(
     if (!companyId) return sendNoCompany(res);
 
     const {
-      data_group,
-      required_for_audit = true,
-      current_status = 'missing',
-      risk_level = 'high',
-      required_action,
+      data_group, dataGroup,
+      required_for_audit, requiredForAudit,
+      current_status = 'missing', currentStatus,
+      risk_level = 'high', riskLevel,
+      required_action, requiredAction,
       owner,
-      deadline
+      deadline,
     } = req.body;
+    const resolvedDataGroup = dataGroup ?? data_group;
+    const resolvedRequiredForAudit = requiredForAudit ?? required_for_audit;
+    const resolvedCurrentStatus = currentStatus ?? current_status ?? 'missing';
+    const resolvedRiskLevel = riskLevel ?? risk_level ?? 'high';
+    const resolvedRequiredAction = requiredAction ?? required_action ?? null;
 
-    if (!data_group) {
+    if (!resolvedDataGroup) {
       return sendError(res, {
         status: 400,
         code: 'VALIDATION_ERROR',
@@ -104,7 +122,7 @@ router.post(
       });
     }
 
-    if (!VALID_STATUSES.includes(current_status)) {
+    if (!VALID_STATUSES.includes(resolvedCurrentStatus)) {
       return sendError(res, {
         status: 400,
         code: 'VALIDATION_ERROR',
@@ -112,7 +130,7 @@ router.post(
       });
     }
 
-    if (!VALID_RISKS.includes(risk_level)) {
+    if (!VALID_RISKS.includes(resolvedRiskLevel)) {
       return sendError(res, {
         status: 400,
         code: 'VALIDATION_ERROR',
@@ -128,17 +146,17 @@ router.post(
                  required_action, owner, deadline, created_at, updated_at`,
       [
         companyId,
-        data_group,
-        required_for_audit !== false,
-        current_status,
-        risk_level,
-        required_action || null,
+        resolvedDataGroup,
+        resolvedRequiredForAudit !== false,
+        resolvedCurrentStatus,
+        resolvedRiskLevel,
+        resolvedRequiredAction,
         owner || null,
         deadline || null
       ]
     );
 
-    return sendSuccess(res, { status: 201, data: rows[0] });
+    return sendSuccess(res, { status: 201, data: formatDataGap(rows[0]) });
   })
 );
 
@@ -150,10 +168,13 @@ router.put(
     if (!companyId) return sendNoCompany(res);
 
     const { id } = req.params;
-    const { current_status, risk_level, required_action, owner, deadline, required_for_audit } =
-      req.body;
+    const { current_status, currentStatus, risk_level, riskLevel, required_action, requiredAction, owner, deadline, required_for_audit, requiredForAudit } = req.body;
+    const resolvedCurrentStatus = currentStatus ?? current_status;
+    const resolvedRiskLevel = riskLevel ?? risk_level;
+    const resolvedRequiredAction = requiredAction ?? required_action;
+    const resolvedRequiredForAudit = requiredForAudit ?? required_for_audit;
 
-    if (current_status && !VALID_STATUSES.includes(current_status)) {
+    if (resolvedCurrentStatus && !VALID_STATUSES.includes(resolvedCurrentStatus)) {
       return sendError(res, {
         status: 400,
         code: 'VALIDATION_ERROR',
@@ -161,7 +182,7 @@ router.put(
       });
     }
 
-    if (risk_level && !VALID_RISKS.includes(risk_level)) {
+    if (resolvedRiskLevel && !VALID_RISKS.includes(resolvedRiskLevel)) {
       return sendError(res, {
         status: 400,
         code: 'VALIDATION_ERROR',
@@ -184,12 +205,12 @@ router.put(
       [
         id,
         companyId,
-        current_status || null,
-        risk_level || null,
-        required_action !== undefined ? required_action : null,
+        resolvedCurrentStatus || null,
+        resolvedRiskLevel || null,
+        resolvedRequiredAction !== undefined ? resolvedRequiredAction : null,
         owner !== undefined ? owner : null,
         deadline || null,
-        required_for_audit !== undefined ? required_for_audit : null
+        resolvedRequiredForAudit !== undefined ? resolvedRequiredForAudit : null
       ]
     );
 
@@ -197,7 +218,7 @@ router.put(
       return sendError(res, { status: 404, code: 'NOT_FOUND', message: 'Data gap not found' });
     }
 
-    return sendSuccess(res, { data: rows[0] });
+    return sendSuccess(res, { data: formatDataGap(rows[0]) });
   })
 );
 

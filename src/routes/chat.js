@@ -113,6 +113,32 @@ router.post(
   })
 );
 
+router.post(
+  '/direct',
+  asyncHandler(async (req, res) => {
+    const query = String(req.body?.query || '').trim();
+    if (!query) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'query is required'
+        }
+      });
+    }
+
+    const data = await chatService.callGlobalRagEndpoint('/chat/gemini', {
+      method: 'POST',
+      data: { query },
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    return sendSuccess(res, { data });
+  })
+);
+
 router.get(
   '/settings',
   asyncHandler(async (req, res) => {

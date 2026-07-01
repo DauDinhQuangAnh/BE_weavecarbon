@@ -14,8 +14,9 @@ const updateGlobalAiRuntimeValidation = [
     .withMessage('collection_name must be between 1 and 255 characters'),
 
   body('columns_to_answer')
-    .isArray({ min: 1 })
-    .withMessage('columns_to_answer must be a non-empty array'),
+    .optional()
+    .isArray()
+    .withMessage('columns_to_answer must be an array'),
 
   body('columns_to_answer.*')
     .isString()

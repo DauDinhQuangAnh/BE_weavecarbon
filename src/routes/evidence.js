@@ -4,6 +4,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendError, sendNoCompany, sendSuccess } = require('../utils/http');
 const evidenceService = require('../services/evidenceService');
+const chatService = require('../services/chatService');
 const pool = require('../config/database');
 
 // Keep files in memory (no local disk dependency); 20 MB limit
@@ -18,6 +19,11 @@ function requireCompany(req, res) {
   if (req.companyId) return req.companyId;
   sendNoCompany(res, 'No company associated with this user');
   return null;
+}
+
+function getEvidenceRagCollectionName(companyId) {
+  const prefix = String(process.env.RAG_EVIDENCE_COLLECTION_PREFIX || 'evidence').trim() || 'evidence';
+  return `${prefix}_${String(companyId).replace(/[^a-zA-Z0-9_]/g, '_')}`;
 }
 
 // POST /api/evidence/:id/verify — mark evidence as verified (alias for lock)
@@ -64,6 +70,42 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
   }
 
   return sendSuccess(res, { status: 201, data: result.data });
+}));
+
+router.post('/:id/rag-ingest', upload.single('file'), asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+
+  if (!req.file) {
+    return sendError(res, { status: 400, code: 'FILE_REQUIRED', message: 'No file provided.' });
+  }
+
+  const { rows } = await pool.query(
+    'SELECT id FROM evidence_documents WHERE id = $1 AND company_id = $2',
+    [req.params.id, companyId]
+  );
+
+  if (!rows.length) {
+    return sendError(res, { status: 404, code: 'EVIDENCE_NOT_FOUND', message: 'Evidence document not found.' });
+  }
+
+  const formData = new FormData();
+  formData.append(
+    'file',
+    new Blob([req.file.buffer], {
+      type: req.file.mimetype || 'application/octet-stream'
+    }),
+    req.file.originalname || 'evidence-document.pdf'
+  );
+  formData.append('collection_name', getEvidenceRagCollectionName(companyId));
+  formData.append('chunking_profile', String(req.body?.chunking_profile || 'hybrid'));
+
+  const data = await chatService.callGlobalRagEndpoint('/ingest', {
+    method: 'POST',
+    data: formData
+  });
+
+  return sendSuccess(res, { data });
 }));
 
 router.get('/', asyncHandler(async (req, res) => {

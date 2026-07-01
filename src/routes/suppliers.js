@@ -5,6 +5,19 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess, sendError, sendNoCompany, parsePositiveInt } = require('../utils/http');
 
+const formatSupplier = (row) => ({
+  id: row.id,
+  supplierName: row.supplier_name,
+  supplierEmail: row.supplier_email,
+  materialSupplied: row.material_supplied,
+  requiredData: row.required_data,
+  deadline: row.deadline,
+  status: row.status,
+  sentAt: row.sent_at,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
 router.use(authenticate);
 router.use(requireRole('b2b'));
 
@@ -30,7 +43,7 @@ router.get(
       [companyId, limit, effectiveOffset]
     );
 
-    return sendSuccess(res, { data: rows });
+    return sendSuccess(res, { data: rows.map(formatSupplier) });
   })
 );
 
@@ -41,10 +54,19 @@ router.post(
     const companyId = req.companyId;
     if (!companyId) return sendNoCompany(res);
 
-    const { supplier_name, supplier_email, material_supplied, required_data, deadline, status } =
-      req.body;
+    const {
+      supplier_name, supplierName,
+      supplier_email, supplierEmail,
+      material_supplied, materialSupplied,
+      required_data, requiredData,
+      deadline, status,
+    } = req.body;
+    const resolvedName = supplierName ?? supplier_name;
+    const resolvedEmail = supplierEmail ?? supplier_email;
+    const resolvedMaterial = materialSupplied ?? material_supplied ?? null;
+    const resolvedData = requiredData ?? required_data;
 
-    if (!supplier_name || !supplier_email) {
+    if (!resolvedName || !resolvedEmail) {
       return sendError(res, {
         status: 400,
         code: 'VALIDATION_ERROR',
@@ -64,16 +86,16 @@ router.post(
                  required_data, deadline, status, sent_at, created_at, updated_at`,
       [
         companyId,
-        supplier_name,
-        supplier_email,
-        material_supplied || null,
-        Array.isArray(required_data) ? required_data : [],
+        resolvedName,
+        resolvedEmail,
+        resolvedMaterial,
+        Array.isArray(resolvedData) ? resolvedData : [],
         deadline || null,
         normalizedStatus
       ]
     );
 
-    return sendSuccess(res, { status: 201, data: rows[0] });
+    return sendSuccess(res, { status: 201, data: formatSupplier(rows[0]) });
   })
 );
 
@@ -85,7 +107,9 @@ router.put(
     if (!companyId) return sendNoCompany(res);
 
     const { id } = req.params;
-    const { status, sent_at, deadline, required_data } = req.body;
+    const { status, sent_at, sentAt, deadline, required_data, requiredData } = req.body;
+    const resolvedSentAt = sentAt ?? sent_at ?? null;
+    const resolvedRequiredData = requiredData ?? required_data;
 
     const validStatuses = ['draft', 'sent', 'waiting', 'received', 'overdue'];
     if (status && !validStatuses.includes(status)) {
@@ -110,9 +134,9 @@ router.put(
         id,
         companyId,
         status || null,
-        sent_at || null,
+        resolvedSentAt,
         deadline || null,
-        Array.isArray(required_data) ? required_data : null
+        Array.isArray(resolvedRequiredData) ? resolvedRequiredData : null
       ]
     );
 
@@ -120,7 +144,7 @@ router.put(
       return sendError(res, { status: 404, code: 'NOT_FOUND', message: 'Supplier request not found' });
     }
 
-    return sendSuccess(res, { data: rows[0] });
+    return sendSuccess(res, { data: formatSupplier(rows[0]) });
   })
 );
 
