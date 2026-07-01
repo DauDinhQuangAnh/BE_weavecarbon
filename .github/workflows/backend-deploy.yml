@@ -29,8 +29,8 @@ jobs:
       DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-      GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+      GHCR_USERNAME: ${{ github.actor }}
+      GHCR_TOKEN: ${{ github.token }}
 
     steps:
       - name: Checkout
@@ -73,7 +73,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ github.token }}
 
       - name: Build and push backend image
         uses: docker/build-push-action@v6
