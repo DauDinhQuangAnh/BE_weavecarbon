@@ -2,6 +2,7 @@ const express = require('express');
 const { authenticate, requireRole } = require('../middleware/auth');
 const validate = require('../middleware/validator');
 const productsService = require('../services/productsService');
+const { logAuditTrail } = require('../services/auditTrailService');
 const asyncHandler = require('../utils/asyncHandler');
 const { parsePositiveInt, sendError, sendNoCompany, sendSuccess } = require('../utils/http');
 const {
@@ -215,6 +216,15 @@ router.post('/', createProductValidation, validate, asyncHandler(async (req, res
 
   try {
     const result = await productsService.createProduct(companyId, req.userId, req.body);
+    await logAuditTrail({
+      companyId,
+      userId: req.userId,
+      dataGroup: 'products',
+      changedField: 'product.created',
+      newValue: result?.id || req.body?.sku || req.body?.productName || null,
+      reason: 'product.create',
+      notes: `Created product ${result?.sku || req.body?.sku || result?.name || req.body?.productName || ''}`.trim()
+    });
 
     return sendSuccess(res, {
       status: 201,
@@ -246,6 +256,16 @@ router.put('/:id', updateProductValidation, validate, asyncHandler(async (req, r
       message: 'Unable to update product'
     });
   }
+  await logAuditTrail({
+    companyId,
+    userId: req.userId,
+    dataGroup: 'products',
+    changedField: 'product.updated',
+    oldValue: req.params.id,
+    newValue: result.data?.id || req.params.id,
+    reason: 'product.update',
+    notes: `Updated product ${result.data?.sku || result.data?.name || req.params.id}`
+  });
 
   return sendSuccess(res, {
     data: result.data
@@ -275,6 +295,16 @@ router.patch(
         message: 'Unable to update product status'
       });
     }
+    await logAuditTrail({
+      companyId,
+      userId: req.userId,
+      dataGroup: 'products',
+      changedField: req.body.status === 'published' ? 'product.published' : 'product.updated',
+      oldValue: req.params.id,
+      newValue: req.body.status,
+      reason: 'product.status',
+      notes: `Product status changed to ${req.body.status}`
+    });
 
     return sendSuccess(res, {
       data: result.data
@@ -313,6 +343,15 @@ router.post('/bulk-import', bulkImportValidation, validate, asyncHandler(async (
     req.body.rows,
     req.body.save_mode || 'draft'
   );
+  await logAuditTrail({
+    companyId,
+    userId: req.userId,
+    dataGroup: 'products',
+    changedField: 'product.created',
+    newValue: Array.isArray(req.body.rows) ? `${req.body.rows.length} rows` : 'bulk import',
+    reason: 'product.bulk_import',
+    notes: `Bulk imported products with save mode ${req.body.save_mode || 'draft'}`
+  });
 
   return sendSuccess(res, {
     data: result

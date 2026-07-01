@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
+const { logAuditTrail } = require('../services/auditTrailService');
 const { authenticate, requireRole } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess, sendError, sendNoCompany } = require('../utils/http');
@@ -87,6 +88,15 @@ router.post(
                  required_action, owner, deadline, created_at, updated_at`,
       params
     );
+    await logAuditTrail({
+      companyId,
+      userId: req.userId,
+      dataGroup: 'data_gaps',
+      changedField: 'data_gap.seeded',
+      newValue: `${inserted.length} groups`,
+      reason: 'data_gap.seed',
+      notes: `Seeded ${inserted.length} data gap checklist item(s)`
+    });
 
     return sendSuccess(res, { data: { seeded: inserted.length, rows: inserted.map(formatDataGap) } });
   })
@@ -155,6 +165,15 @@ router.post(
         deadline || null
       ]
     );
+    await logAuditTrail({
+      companyId,
+      userId: req.userId,
+      dataGroup: resolvedDataGroup,
+      changedField: 'data_gap.created',
+      newValue: resolvedCurrentStatus,
+      reason: 'data_gap.create',
+      notes: `Created data gap ${resolvedDataGroup}`
+    });
 
     return sendSuccess(res, { status: 201, data: formatDataGap(rows[0]) });
   })
@@ -190,6 +209,13 @@ router.put(
       });
     }
 
+    const { rows: previousRows } = await pool.query(
+      `SELECT data_group, current_status, risk_level
+       FROM data_gaps
+       WHERE id = $1 AND company_id = $2`,
+      [id, companyId]
+    );
+
     const { rows } = await pool.query(
       `UPDATE data_gaps
        SET current_status  = COALESCE($3, current_status),
@@ -217,6 +243,18 @@ router.put(
     if (!rows.length) {
       return sendError(res, { status: 404, code: 'NOT_FOUND', message: 'Data gap not found' });
     }
+    const previous = previousRows[0] || {};
+    const nextStatus = rows[0].current_status;
+    await logAuditTrail({
+      companyId,
+      userId: req.userId,
+      dataGroup: rows[0].data_group,
+      changedField: nextStatus === 'verified' ? 'data_gap.verified' : 'data_gap.updated',
+      oldValue: previous.current_status || null,
+      newValue: nextStatus,
+      reason: 'data_gap.update',
+      notes: `Updated data gap ${rows[0].data_group}`
+    });
 
     return sendSuccess(res, { data: formatDataGap(rows[0]) });
   })

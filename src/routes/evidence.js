@@ -5,6 +5,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { sendError, sendNoCompany, sendSuccess } = require('../utils/http');
 const evidenceService = require('../services/evidenceService');
 const chatService = require('../services/chatService');
+const { logAuditTrail } = require('../services/auditTrailService');
 const pool = require('../config/database');
 
 // Keep files in memory (no local disk dependency); 20 MB limit
@@ -35,6 +36,17 @@ router.post('/:id/verify', asyncHandler(async (req, res) => {
   if (!result) {
     return sendError(res, { status: 404, code: 'EVIDENCE_NOT_FOUND', message: 'Evidence document not found.' });
   }
+  await logAuditTrail({
+    companyId,
+    userId: req.userId,
+    evidenceDocumentId: result.id || req.params.id,
+    dataGroup: 'evidence',
+    changedField: 'evidence.verified',
+    oldValue: 'uploaded',
+    newValue: 'verified',
+    reason: 'evidence.verify',
+    notes: `Verified evidence ${result.fileName || result.documentName || req.params.id}`
+  });
 
   return sendSuccess(res, { data: result });
 }));
@@ -68,6 +80,16 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
   if (result.error === 'DOCUMENT_NAME_REQUIRED') {
     return sendError(res, { status: 400, code: 'DOCUMENT_NAME_REQUIRED', message: 'File name is required.' });
   }
+  await logAuditTrail({
+    companyId,
+    userId: req.userId,
+    evidenceDocumentId: result.data?.id || null,
+    dataGroup: 'evidence',
+    changedField: 'evidence.uploaded',
+    newValue: file.originalname,
+    reason: 'evidence.upload',
+    notes: `Uploaded ${kind} evidence: ${file.originalname}`
+  });
 
   return sendSuccess(res, { status: 201, data: result.data });
 }));
@@ -140,6 +162,16 @@ router.post('/', asyncHandler(async (req, res) => {
       message: 'documentName or fileName is required.'
     });
   }
+  await logAuditTrail({
+    companyId,
+    userId: req.userId,
+    evidenceDocumentId: result.data?.id || null,
+    dataGroup: 'evidence',
+    changedField: 'evidence.uploaded',
+    newValue: result.data?.fileName || result.data?.documentName || req.body?.documentName || req.body?.fileName || null,
+    reason: 'evidence.create',
+    notes: `Created evidence ${result.data?.documentName || result.data?.fileName || ''}`.trim()
+  });
 
   return sendSuccess(res, { status: 201, data: result.data });
 }));
@@ -156,6 +188,17 @@ router.post('/:id/lock', asyncHandler(async (req, res) => {
       message: 'Evidence document not found.'
     });
   }
+  await logAuditTrail({
+    companyId,
+    userId: req.userId,
+    evidenceDocumentId: evidence.id || req.params.id,
+    dataGroup: 'evidence',
+    changedField: 'evidence.verified',
+    oldValue: 'uploaded',
+    newValue: 'locked',
+    reason: 'evidence.lock',
+    notes: `Locked evidence ${evidence.fileName || evidence.documentName || req.params.id}`
+  });
 
   return sendSuccess(res, { data: evidence });
 }));
@@ -194,6 +237,17 @@ router.post('/:id/confirm', asyncHandler(async (req, res) => {
   if (!result) {
     return sendError(res, { status: 404, code: 'EVIDENCE_NOT_FOUND', message: 'Evidence document not found.' });
   }
+  await logAuditTrail({
+    companyId,
+    userId: req.userId,
+    evidenceDocumentId: result.id || req.params.id,
+    dataGroup: 'evidence',
+    changedField: 'evidence.verified',
+    oldValue: 'uploaded',
+    newValue: 'confirmed',
+    reason: 'evidence.confirm',
+    notes: `Confirmed evidence ${result.fileName || result.documentName || req.params.id}`
+  });
 
   return sendSuccess(res, { data: result });
 }));

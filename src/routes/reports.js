@@ -7,6 +7,7 @@ const { UPLOADS_ROOT } = require('../config/runtime');
 const validate = require('../middleware/validator');
 const reportsService = require('../services/reportsService');
 const analyticsService = require('../services/analyticsService');
+const { logAuditTrail } = require('../services/auditTrailService');
 const {
     listReportsValidation,
     getReportByIdValidation,
@@ -143,6 +144,15 @@ router.post(
             };
 
             const result = await reportsService.createDatasetExport(companyId, userId, exportData);
+            await logAuditTrail({
+                companyId,
+                userId,
+                dataGroup: 'reports',
+                changedField: 'report.generated',
+                newValue: result?.id || exportData.dataset_type,
+                reason: 'report.dataset_export',
+                notes: `Created ${exportData.dataset_type} dataset export (${exportData.file_format})`
+            });
 
             return res.status(202).json({
                 success: true,
@@ -187,6 +197,15 @@ router.post(
             };
 
             const result = await reportsService.createDatasetExport(companyId, userId, exportData);
+            await logAuditTrail({
+                companyId,
+                userId,
+                dataGroup: 'reports',
+                changedField: 'report.generated',
+                newValue: result?.id || exportData.dataset_type,
+                reason: 'report.export_job',
+                notes: `Created ${exportData.dataset_type} export job (${exportData.file_format})`
+            });
 
             return res.status(202).json({
                 success: true,
@@ -399,6 +418,15 @@ router.post(
             }
 
             const snapshot = await reportsService.createV2Snapshot(req.companyId, req.userId, req.body || {});
+            await logAuditTrail({
+                companyId: req.companyId,
+                userId: req.userId,
+                dataGroup: 'reports',
+                changedField: 'report.generated',
+                newValue: snapshot?.id || null,
+                reason: 'report.v2_snapshot',
+                notes: 'Created V2 audit snapshot'
+            });
             return res.status(201).json({
                 success: true,
                 data: snapshot
@@ -583,6 +611,16 @@ router.get(
             }).catch((error) => {
                 console.error('[reports] Failed to track wc_report_downloaded:', error);
             });
+            await logAuditTrail({
+                companyId,
+                userId: req.userId,
+                dataGroup: 'reports',
+                changedField: 'report.downloaded',
+                oldValue: reportId,
+                newValue: originalFilename,
+                reason: 'report.download',
+                notes: `Downloaded report ${originalFilename}`
+            });
 
             if (storageProvider === 'local') {
                 // Resolve file from local storage
@@ -675,6 +713,15 @@ router.post(
             };
 
             const result = await reportsService.createReport(companyId, userId, reportData);
+            await logAuditTrail({
+                companyId,
+                userId,
+                dataGroup: 'reports',
+                changedField: 'report.generated',
+                newValue: result?.id || reportData.title || reportData.report_type,
+                reason: 'report.create',
+                notes: `Created report ${reportData.title || reportData.report_type}`
+            });
 
             return res.status(202).json({
                 success: true,

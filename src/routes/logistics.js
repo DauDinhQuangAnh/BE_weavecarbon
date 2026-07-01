@@ -2,6 +2,7 @@ const express = require('express');
 const { authenticate, requireRole } = require('../middleware/auth');
 const validate = require('../middleware/validator');
 const logisticsService = require('../services/logisticsService');
+const { logAuditTrail } = require('../services/auditTrailService');
 const asyncHandler = require('../utils/asyncHandler');
 const { parsePositiveInt, sendError, sendNoCompany, sendSuccess } = require('../utils/http');
 const {
@@ -150,6 +151,15 @@ router.post('/shipments', createShipmentValidation, validate, asyncHandler(async
 
   try {
     const result = await logisticsService.createShipment(companyId, req.userId, req.body);
+    await logAuditTrail({
+      companyId,
+      userId: req.userId,
+      dataGroup: 'logistics',
+      changedField: 'shipment.created',
+      newValue: result?.id || result?.referenceNumber || req.body?.reference_number || null,
+      reason: 'shipment.create',
+      notes: `Created shipment ${result?.referenceNumber || result?.reference_number || req.body?.reference_number || ''}`.trim()
+    });
 
     return sendSuccess(res, {
       status: 201,
@@ -178,6 +188,16 @@ router.patch('/shipments/:id', updateShipmentValidation, validate, asyncHandler(
       message: 'Shipment not found'
     });
   }
+  await logAuditTrail({
+    companyId,
+    userId: req.userId,
+    dataGroup: 'logistics',
+    changedField: 'shipment.updated',
+    oldValue: req.params.id,
+    newValue: result?.id || req.params.id,
+    reason: 'shipment.update',
+    notes: `Updated shipment ${result?.referenceNumber || result?.reference_number || req.params.id}`
+  });
 
   return sendSuccess(res, {
     data: result
@@ -209,6 +229,16 @@ router.patch(
           message: 'Shipment not found'
         });
       }
+      await logAuditTrail({
+        companyId,
+        userId: req.userId,
+        dataGroup: 'logistics',
+        changedField: 'shipment.updated',
+        oldValue: req.params.id,
+        newValue: req.body.status,
+        reason: 'shipment.status',
+        notes: `Shipment status changed to ${req.body.status}`
+      });
 
       return sendSuccess(res, {
         data: result
@@ -239,6 +269,16 @@ router.put(
         companyId,
         req.body.legs
       );
+      await logAuditTrail({
+        companyId,
+        userId: req.userId,
+        dataGroup: 'logistics',
+        changedField: 'shipment.updated',
+        oldValue: req.params.id,
+        newValue: Array.isArray(req.body.legs) ? `${req.body.legs.length} legs` : 'legs updated',
+        reason: 'shipment.legs',
+        notes: `Updated shipment legs for ${req.params.id}`
+      });
 
       return sendSuccess(res, {
         data: result
@@ -269,6 +309,16 @@ router.put(
         companyId,
         req.body.products
       );
+      await logAuditTrail({
+        companyId,
+        userId: req.userId,
+        dataGroup: 'logistics',
+        changedField: 'shipment.updated',
+        oldValue: req.params.id,
+        newValue: Array.isArray(req.body.products) ? `${req.body.products.length} products` : 'products updated',
+        reason: 'shipment.products',
+        notes: `Updated shipment products for ${req.params.id}`
+      });
 
       return sendSuccess(res, {
         data: result

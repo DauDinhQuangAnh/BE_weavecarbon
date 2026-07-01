@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
+const { logAuditTrail } = require('../services/auditTrailService');
 const { authenticate, requireRole } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess, sendError, sendNoCompany, parsePositiveInt } = require('../utils/http');
@@ -94,6 +95,15 @@ router.post(
         normalizedStatus
       ]
     );
+    await logAuditTrail({
+      companyId,
+      userId: req.userId,
+      dataGroup: 'suppliers',
+      changedField: 'supplier_request.created',
+      newValue: rows[0]?.id || resolvedEmail,
+      reason: 'supplier_request.create',
+      notes: `Created supplier request for ${resolvedName} (${resolvedEmail})`
+    });
 
     return sendSuccess(res, { status: 201, data: formatSupplier(rows[0]) });
   })
@@ -120,6 +130,13 @@ router.put(
       });
     }
 
+    const { rows: previousRows } = await pool.query(
+      `SELECT status, supplier_name, supplier_email
+       FROM supplier_requests
+       WHERE id = $1 AND company_id = $2`,
+      [id, companyId]
+    );
+
     const { rows } = await pool.query(
       `UPDATE supplier_requests
        SET status        = COALESCE($3, status),
@@ -143,6 +160,17 @@ router.put(
     if (!rows.length) {
       return sendError(res, { status: 404, code: 'NOT_FOUND', message: 'Supplier request not found' });
     }
+    const previous = previousRows[0] || {};
+    await logAuditTrail({
+      companyId,
+      userId: req.userId,
+      dataGroup: 'suppliers',
+      changedField: status === 'sent' ? 'supplier_request.sent' : 'supplier_request.updated',
+      oldValue: previous.status || null,
+      newValue: rows[0].status,
+      reason: 'supplier_request.update',
+      notes: `${status === 'sent' ? 'Sent' : 'Updated'} supplier request for ${rows[0].supplier_name || previous.supplier_name || id}`
+    });
 
     return sendSuccess(res, { data: formatSupplier(rows[0]) });
   })
