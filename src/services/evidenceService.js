@@ -160,7 +160,20 @@ class EvidenceService {
     return result.rows[0] ? this.formatEvidence(result.rows[0]) : null;
   }
 
+  statusToVerificationLevel(status) {
+    const map = {
+      uploaded: 0, pending: 0,
+      ocr_parsed: 1, processing: 1, extracted: 1,
+      logic_checked: 2, needs_review: 2, verified: 2, locked: 2,
+      source_matched: 3,
+      cross_checked: 4,
+      third_party_verified: 5,
+    };
+    return map[status] ?? 0;
+  }
+
   formatEvidence(row) {
+    const level = this.statusToVerificationLevel(row.status);
     return {
       id: row.id,
       companyId: row.company_id,
@@ -169,6 +182,7 @@ class EvidenceService {
       kind: row.evidence_type,
       evidenceType: row.evidence_type,
       documentName: row.document_name,
+      fileName: row.original_filename || row.document_name,
       lookupCode: row.lookup_code,
       sourceVendor: row.source_vendor,
       reportingPeriodStart: row.reporting_period_start,
@@ -179,9 +193,12 @@ class EvidenceService {
       originalFilename: row.original_filename,
       mimeType: row.mime_type,
       fileSizeBytes: Number(row.file_size_bytes || 0),
-      checksumSha256: row.checksum_sha256,
+      checksumSha256: row.checksum_sha256 || null,
       extractedJson: row.extracted_json || {},
       status: row.status,
+      verificationLevel: level,
+      trustScore: level >= 3 ? level * 20 : null,
+      warnings: row.warnings || null,
       lockedAt: row.locked_at,
       uploadedAt: row.uploaded_at,
       createdAt: row.created_at,

@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const multer = require('multer');
 const { authenticate, requireRole } = require('../middleware/auth');
@@ -63,6 +64,7 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
 
   const kind = req.body.kind || req.body.evidence_type || 'other';
   const documentName = req.body.documentName || file.originalname;
+  const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex');
 
   const result = await evidenceService.createEvidence(companyId, req.userId, {
     evidence_type: kind,
@@ -70,6 +72,7 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
     fileName: file.originalname,
     mime_type: file.mimetype,
     file_size_bytes: file.size,
+    checksum_sha256: sha256,
     reportingPeriodStart: req.body.reportingPeriodStart || null,
     reportingPeriodEnd: req.body.reportingPeriodEnd || null,
     sourceVendor: req.body.supplierName || null,
