@@ -238,6 +238,9 @@ router.post(
         method: 'POST',
         data: {
           query: req.body?.query,
+          columns_to_answer: Array.isArray(req.body?.columns_to_answer) && req.body.columns_to_answer.length > 0
+            ? req.body.columns_to_answer
+            : ['chunk'],
           number_docs_retrieval: req.body?.number_docs_retrieval,
           include_debug_info: req.body?.include_debug_info === true
         },

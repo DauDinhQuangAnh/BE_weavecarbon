@@ -759,6 +759,9 @@ class ChatService {
           method: 'POST',
           data: {
             query: content,
+            columns_to_answer: config.columns_to_answer?.length
+              ? config.columns_to_answer
+              : [...DASHBOARD_CHAT_COLUMNS_TO_ANSWER],
             number_docs_retrieval: config.number_docs_retrieval
           },
           headers: {
