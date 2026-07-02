@@ -103,7 +103,28 @@ const updateCompanyValidation = [
 
     body('domestic_market')
         .optional()
-        .customSanitizer((value, { req }) => normalizeDomesticMarket(value, req.body.target_markets))
+        .customSanitizer((value, { req }) => normalizeDomesticMarket(value, req.body.target_markets)),
+
+    body('address')
+        .optional({ nullable: true })
+        .isString()
+        .withMessage('Address must be a string')
+        .isLength({ max: 500 })
+        .withMessage('Address must be at most 500 characters'),
+
+    body('tax_id')
+        .optional({ nullable: true })
+        .isString()
+        .withMessage('Tax ID must be a string')
+        .isLength({ max: 100 })
+        .withMessage('Tax ID must be at most 100 characters'),
+
+    body('phone')
+        .optional({ nullable: true })
+        .isString()
+        .withMessage('Phone must be a string')
+        .isLength({ max: 50 })
+        .withMessage('Phone must be at most 50 characters')
 ];
 
 const changePasswordValidation = [

@@ -105,6 +105,9 @@ class AccountService {
           c.current_plan,
           c.domestic_market,
           c.target_markets,
+          c.address,
+          c.tax_id,
+          c.phone,
           c.created_at
         FROM company_members cm
         JOIN companies c ON c.id = cm.company_id
@@ -126,6 +129,9 @@ class AccountService {
                     current_plan: membershipCompany.current_plan,
                     domestic_market: membershipCompany.domestic_market,
                     target_markets: membershipCompany.target_markets,
+                    address: membershipCompany.address,
+                    tax_id: membershipCompany.tax_id,
+                    phone: membershipCompany.phone,
                     created_at: membershipCompany.created_at
                 };
                 companyMembership = {
@@ -139,13 +145,16 @@ class AccountService {
 
             if (!company && profile.company_id) {
                 const companyByProfileQuery = `
-        SELECT 
+        SELECT
           c.id,
           c.name,
           c.business_type,
           c.current_plan,
           c.domestic_market,
           c.target_markets,
+          c.address,
+          c.tax_id,
+          c.phone,
           c.created_at
         FROM companies c
         WHERE c.id = $1
@@ -235,7 +244,7 @@ class AccountService {
     /**
      * Update company info (only for admin)
      */
-    async updateCompany(userId, companyId, { name, business_type, domestic_market, target_markets }) {
+    async updateCompany(userId, companyId, { name, business_type, domestic_market, target_markets, address, tax_id, phone }) {
         const client = await pool.connect();
         try {
             await ensureCompaniesDomesticMarketColumn(client);
@@ -272,22 +281,28 @@ class AccountService {
 
             // Update company
             const companyQuery = `
-        UPDATE companies 
-        SET 
+        UPDATE companies
+        SET
           name = COALESCE($1, name),
           business_type = COALESCE($2, business_type),
           domestic_market = $3,
           target_markets = $4,
+          address = $6,
+          tax_id  = $7,
+          phone   = $8,
           updated_at = NOW()
         WHERE id = $5
-        RETURNING id, name, business_type, domestic_market, target_markets, updated_at
+        RETURNING id, name, business_type, domestic_market, target_markets, address, tax_id, phone, updated_at
       `;
             const companyResult = await client.query(companyQuery, [
                 name,
                 business_type,
                 normalizedMarkets.domestic_market,
                 normalizedMarkets.target_markets,
-                companyId
+                companyId,
+                address || null,
+                tax_id  || null,
+                phone   || null
             ]);
 
             if (companyResult.rows.length === 0) {

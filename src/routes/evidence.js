@@ -319,4 +319,31 @@ router.get('/product/:product_id', asyncHandler(async (req, res) => {
   return sendSuccess(res, { data: { items: result.items, total: result.total } });
 }));
 
+// DELETE /api/evidence/:id — cascade deletes linked electricity & fuel invoices
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+
+  // Cascade: remove linked invoices that reference this evidence document
+  await pool.query(
+    `DELETE FROM electricity_invoices WHERE evidence_document_id = $1 AND company_id = $2`,
+    [req.params.id, companyId]
+  );
+  await pool.query(
+    `DELETE FROM fuel_invoices WHERE evidence_document_id = $1 AND company_id = $2`,
+    [req.params.id, companyId]
+  );
+
+  const { rowCount } = await pool.query(
+    `DELETE FROM evidence_documents WHERE id = $1 AND company_id = $2`,
+    [req.params.id, companyId]
+  );
+
+  if (!rowCount) {
+    return sendError(res, { status: 404, code: 'NOT_FOUND', message: 'Evidence document not found.' });
+  }
+
+  return sendSuccess(res, { data: { deleted: true } });
+}));
+
 module.exports = router;

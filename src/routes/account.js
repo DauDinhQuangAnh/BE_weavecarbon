@@ -75,7 +75,7 @@ router.put(
   updateCompanyValidation,
   validate,
   asyncHandler(async (req, res) => {
-    const { name, business_type, domestic_market, target_markets } = req.body;
+    const { name, business_type, domestic_market, target_markets, address, tax_id, phone } = req.body;
 
     if (!req.companyId) {
       return sendNoCompany(res, 'User does not belong to a company', 400);
@@ -85,7 +85,10 @@ router.put(
       name,
       business_type,
       domestic_market,
-      target_markets
+      target_markets,
+      address,
+      tax_id,
+      phone
     });
 
     return sendSuccess(res, {
