@@ -16,6 +16,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./
 COPY src ./src
 COPY migrations ./migrations
+COPY templates ./templates
 COPY scripts/migrate.js ./scripts/migrate.js
 RUN mkdir -p uploads
 
