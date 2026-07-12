@@ -574,6 +574,7 @@ class ProductsService {
                         ...product,
                         weight_kg: weightKg,
                         total_co2e: totalCo2e,
+                        transport_co2e: transportCo2e,
                         payload: fullPayload
                     },
                     { isDemoUser }
@@ -720,6 +721,7 @@ class ProductsService {
                         id: productId,
                         weight_kg: weightKg,
                         total_co2e: totalCo2e,
+                        transport_co2e: transportCo2e,
                         payload: fullPayload
                     },
                     { isDemoUser }
@@ -764,7 +766,7 @@ class ProductsService {
 
             // Get current status and product weight (with latest snapshot)
             const selectQuery = `
-                SELECT p.id, p.status, p.weight_kg, p.total_co2e, s.payload
+                SELECT p.id, p.status, p.weight_kg, p.total_co2e, p.transport_co2e, s.payload
                 FROM products p
                 LEFT JOIN LATERAL (
                     SELECT payload
@@ -1493,7 +1495,36 @@ class ProductsService {
         };
     }
 
-    _normalizeShipmentLegs(rawLegs, origin, destination, fallbackTotalCo2e) {
+    _resolveShipmentTransportCo2e(product = {}) {
+        const payload = product?.payload || {};
+        const quantity = this._toPositiveInt(payload?.quantity, 1);
+        const carbonResults = payload.carbonResults || payload.carbon_results || {};
+        const totalBatch = carbonResults.totalBatch || carbonResults.total_batch || {};
+        const perProduct = carbonResults.perProduct || carbonResults.per_product || {};
+
+        const batchTransportCo2e = this._toNumber(
+            totalBatch.transport ?? totalBatch.transport_co2e,
+            Number.NaN
+        );
+        if (Number.isFinite(batchTransportCo2e) && batchTransportCo2e > 0) {
+            return batchTransportCo2e;
+        }
+
+        const perProductTransportCo2e = this._toNumber(
+            product.transport_co2e ??
+            product.transportCo2e ??
+            perProduct.transport ??
+            perProduct.transport_co2e,
+            Number.NaN
+        );
+        if (Number.isFinite(perProductTransportCo2e) && perProductTransportCo2e > 0) {
+            return perProductTransportCo2e * quantity;
+        }
+
+        return 0;
+    }
+
+    _normalizeShipmentLegs(rawLegs, origin, destination, fallbackTotalCo2e, totalWeightKg = 0) {
         const legs = Array.isArray(rawLegs) ? rawLegs : [];
         if (legs.length === 0) {
             return [];
@@ -1539,7 +1570,6 @@ class ProductsService {
             const parsedCo2 = this._toNumber(
                 rawLeg?.co2e ??
                 rawLeg?.co2_kg ??
-                rawLeg?.co2Kg ??
                 rawLeg?.co2 ??
                 rawLeg?.emission_kg,
                 Number.NaN
@@ -1595,6 +1625,9 @@ class ProductsService {
                 }
 
                 normalized[index].co2e = legDistance * normalized[index].emission_factor_used;
+                if (totalWeightKg > 0) {
+                    normalized[index].co2e *= totalWeightKg / 1000;
+                }
             });
         }
 
@@ -1644,12 +1677,16 @@ class ProductsService {
             };
         }
 
-        const fallbackTotalCo2e = Math.max(0, this._toNumber(product.total_co2e, 0));
+        const quantity = this._toPositiveInt(payload?.quantity, 1);
+        const unitWeightKg = Math.max(0, this._toNumber(product.weight_kg, 0));
+        const totalWeightKg = unitWeightKg > 0 ? unitWeightKg * quantity : unitWeightKg;
+        const fallbackTotalCo2e = Math.max(0, this._resolveShipmentTransportCo2e(product));
         const normalizedLegs = this._normalizeShipmentLegs(
             transportLegs,
             origin,
             destination,
-            fallbackTotalCo2e
+            fallbackTotalCo2e,
+            totalWeightKg
         );
         if (normalizedLegs.length === 0) {
             return {
@@ -1661,9 +1698,6 @@ class ProductsService {
         }
         const totalDistanceKm = normalizedLegs.reduce((sum, leg) => sum + leg.distance_km, 0);
         const totalCo2e = normalizedLegs.reduce((sum, leg) => sum + leg.co2e, 0) || fallbackTotalCo2e;
-        const quantity = this._toPositiveInt(payload?.quantity, 1);
-        const unitWeightKg = Math.max(0, this._toNumber(product.weight_kg, 0));
-        const totalWeightKg = unitWeightKg > 0 ? unitWeightKg * quantity : unitWeightKg;
 
         const linkedShipmentResult = await client.query(
             `SELECT s.id, s.reference_number, s.created_at, s.pending_until
@@ -1855,8 +1889,17 @@ class ProductsService {
             const refNumber = `SHIP-${new Date().getFullYear()}-${String(count).padStart(4, '0')}`;
 
             // Calculate totals from transport legs
-            const fallbackTotalCo2e = Math.max(0, this._toNumber(product.total_co2e, 0));
-            const legs = this._normalizeShipmentLegs(transportLegs, origin, destination, fallbackTotalCo2e);
+            const quantity = this._toPositiveInt(payload?.quantity, 1);
+            const unitWeightKg = Math.max(0, this._toNumber(product.weight_kg, 0));
+            const totalWeightKg = unitWeightKg > 0 ? unitWeightKg * quantity : unitWeightKg;
+            const fallbackTotalCo2e = Math.max(0, this._resolveShipmentTransportCo2e(product));
+            const legs = this._normalizeShipmentLegs(
+                transportLegs,
+                origin,
+                destination,
+                fallbackTotalCo2e,
+                totalWeightKg
+            );
             if (legs.length === 0) {
                 return {
                     shipmentId: null,
@@ -1867,9 +1910,6 @@ class ProductsService {
             }
             const totalDistanceKm = legs.reduce((sum, leg) => sum + leg.distance_km, 0);
             const totalCo2e = legs.reduce((sum, leg) => sum + leg.co2e, 0) || fallbackTotalCo2e;
-            const quantity = this._toPositiveInt(payload?.quantity, 1);
-            const unitWeightKg = Math.max(0, this._toNumber(product.weight_kg, 0));
-            const totalWeightKg = unitWeightKg > 0 ? unitWeightKg * quantity : unitWeightKg;
 
             const createdAt = new Date();
             const simulation = buildShipmentSimulationState({
@@ -2307,6 +2347,7 @@ class ProductsService {
                                 id: productId,
                                 weight_kg: weightKg,
                                 total_co2e: totalCo2e,
+                                transport_co2e: transportCo2e,
                                 payload: fullPayload
                             },
                             { isDemoUser }
