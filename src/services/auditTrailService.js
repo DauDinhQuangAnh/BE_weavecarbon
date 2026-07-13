@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const logger = require('../utils/logger');
 
 async function logAuditTrail({
   client = pool,
@@ -38,7 +39,7 @@ async function logAuditTrail({
 
     return rows[0] || null;
   } catch (error) {
-    console.error('[auditTrailService] Failed to write audit trail:', error);
+    logger.error({ err: error }, '[auditTrailService] Failed to write audit trail');
     return null;
   }
 }

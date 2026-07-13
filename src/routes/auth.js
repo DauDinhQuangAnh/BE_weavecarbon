@@ -7,6 +7,7 @@ const googleAuthService = require('../services/googleAuthService');
 const validate = require('../middleware/validator');
 const pool = require('../config/database');
 const { resolveFrontendBaseUrl } = require('../config/urls');
+const logger = require('../utils/logger');
 const {
   clearRefreshTokenCookie,
   getRefreshTokenFromRequest,
@@ -79,7 +80,7 @@ const safeTrackAnalyticsEvent = async (payload) => {
   try {
     await analyticsService.trackEvent(payload);
   } catch (error) {
-    console.error('[auth] Failed to track analytics event:', error);
+    logger.error({ err: error }, '[auth] Failed to track analytics event');
   }
 };
 
@@ -574,12 +575,12 @@ router.post('/signup', signupLimiter, signupValidation, validate, async (req, re
           });
         }
 
-        console.log(`[auth] Email ${email} exists but is not verified. Deleting old account for re-registration...`);
+        logger.info({ email }, '[auth] Email exists but is not verified. Deleting old account for re-registration...');
 
         // Delete old unverified account
         await pool.query('DELETE FROM users WHERE id = $1', [existingUser.id]);
 
-        console.log('[auth] Old unverified account deleted. Proceeding with new registration.');
+        logger.info('[auth] Old unverified account deleted. Proceeding with new registration.');
       } else {
         // Email verified - cannot re-register
         return res.status(409).json({
@@ -624,7 +625,7 @@ router.post('/signup', signupLimiter, signupValidation, validate, async (req, re
     emailService.sendVerificationEmail(email, verificationToken, full_name, null, {
       frontendOrigin: resolveRequestedFrontendOrigin(req)
     })
-      .catch(err => console.error('Failed to send verification email:', err));
+      .catch(err => logger.error({ err }, 'Failed to send verification email'));
 
     await safeTrackAnalyticsEvent({
       event_name: 'sign_up',
@@ -1014,7 +1015,7 @@ router.get('/verify-email', async (req, res, next) => {
     });
   } catch (error) {
     if (wantsHtml) {
-      console.error('Email verification page error:', error);
+      logger.error({ err: error }, 'Email verification page error');
       return res.status(500).type('html').send(buildVerificationResultPage({
         status: 'error',
         title: 'Unexpected verification error',
@@ -1278,7 +1279,7 @@ router.get('/accept-company-invite', async (req, res, next) => {
     });
   } catch (error) {
     if (wantsHtml) {
-      console.error('Company invite acceptance error:', error);
+      logger.error({ err: error }, 'Company invite acceptance error');
       return res.status(500).type('html').send(buildVerificationResultPage({
         status: 'error',
         title: 'Unexpected invite error',
@@ -1377,7 +1378,7 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
           { frontendOrigin }
         );
       } catch (sendError) {
-        console.error('Failed to send Google verification email:', sendError);
+        logger.error({ err: sendError }, 'Failed to send Google verification email');
       }
     }
 
@@ -1452,7 +1453,7 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
       await authService.storeRefreshToken(refreshToken, user.id, resolveRequestMetadata(req));
       setRefreshTokenCookie(res, refreshToken, { rememberMe });
     } catch (sessionError) {
-      console.error('[auth] Failed to issue Google cookie session:', sessionError);
+      logger.error({ err: sessionError }, '[auth] Failed to issue Google cookie session');
       clearRefreshTokenCookie(res);
     }
 

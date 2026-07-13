@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../config/database');
+const logger = require('../utils/logger');
 
 const ANALYTICS_SOURCE = 'server';
 const DEFAULT_CURRENCY = 'VND';
@@ -354,7 +355,7 @@ class AnalyticsService {
 
   queuePendingDispatch(eventIds = []) {
     void this.dispatchPendingEvents(eventIds).catch((error) => {
-      console.error('[analytics] Failed to dispatch pending event:', error);
+      logger.error({ err: error }, '[analytics] Failed to dispatch pending event');
     });
   }
 }

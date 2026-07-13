@@ -8,6 +8,7 @@ const evidenceService = require('../services/evidenceService');
 const chatService = require('../services/chatService');
 const { logAuditTrail } = require('../services/auditTrailService');
 const pool = require('../config/database');
+const logger = require('../utils/logger');
 
 // Keep files in memory (no local disk dependency); 20 MB limit
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -52,7 +53,7 @@ function processFileAsync(docId, file, kind, companyId) {
         await evidenceService.updateExtractedJson(docId, fields, 'ocr_parsed');
       }
     } catch (e) {
-      console.warn(`[evidence] AI field extraction failed for ${docId}:`, e?.message ?? e);
+      logger.warn({ err: e }, `[evidence] AI field extraction failed for ${docId}`);
     }
 
     // 2. RAG ingest → knowledge base (non-fatal)
@@ -67,7 +68,7 @@ function processFileAsync(docId, file, kind, companyId) {
         data: ingestForm,
       });
     } catch (e) {
-      console.warn(`[evidence] RAG ingest failed for ${docId}:`, e?.message ?? e);
+      logger.warn({ err: e }, `[evidence] RAG ingest failed for ${docId}`);
     }
   })();
 }

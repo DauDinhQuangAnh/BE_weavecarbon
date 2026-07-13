@@ -3,6 +3,7 @@ const analyticsService = require('./analyticsService');
 const authService = require('./authService');
 const emailService = require('./emailService');
 const { createAppError } = require('../utils/appError');
+const logger = require('../utils/logger');
 
 const pushAnalyticsEvent = async (client, eventIds, payload, scope) => {
     try {
@@ -11,7 +12,7 @@ const pushAnalyticsEvent = async (client, eventIds, payload, scope) => {
             eventIds.push(event.id);
         }
     } catch (error) {
-        console.error(`[companyMembersService] Failed to queue ${scope}:`, error);
+        logger.error({ err: error }, `[companyMembersService] Failed to queue ${scope}`);
     }
 };
 
@@ -210,7 +211,7 @@ class CompanyMembersService {
                         companyName: company.name,
                         frontendOrigin: frontend_origin || null
                     }
-                ).catch((err) => console.error('Failed to send company invite email:', err));
+                ).catch((err) => logger.error({ err }, 'Failed to send company invite email'));
             }
 
             return {

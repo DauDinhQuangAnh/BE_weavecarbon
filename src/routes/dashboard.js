@@ -4,6 +4,7 @@ const pool = require('../config/database');
 const { getSchemaCapabilities } = require('../config/schemaCapabilities');
 const { authenticate, requireRole } = require('../middleware/auth');
 const dashboardService = require('../services/dashboardService');
+const logger = require('../utils/logger');
 
 const toNumber = (value) => {
   const parsed = Number.parseFloat(value);
@@ -77,7 +78,7 @@ router.get('/overview', authenticate, requireRole('b2b'), async (req, res, next)
       }
     });
   } catch (error) {
-    console.error('Dashboard overview error:', error);
+    logger.error({ err: error }, 'Dashboard overview error');
     next(error);
   }
 });
@@ -314,7 +315,7 @@ router.post('/targets', authenticate, requireRole('b2b'), async (req, res, next)
       }
     });
   } catch (error) {
-    console.error('Dashboard targets error:', error);
+    logger.error({ err: error }, 'Dashboard targets error');
     next(error);
   }
 });

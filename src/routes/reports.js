@@ -8,6 +8,7 @@ const validate = require('../middleware/validator');
 const reportsService = require('../services/reportsService');
 const analyticsService = require('../services/analyticsService');
 const { logAuditTrail } = require('../services/auditTrailService');
+const logger = require('../utils/logger');
 const {
     listReportsValidation,
     getReportByIdValidation,
@@ -105,7 +106,7 @@ router.get(
                 data: result
             });
         } catch (error) {
-            console.error('Error listing reports:', error);
+            logger.error({ err: error }, 'Error listing reports');
             next(error);
         }
     }
@@ -159,7 +160,7 @@ router.post(
                 data: result
             });
         } catch (error) {
-            console.error('Error creating dataset export:', error);
+            logger.error({ err: error }, 'Error creating dataset export');
             next(error);
         }
     }
@@ -212,7 +213,7 @@ router.post(
                 data: result
             });
         } catch (error) {
-            console.error('Error creating dataset export (fallback):', error);
+            logger.error({ err: error }, 'Error creating dataset export (fallback)');
             next(error);
         }
     }
@@ -248,7 +249,7 @@ router.get(
                 data: result
             });
         } catch (error) {
-            console.error('Error fetching all export source counts:', error);
+            logger.error({ err: error }, 'Error fetching all export source counts');
             next(error);
         }
     }
@@ -308,7 +309,7 @@ router.get(
                 data: result
             });
         } catch (error) {
-            console.error('Error fetching export source count:', error);
+            logger.error({ err: error }, 'Error fetching export source count');
             next(error);
         }
     }
@@ -368,7 +369,7 @@ router.get(
                 data: result
             });
         } catch (error) {
-            console.error('Error fetching export data:', error);
+            logger.error({ err: error }, 'Error fetching export data');
             next(error);
         }
     }
@@ -480,7 +481,7 @@ router.get(
                 data: report
             });
         } catch (error) {
-            console.error('Error fetching report:', error);
+            logger.error({ err: error }, 'Error fetching report');
             next(error);
         }
     }
@@ -529,7 +530,7 @@ router.get(
                 data: result
             });
         } catch (error) {
-            console.error('Error fetching report status:', error);
+            logger.error({ err: error }, 'Error fetching report status');
             next(error);
         }
     }
@@ -609,7 +610,7 @@ router.get(
                     report_status: fileStatus.status || 'completed'
                 }
             }).catch((error) => {
-                console.error('[reports] Failed to track wc_report_downloaded:', error);
+                logger.error({ err: error }, '[reports] Failed to track wc_report_downloaded');
             });
             await logAuditTrail({
                 companyId,
@@ -669,7 +670,7 @@ router.get(
             });
 
         } catch (error) {
-            console.error('Error downloading report:', error);
+            logger.error({ err: error }, 'Error downloading report');
             next(error);
         }
     }
@@ -728,7 +729,7 @@ router.post(
                 data: result
             });
         } catch (error) {
-            console.error('Error creating report:', error);
+            logger.error({ err: error }, 'Error creating report');
             next(error);
         }
     }
@@ -779,7 +780,7 @@ router.delete(
                 message: 'Report deleted successfully'
             });
         } catch (error) {
-            console.error('Error deleting report:', error);
+            logger.error({ err: error }, 'Error deleting report');
             next(error);
         }
     }
@@ -847,7 +848,7 @@ router.patch(
                 data: result.data
             });
         } catch (error) {
-            console.error('Error updating report status:', error);
+            logger.error({ err: error }, 'Error updating report status');
             next(error);
         }
     }

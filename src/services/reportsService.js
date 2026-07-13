@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { UPLOADS_ROOT } = require('../config/runtime');
 const analyticsService = require('./analyticsService');
+const logger = require('../utils/logger');
 const reportJobQueue = require('./reportJobQueue');
 const pdfReportService = require('./pdfReportService');
 
@@ -23,7 +24,7 @@ const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope)
             eventIds.push(event.id);
         }
     } catch (error) {
-        console.error(`[reportsService] Failed to queue ${scope}:`, error);
+        logger.error({ err: error }, `[reportsService] Failed to queue ${scope}`);
     }
 };
 
@@ -31,7 +32,7 @@ const safeTrackAnalyticsEvent = async (payload, scope) => {
     try {
         await analyticsService.trackEvent(payload);
     } catch (error) {
-        console.error(`[reportsService] Failed to track ${scope}:`, error);
+        logger.error({ err: error }, `[reportsService] Failed to track ${scope}`);
     }
 };
 

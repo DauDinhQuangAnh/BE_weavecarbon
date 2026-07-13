@@ -7,6 +7,7 @@ const {
   syncShipmentSimulationById,
   toLegacyDate
 } = require('./shipmentSimulationService');
+const logger = require('../utils/logger');
 
 /**
  * Logistics Service
@@ -363,7 +364,7 @@ async function listShipments(companyId, filters = {}) {
       }
     };
   } catch (error) {
-    console.error('Error listing shipments:', error);
+    logger.error({ err: error }, 'Error listing shipments');
     throw error;
   }
 }
@@ -425,7 +426,7 @@ async function getShipmentById(shipmentId, companyId) {
       client.release();
     }
   } catch (error) {
-    console.error('Error getting shipment:', error);
+    logger.error({ err: error }, 'Error getting shipment');
     throw error;
   }
 }
@@ -626,7 +627,7 @@ async function createShipment(companyId, userId, shipmentData) {
     return mapShipmentMutationRow(shipmentResult.rows[0]);
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error creating shipment:', error);
+    logger.error({ err: error }, 'Error creating shipment');
     throw error;
   } finally {
     client.release();
@@ -819,7 +820,7 @@ async function updateShipment(shipmentId, companyId, updates) {
     return mapShipmentMutationRow(responseRow);
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error updating shipment:', error);
+    logger.error({ err: error }, 'Error updating shipment');
     throw error;
   } finally {
     client.release();
@@ -956,7 +957,7 @@ async function updateShipmentStatus(shipmentId, companyId, newStatus, actualArri
 
     return mapShipmentMutationRow(result.rows[0]);
   } catch (error) {
-    console.error('Error updating shipment status:', error);
+    logger.error({ err: error }, 'Error updating shipment status');
     throw error;
   }
 }
@@ -1098,7 +1099,7 @@ async function replaceShipmentLegs(shipmentId, companyId, legs) {
     };
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error replacing shipment legs:', error);
+    logger.error({ err: error }, 'Error replacing shipment legs');
     throw error;
   } finally {
     client.release();
@@ -1203,7 +1204,7 @@ async function replaceShipmentProducts(shipmentId, companyId, products) {
     };
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error replacing shipment products:', error);
+    logger.error({ err: error }, 'Error replacing shipment products');
     throw error;
   } finally {
     client.release();
@@ -1242,7 +1243,7 @@ async function getLogisticsOverview(companyId) {
       total_co2e: toFloat(result.rows[0]?.total_co2e)
     };
   } catch (error) {
-    console.error('Error getting logistics overview:', error);
+    logger.error({ err: error }, 'Error getting logistics overview');
     throw error;
   }
 }

@@ -1,4 +1,5 @@
 const dashboardService = require('./dashboardService');
+const logger = require('../utils/logger');
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -790,7 +791,7 @@ async function seedDemoB2BData(client, companyId, userId) {
   try {
     dashboardService.invalidateOverviewCache(companyId);
   } catch (error) {
-    console.warn(`[demoB2BSeeder] Could not invalidate overview cache for ${companyId}:`, error.message);
+    logger.warn({ err: error.message }, `[demoB2BSeeder] Could not invalidate overview cache for ${companyId}`);
   }
 
   return {

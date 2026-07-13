@@ -2,6 +2,7 @@ const axios = require('axios');
 const pool = require('../config/database');
 const analyticsService = require('./analyticsService');
 const { createAppError } = require('../utils/appError');
+const logger = require('../utils/logger');
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 20;
@@ -62,7 +63,7 @@ const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope)
       eventIds.push(event.id);
     }
   } catch (error) {
-    console.error(`[chatService] Failed to queue ${scope}:`, error);
+    logger.error({ err: error }, `[chatService] Failed to queue ${scope}`);
   }
 };
 
@@ -70,7 +71,7 @@ const safeTrackAnalyticsEvent = async (payload, scope) => {
   try {
     await analyticsService.trackEvent(payload);
   } catch (error) {
-    console.error(`[chatService] Failed to track ${scope}:`, error);
+    logger.error({ err: error }, `[chatService] Failed to track ${scope}`);
   }
 };
 
@@ -86,8 +87,11 @@ class ChatService {
     const logEntry = Object.fromEntries(
       Object.entries(entry).filter(([, value]) => value !== undefined && value !== null && value !== '')
     );
-    const logger = level === 'warn' ? console.warn : console.info;
-    logger('[ai]', logEntry);
+    if (level === 'warn') {
+      logger.warn(logEntry, '[ai]');
+    } else {
+      logger.info(logEntry, '[ai]');
+    }
   }
 
   normalizeRagBaseUrl(value) {

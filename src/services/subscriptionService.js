@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 const { assertSchemaCapability } = require('../config/schemaCapabilities');
 const analyticsService = require('./analyticsService');
+const logger = require('../utils/logger');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TRIAL_DAYS = 14;
@@ -21,7 +22,7 @@ const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope)
             eventIds.push(event.id);
         }
     } catch (error) {
-        console.error(`[subscriptionService] Failed to queue ${scope}:`, error);
+        logger.error({ err: error }, `[subscriptionService] Failed to queue ${scope}`);
     }
 };
 

@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const { EXPORT_JOB_CONCURRENCY } = require('../config/runtime');
+const logger = require('../utils/logger');
 
 class ReportJobQueue {
   constructor() {
@@ -80,7 +81,7 @@ class ReportJobQueue {
     this.pendingKeys.add(key);
     setImmediate(() => {
       this._drain().catch((error) => {
-        console.error('[report-job-queue] Drain failed:', error);
+        logger.error({ err: error }, '[report-job-queue] Drain failed');
       });
     });
     return true;
@@ -122,7 +123,7 @@ class ReportJobQueue {
 
       this._runTask(task)
         .catch((error) => {
-          console.error(`[report-job-queue] Job failed for report ${task.reportId}:`, error);
+          logger.error({ err: error }, `[report-job-queue] Job failed for report ${task.reportId}`);
         })
         .finally(() => {
           this.activeKeys.delete(task.key);
@@ -130,7 +131,7 @@ class ReportJobQueue {
           if (this.pending.length > 0) {
             setImmediate(() => {
               this._drain().catch((error) => {
-                console.error('[report-job-queue] Drain failed:', error);
+                logger.error({ err: error }, '[report-job-queue] Drain failed');
               });
             });
           }

@@ -7,6 +7,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { UPLOADS_ROOT } = require('../config/runtime');
 const validate = require('../middleware/validator');
 const exportMarketsService = require('../services/exportMarketsService');
+const logger = require('../utils/logger');
 const {
     recommendationActionValidation,
     addProductToScopeValidation,
@@ -219,7 +220,7 @@ router.get(
                 data: markets
             });
         } catch (error) {
-            console.error('Error listing export markets:', error);
+            logger.error({ err: error }, 'Error listing export markets');
             next(error);
         }
     }
@@ -255,7 +256,7 @@ router.post(
                 data: result.data
             });
         } catch (error) {
-            console.error('Error performing recommendation action:', error);
+            logger.error({ err: error }, 'Error performing recommendation action');
             next(error);
         }
     }
@@ -298,7 +299,7 @@ router.post(
                 data: result.data
             });
         } catch (error) {
-            console.error('Error adding product to scope:', error);
+            logger.error({ err: error }, 'Error adding product to scope');
             next(error);
         }
     }
@@ -340,7 +341,7 @@ router.patch(
                 data: result.data
             });
         } catch (error) {
-            console.error('Error updating product scope:', error);
+            logger.error({ err: error }, 'Error updating product scope');
             next(error);
         }
     }
@@ -376,7 +377,7 @@ router.delete(
                 message: 'Product removed from scope'
             });
         } catch (error) {
-            console.error('Error removing product from scope:', error);
+            logger.error({ err: error }, 'Error removing product from scope');
             next(error);
         }
     }
@@ -418,7 +419,7 @@ router.patch(
                 data: result.data
             });
         } catch (error) {
-            console.error('Error updating carbon data:', error);
+            logger.error({ err: error }, 'Error updating carbon data');
             next(error);
         }
     }
@@ -491,7 +492,7 @@ router.post(
                 data: result.data
             });
         } catch (error) {
-            console.error('Error uploading document:', error);
+            logger.error({ err: error }, 'Error uploading document');
             next(error);
         }
     }
@@ -527,7 +528,7 @@ router.post(
                 data: result.data
             });
         } catch (error) {
-            console.error('Error importing document mappings:', error);
+            logger.error({ err: error }, 'Error importing document mappings');
             next(error);
         }
     }
@@ -603,7 +604,7 @@ router.get(
                 }
             });
         } catch (error) {
-            console.error('Error downloading document:', error);
+            logger.error({ err: error }, 'Error downloading document');
             next(error);
         }
     }
@@ -639,7 +640,7 @@ router.post(
                 data: result.data
             });
         } catch (error) {
-            console.error('Error approving document:', error);
+            logger.error({ err: error }, 'Error approving document');
             next(error);
         }
     }
@@ -674,7 +675,7 @@ router.delete(
                 message: 'Document removed'
             });
         } catch (error) {
-            console.error('Error removing document:', error);
+            logger.error({ err: error }, 'Error removing document');
             next(error);
         }
     }
@@ -710,7 +711,7 @@ router.post(
                 data: result.data
             });
         } catch (error) {
-            console.error('Error generating compliance report:', error);
+            logger.error({ err: error }, 'Error generating compliance report');
             next(error);
         }
     }

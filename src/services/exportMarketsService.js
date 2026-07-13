@@ -10,19 +10,19 @@ const analyticsService = require('./analyticsService');
 const domesticComplianceService = require('./domesticComplianceService');
 const reportJobQueue = require('./reportJobQueue');
 const TtlCache = require('../utils/ttlCache');
+const logger = require('../utils/logger');
+const {
+    normalizeDocumentToken,
+    normalizeLooseDocumentToken,
+    parseJsonObject,
+    toNullableTrimmedString,
+    toNonNegativeNumberOrNull,
+    buildProductScopeNotes,
+    resolveComplianceDocumentGroup
+} = require('./exportMarketsService/normalizers');
 
 const DEFAULT_MARKET_CODES = ['VN', 'EU', 'US', 'JP', 'KR', 'AU', 'ASEAN'];
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MATERIAL_CERTIFICATION_TYPE_HINTS = new Set([
-    'material_certification',
-    'material_certificate',
-    'material_compliance',
-    'material_cert',
-    'certificate_material',
-    'certification_material',
-    'material_group_certification',
-    'material_certification_group'
-]);
 
 const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope) => {
     try {
@@ -31,7 +31,7 @@ const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope)
             eventIds.push(event.id);
         }
     } catch (error) {
-        console.error(`[exportMarketsService] Failed to queue ${scope}:`, error);
+        logger.error({ err: error }, `[exportMarketsService] Failed to queue ${scope}`);
     }
 };
 
@@ -39,73 +39,8 @@ const safeTrackAnalyticsEvent = async (payload, scope) => {
     try {
         await analyticsService.trackEvent(payload);
     } catch (error) {
-        console.error(`[exportMarketsService] Failed to track ${scope}:`, error);
+        logger.error({ err: error }, `[exportMarketsService] Failed to track ${scope}`);
     }
-};
-
-const normalizeDocumentToken = (value) =>
-    String(value || '')
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '');
-
-const normalizeLooseDocumentToken = (value) => normalizeDocumentToken(value).replace(/_/g, '');
-
-const parseJsonObject = (value) => {
-    if (!value || typeof value !== 'string') return null;
-    try {
-        const parsed = JSON.parse(value);
-        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
-    } catch {
-        return null;
-    }
-};
-
-const toNullableTrimmedString = (value) => {
-    if (value === undefined || value === null) return null;
-    const text = String(value).trim();
-    return text.length > 0 ? text : null;
-};
-
-const toNonNegativeNumberOrNull = (value) => {
-    if (value === undefined || value === null || value === '') return null;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-};
-
-const buildProductScopeNotes = (productData = {}, existingNotes = null) => {
-    const previous = parseJsonObject(existingNotes) || {};
-    const legacyNote = previous.note || (existingNotes && !parseJsonObject(existingNotes) ? existingNotes : null);
-    const metadata = {
-        note: toNullableTrimmedString(productData.notes) || legacyNote || null,
-        production_site:
-            toNullableTrimmedString(productData.production_site) ||
-            toNullableTrimmedString(previous.production_site),
-        export_volume:
-            toNonNegativeNumberOrNull(productData.export_volume) ??
-            toNonNegativeNumberOrNull(previous.export_volume),
-        unit:
-            toNullableTrimmedString(productData.unit) ||
-            toNullableTrimmedString(previous.unit) ||
-            'pcs'
-    };
-
-    return JSON.stringify(metadata);
-};
-
-const resolveComplianceDocumentGroup = (document = {}) => {
-    const normalizedCode = normalizeDocumentToken(document.document_code || document.code || document.id);
-    const normalizedType = normalizeDocumentToken(document.document_type || document.type);
-    const looseCode = normalizeLooseDocumentToken(normalizedCode);
-    const looseType = normalizeLooseDocumentToken(normalizedType);
-    const looksLikeMaterialCertification =
-        normalizedCode.startsWith('cert_') ||
-        (looseCode.includes('material') && (looseCode.includes('cert') || looseCode.includes('certificate'))) ||
-        MATERIAL_CERTIFICATION_TYPE_HINTS.has(normalizedType) ||
-        (looseType.includes('material') && (looseType.includes('cert') || looseType.includes('certificate')));
-
-    return looksLikeMaterialCertification ? 'material_certification' : 'export_compliance';
 };
 
 const DEFAULT_REQUIRED_DOCUMENTS = [

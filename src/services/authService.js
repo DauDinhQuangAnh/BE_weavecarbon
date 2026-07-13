@@ -6,6 +6,7 @@ const pool = require('../config/database');
 const jwtConfig = require('../config/jwt');
 const subscriptionService = require('./subscriptionService');
 const b2cDefaultsService = require('./b2cDefaultsService');
+const logger = require('../utils/logger');
 const { seedDemoB2BData } = require('./demoB2BSeeder');
 const {
   DEFAULT_DOMESTIC_MARKET,
@@ -536,9 +537,9 @@ class AuthService {
         try {
           await this.initializeTrial(client, company.id);
         } catch (trialError) {
-          console.warn(
-            `[authService] Trial init failed for company ${company.id}:`,
-            trialError.message
+          logger.warn(
+            { err: trialError.message },
+            `[authService] Trial init failed for company ${company.id}`
           );
         }
       }
@@ -648,9 +649,9 @@ class AuthService {
         try {
           await this.initializeTrial(client, company.id);
         } catch (trialError) {
-          console.warn(
-            `[authService] Trial init failed for company ${company.id}:`,
-            trialError.message
+          logger.warn(
+            { err: trialError.message },
+            `[authService] Trial init failed for company ${company.id}`
           );
         }
       }
@@ -1173,9 +1174,9 @@ class AuthService {
         try {
           await this.initializeStandardDemo(client, company.id, 20);
         } catch (trialError) {
-          console.warn(
-            `[authService] Demo standard init failed for company ${company.id}:`,
-            trialError.message
+          logger.warn(
+            { err: trialError.message },
+            `[authService] Demo standard init failed for company ${company.id}`
           );
         }
 
@@ -1186,9 +1187,9 @@ class AuthService {
         } catch (seedError) {
           await client.query('ROLLBACK TO SAVEPOINT demo_b2b_seed');
           await client.query('RELEASE SAVEPOINT demo_b2b_seed');
-          console.warn(
-            `[authService] Demo B2B seed failed for company ${company.id}:`,
-            seedError.message
+          logger.warn(
+            { err: seedError.message },
+            `[authService] Demo B2B seed failed for company ${company.id}`
           );
         }
       }

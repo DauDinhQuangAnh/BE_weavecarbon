@@ -10,6 +10,7 @@ const { resolveAllowedFrontendOrigins, normalizeOrigin } = require('./config/url
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const { apiLimiter } = require('./middleware/rateLimiter');
 const { sendSuccess } = require('./utils/http');
+const logger = require('./utils/logger');
 
 const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
@@ -91,7 +92,7 @@ function createCorsOptions(frontendOrigins) {
 
 function logStartup(port) {
   const environment = process.env.NODE_ENV || 'development';
-  console.log(`[weavecarbon-api] Running on port ${port} in ${environment} mode`);
+  logger.info(`[weavecarbon-api] Running on port ${port} in ${environment} mode`);
 }
 
 function slowRequestLogger(req, res, next) {
@@ -107,7 +108,7 @@ function slowRequestLogger(req, res, next) {
       return;
     }
 
-    console.warn(
+    logger.warn(
       `[http] Slow request ${durationMs.toFixed(1)}ms :: ${req.method} ${req.originalUrl} -> ${res.statusCode}`
     );
   });
@@ -163,13 +164,13 @@ if (require.main === module) {
       });
     })
     .catch((error) => {
-      console.error('[startup] Application bootstrap failed:', error);
+      logger.error({ err: error }, '[startup] Application bootstrap failed');
       process.exit(1);
     });
 }
 
 function shutdown(signal) {
-  console.log(`${signal} received, shutting down gracefully...`);
+  logger.info(`${signal} received, shutting down gracefully...`);
 
   if (!server) {
     process.exit(0);
@@ -185,12 +186,12 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[fatal] Unhandled promise rejection:', reason);
+  logger.error({ err: reason }, '[fatal] Unhandled promise rejection');
   shutdown('unhandledRejection');
 });
 
 process.on('uncaughtException', (err) => {
-  console.error('[fatal] Uncaught exception:', err);
+  logger.error({ err }, '[fatal] Uncaught exception');
   shutdown('uncaughtException');
 });
 

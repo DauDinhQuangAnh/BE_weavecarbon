@@ -1,4 +1,5 @@
 const { sendError } = require('../utils/http');
+const logger = require('../utils/logger');
 
 function buildErrorLogEntry(err, req) {
   return {
@@ -49,9 +50,9 @@ const errorHandler = (err, req, res, next) => {
   applyJwtError(err);
   applyValidationError(err);
 
-  console.error('[error]', buildErrorLogEntry(err, req));
+  logger.error(buildErrorLogEntry(err, req), 'Unhandled request error');
   if (process.env.LOG_ERROR_STACK === 'true' && err.stack) {
-    console.error(err.stack);
+    logger.error(err.stack);
   }
 
   return sendError(res, {

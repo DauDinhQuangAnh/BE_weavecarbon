@@ -1,20 +1,8 @@
 const authService = require('../services/authService');
 const companyMembersService = require('../services/companyMembersService');
-const subscriptionService = require('../services/subscriptionService');
+const { enforceSubscriptionAccess } = require('./subscriptionAccess');
 const { sendError } = require('../utils/http');
-
-const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const PLAN_LOCK_PROTECTED_PREFIXES = [
-  '/api/products',
-  '/api/product-batches',
-  '/api/logistics',
-  '/api/reports',
-  '/api/company/members',
-  '/api/account/company'
-];
-const TRIAL_PLAN_RESTRICTED_PREFIXES = [
-  '/api/reports'
-];
+const logger = require('../utils/logger');
 
 function hasAnyRole(userRoles, allowedRoles) {
   return Array.isArray(userRoles) && userRoles.some((role) => allowedRoles.includes(role));
@@ -68,55 +56,6 @@ async function hydrateRequestUser(req, decoded) {
   return req.user;
 }
 
-function getRequestPath(req) {
-  return String(req.originalUrl || req.url || '').toLowerCase();
-}
-
-function isB2BCompanyRequest(req) {
-  return Boolean(req.companyId) && hasAnyRole(req.userRoles, ['b2b']);
-}
-
-async function enforceSubscriptionAccess(req, res) {
-  const requestPath = getRequestPath(req);
-  const shouldCheckPlanLock =
-    isB2BCompanyRequest(req) &&
-    MUTATION_METHODS.has(req.method) &&
-    PLAN_LOCK_PROTECTED_PREFIXES.some((prefix) => requestPath.startsWith(prefix));
-
-  const shouldCheckTrialPlanRestriction =
-    isB2BCompanyRequest(req) &&
-    TRIAL_PLAN_RESTRICTED_PREFIXES.some((prefix) => requestPath.startsWith(prefix));
-
-  if (!shouldCheckPlanLock && !shouldCheckTrialPlanRestriction) {
-    return true;
-  }
-
-  const accessState = await subscriptionService.getAccessControlState(req.companyId);
-
-  if (
-    shouldCheckTrialPlanRestriction &&
-    String(accessState.current_plan || '').toLowerCase() === 'trial'
-  ) {
-    sendError(res, {
-      status: 403,
-      code: 'PLAN_RESTRICTED',
-      message: 'Reports are available from Standard plan.'
-    });
-    return false;
-  }
-
-  if (accessState.features_locked) {
-    sendError(res, {
-      status: 403,
-      code: 'PLAN_LOCKED',
-      message: 'Trial has expired. Please upgrade to continue.'
-    });
-    return false;
-  }
-
-  return true;
-}
-
 function ensureAuthenticatedContext(req, res, companyResponse) {
   if (!req.userId) {
     sendError(res, {
@@ -153,7 +92,7 @@ function createCompanyAccessGuard({ checker, deniedMessage, logLabel, companyRes
 
       next();
     } catch (error) {
-      console.error(`${logLabel} error:`, error);
+      logger.error({ err: error }, `${logLabel} error`);
       return sendError(res, {
         status: 500,
         code: 'INTERNAL_ERROR',
@@ -193,14 +132,9 @@ const authenticate = async (req, res, next) => {
       });
     }
 
-    const canContinue = await enforceSubscriptionAccess(req, res);
-    if (!canContinue) {
-      return;
-    }
-
-    next();
+    return enforceSubscriptionAccess(req, res, next);
   } catch (error) {
-    console.error('Auth middleware error:', error);
+    logger.error({ err: error }, 'Auth middleware error');
     return sendError(res, {
       status: 500,
       code: 'INTERNAL_ERROR',

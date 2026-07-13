@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 const { SLOW_REQUEST_MS } = require('./runtime');
+const logger = require('../utils/logger');
 require('dotenv').config();
 
 const pool = new Pool({
@@ -26,7 +27,7 @@ function logSlowQuery(source, text, durationMs) {
     return;
   }
 
-  console.warn(
+  logger.warn(
     `[db:${source}] Slow query ${durationMs.toFixed(1)}ms :: ${summarizeSql(text)}`
   );
 }
@@ -70,7 +71,7 @@ pool.on('connect', (client) => {
 });
 
 pool.on('error', (err) => {
-  console.error('[database] Unexpected database error:', err);
+  logger.error({ err }, '[database] Unexpected database error');
   process.exit(-1);
 });
 

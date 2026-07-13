@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const subscriptionService = require('./subscriptionService');
 const analyticsService = require('./analyticsService');
 const { createAppError } = require('../utils/appError');
+const logger = require('../utils/logger');
 const {
     ensureCompaniesDomesticMarketColumn,
     normalizeCompanyMarkets
@@ -477,9 +478,9 @@ class AccountService {
             try {
                 await this.initializeTrial(client, company.id);
             } catch (trialError) {
-                console.warn(
-                    `[accountService] Trial init failed for company ${company.id}:`,
-                    trialError.message
+                logger.warn(
+                    { err: trialError.message },
+                    `[accountService] Trial init failed for company ${company.id}`
                 );
             }
 

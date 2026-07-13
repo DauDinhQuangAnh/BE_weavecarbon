@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const emailConfig = require('../config/email');
+const logger = require('../utils/logger');
 const {
   resolveFrontendBaseUrl,
   resolveBackendBaseUrl
@@ -19,7 +20,7 @@ const transporter = emailConfig.enabled
 
 function logSkippedEmail(logEntries) {
   for (const entry of logEntries) {
-    console.log(...entry);
+    logger.info(entry.length > 1 ? { detail: entry.slice(1) } : {}, String(entry[0]));
   }
 
   return true;
@@ -30,7 +31,7 @@ async function deliverEmail(mailOptions) {
     await transporter.sendMail(mailOptions);
     return true;
   } catch (error) {
-    console.error('Email send error:', error);
+    logger.error({ err: error }, 'Email send error');
     return false;
   }
 }
