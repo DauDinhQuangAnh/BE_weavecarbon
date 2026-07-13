@@ -1,4 +1,4 @@
-const pool = require('../config/database');
+﻿const pool = require('../config/database');
 const { randomUUID } = require('crypto');
 const {
     SUPPORTED_TARGET_MARKETS_SET,
@@ -14,14 +14,33 @@ const logger = require('../utils/logger');
 const {
     normalizeDocumentToken,
     normalizeLooseDocumentToken,
+    normalizeDocumentCode,
     parseJsonObject,
     toNullableTrimmedString,
     toNonNegativeNumberOrNull,
     buildProductScopeNotes,
-    resolveComplianceDocumentGroup
+    resolveComplianceDocumentGroup,
+    toDocumentStatus,
+    readImportValue,
+    normalizeImportStorageKey,
+    normalizeImportDocumentCode,
+    groupBy
 } = require('./exportMarketsService/normalizers');
+const {
+    DEFAULT_MARKET_CODES,
+    DEFAULT_REQUIRED_DOCUMENTS,
+    MATERIAL_CERTIFICATION_DOCUMENTS,
+    resolveMarketName,
+    getRequiredDocumentsForMarket,
+    resolveDocumentTypeForMarket
+} = require('./exportMarketsService/marketRequirements');
+const {
+    ensureMarketsAndRequiredDocuments,
+    ensureExportMarkets,
+    ensureRequiredDocuments,
+    ensureMaterialCertificationDocuments
+} = require('./exportMarketsService/seeding');
 
-const DEFAULT_MARKET_CODES = ['VN', 'EU', 'US', 'JP', 'KR', 'AU', 'ASEAN'];
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope) => {
@@ -40,437 +59,6 @@ const safeTrackAnalyticsEvent = async (payload, scope) => {
         await analyticsService.trackEvent(payload);
     } catch (error) {
         logger.error({ err: error }, `[exportMarketsService] Failed to track ${scope}`);
-    }
-};
-
-const DEFAULT_REQUIRED_DOCUMENTS = [
-    {
-        code: 'carbon_footprint_report',
-        name: 'Carbon Footprint Report',
-        document_type: 'report',
-        regulation_reference: 'ISO 14067'
-    },
-    {
-        code: 'product_traceability',
-        name: 'Product Traceability Document',
-        document_type: 'declaration',
-        regulation_reference: 'OECD Due Diligence Guidance'
-    },
-    {
-        code: 'import_compliance_declaration',
-        name: 'Import Compliance Declaration',
-        document_type: 'declaration',
-        regulation_reference: 'Import/Customs Compliance'
-    }
-];
-
-const MATERIAL_CERTIFICATION_DOCUMENTS = [
-    {
-        code: 'cert_gots',
-        name: 'GOTS Certificate',
-        document_type: 'certificate',
-        regulation_reference: 'Global Organic Textile Standard (GOTS)'
-    },
-    {
-        code: 'cert_oeko_tex',
-        name: 'OEKO-TEX Certificate',
-        document_type: 'certificate',
-        regulation_reference: 'OEKO-TEX Standard 100'
-    },
-    {
-        code: 'cert_grs',
-        name: 'GRS Certificate',
-        document_type: 'certificate',
-        regulation_reference: 'Global Recycled Standard (GRS)'
-    },
-    {
-        code: 'cert_bci_cotton',
-        name: 'BCI Cotton Certificate',
-        document_type: 'certificate',
-        regulation_reference: 'Better Cotton Initiative (BCI)'
-    },
-    {
-        code: 'cert_fsc',
-        name: 'FSC Certificate',
-        document_type: 'certificate',
-        regulation_reference: 'Forest Stewardship Council (FSC)'
-    },
-    {
-        code: 'cert_rcs',
-        name: 'RCS Certificate',
-        document_type: 'certificate',
-        regulation_reference: 'Recycled Claim Standard (RCS)'
-    }
-];
-
-const MARKET_REQUIREMENTS_BY_CODE = {
-    VN: {
-        market_name: 'Vietnam',
-        required_documents: [
-            {
-                code: 'eia',
-                name: 'Environmental Impact Assessment (EIA)',
-                document_type: 'assessment',
-                regulation_reference: 'Vietnam Law on Environmental Protection 2020'
-            },
-            {
-                code: 'ghg_inventory_vn',
-                name: 'GHG Inventory / MRV Declaration',
-                document_type: 'report',
-                regulation_reference: 'Decree 06/2022/ND-CP'
-            },
-            {
-                code: 'local_compliance',
-                name: 'Local Compliance Declaration',
-                document_type: 'declaration',
-                regulation_reference: 'Vietnam domestic compliance'
-            }
-        ]
-    },
-    EU: {
-        market_name: 'European Union',
-        required_documents: [
-            {
-                code: 'cbam_declaration',
-                name: 'CBAM Declaration Form',
-                document_type: 'declaration',
-                regulation_reference: 'EU Regulation (EU) 2023/956'
-            },
-            {
-                code: 'dpp',
-                name: 'Digital Product Passport (DPP)',
-                document_type: 'report',
-                regulation_reference: 'EU Ecodesign for Sustainable Products Regulation'
-            },
-            {
-                code: 'supply_chain_map',
-                name: 'Supply Chain Map',
-                document_type: 'assessment',
-                regulation_reference: 'EU supply chain due diligence'
-            }
-        ]
-    },
-    US: {
-        market_name: 'United States',
-        required_documents: [
-            {
-                code: 'carbon_report',
-                name: 'Carbon Footprint Report',
-                document_type: 'report',
-                regulation_reference: 'California Climate Disclosure'
-            },
-            {
-                code: 'ca_prop65',
-                name: 'CA Prop 65 Compliance',
-                document_type: 'certificate',
-                regulation_reference: 'California Proposition 65'
-            },
-            {
-                code: 'product_label_compliance',
-                name: 'Product Label Compliance',
-                document_type: 'declaration',
-                regulation_reference: 'US labeling requirements'
-            }
-        ]
-    },
-    JP: {
-        market_name: 'Japan',
-        required_documents: [
-            {
-                code: 'j_label_cert',
-                name: 'J-Label Certification',
-                document_type: 'certificate',
-                regulation_reference: 'Japan eco-label guidance'
-            },
-            {
-                code: 'jp_import_docs',
-                name: 'Japan Import Documentation',
-                document_type: 'declaration',
-                regulation_reference: 'Japan Customs'
-            },
-            {
-                code: 'carbon_label_jp',
-                name: 'Carbon Footprint Label (JP)',
-                document_type: 'report',
-                regulation_reference: 'Japan CFP Program'
-            }
-        ]
-    },
-    KR: {
-        market_name: 'South Korea',
-        required_documents: [
-            {
-                code: 'kc_certification',
-                name: 'KC Certification',
-                document_type: 'certificate',
-                regulation_reference: 'Korea Certification (KC)'
-            },
-            {
-                code: 'kr_eco_label',
-                name: 'Korea Eco Label',
-                document_type: 'certificate',
-                regulation_reference: 'Korea Eco-Label Program'
-            },
-            {
-                code: 'kr_import_clearance',
-                name: 'Import Clearance Document',
-                document_type: 'declaration',
-                regulation_reference: 'Korea Customs Service'
-            }
-        ]
-    },
-    AU: {
-        market_name: 'Australia',
-        required_documents: [
-            {
-                code: 'aus_product_stewardship',
-                name: 'Product Stewardship Declaration',
-                document_type: 'declaration',
-                regulation_reference: 'Australian Product Stewardship framework'
-            },
-            {
-                code: 'aus_carbon_disclosure',
-                name: 'Carbon Disclosure Summary',
-                document_type: 'report',
-                regulation_reference: 'NGER / Australian climate reporting'
-            },
-            {
-                code: 'aus_import_compliance',
-                name: 'Australian Import Compliance Declaration',
-                document_type: 'declaration',
-                regulation_reference: 'Australian Border Force import rules'
-            }
-        ]
-    },
-    ASEAN: {
-        market_name: 'ASEAN',
-        required_documents: [
-            {
-                code: 'asean_origin_cert',
-                name: 'ASEAN Certificate of Origin',
-                document_type: 'certificate',
-                regulation_reference: 'ATIGA Rules of Origin'
-            },
-            {
-                code: 'asean_label_compliance',
-                name: 'ASEAN Labeling Compliance',
-                document_type: 'declaration',
-                regulation_reference: 'ASEAN product labeling baseline'
-            },
-            {
-                code: 'asean_carbon_summary',
-                name: 'ASEAN Carbon Reporting Summary',
-                document_type: 'report',
-                regulation_reference: 'ASEAN sustainability reporting baseline'
-            }
-        ]
-    },
-    TH: {
-        market_name: 'Thailand',
-        required_documents: [
-            {
-                code: 'thai_product_registration',
-                name: 'Thai Product Registration',
-                document_type: 'declaration',
-                regulation_reference: 'Thai import registration'
-            },
-            {
-                code: 'thai_labeling',
-                name: 'Thai Language Label Compliance',
-                document_type: 'declaration',
-                regulation_reference: 'Thai labeling requirements'
-            },
-            {
-                code: 'asean_origin_cert',
-                name: 'ASEAN Certificate of Origin',
-                document_type: 'certificate',
-                regulation_reference: 'ATIGA Rules of Origin'
-            }
-        ]
-    },
-    SG: {
-        market_name: 'Singapore',
-        required_documents: [
-            {
-                code: 'sg_product_safety',
-                name: 'Singapore Product Safety Declaration',
-                document_type: 'declaration',
-                regulation_reference: 'CPSR (Consumer Protection Safety Requirements)'
-            },
-            {
-                code: 'sg_carbon_summary',
-                name: 'Carbon Reporting Summary',
-                document_type: 'report',
-                regulation_reference: 'Singapore sustainability disclosure baseline'
-            },
-            {
-                code: 'importer_authorization',
-                name: 'Importer Authorization Letter',
-                document_type: 'declaration',
-                regulation_reference: 'Singapore customs import authorization'
-            }
-        ]
-    },
-    MY: {
-        market_name: 'Malaysia',
-        required_documents: [
-            {
-                code: 'my_import_permit',
-                name: 'Malaysia Import Permit',
-                document_type: 'declaration',
-                regulation_reference: 'Royal Malaysian Customs import control'
-            },
-            {
-                code: 'my_label_compliance',
-                name: 'Malaysia Label Compliance',
-                document_type: 'declaration',
-                regulation_reference: 'Malaysia product labeling'
-            },
-            {
-                code: 'asean_origin_cert',
-                name: 'ASEAN Certificate of Origin',
-                document_type: 'certificate',
-                regulation_reference: 'ATIGA Rules of Origin'
-            }
-        ]
-    },
-    ID: {
-        market_name: 'Indonesia',
-        required_documents: [
-            {
-                code: 'id_nib_import',
-                name: 'NIB / Import Registration',
-                document_type: 'declaration',
-                regulation_reference: 'Indonesia OSS/NIB import registration'
-            },
-            {
-                code: 'id_label_compliance',
-                name: 'Bahasa Indonesia Label Compliance',
-                document_type: 'declaration',
-                regulation_reference: 'Indonesia mandatory labeling'
-            },
-            {
-                code: 'asean_origin_cert',
-                name: 'ASEAN Certificate of Origin',
-                document_type: 'certificate',
-                regulation_reference: 'ATIGA Rules of Origin'
-            }
-        ]
-    },
-    PH: {
-        market_name: 'Philippines',
-        required_documents: [
-            {
-                code: 'ph_import_clearance',
-                name: 'Philippines Import Clearance',
-                document_type: 'declaration',
-                regulation_reference: 'Philippines Bureau of Customs'
-            },
-            {
-                code: 'ph_label_compliance',
-                name: 'Philippines Label Compliance',
-                document_type: 'declaration',
-                regulation_reference: 'Philippines product labeling'
-            },
-            {
-                code: 'asean_origin_cert',
-                name: 'ASEAN Certificate of Origin',
-                document_type: 'certificate',
-                regulation_reference: 'ATIGA Rules of Origin'
-            }
-        ]
-    },
-    CA: {
-        market_name: 'Canada',
-        required_documents: [
-            {
-                code: 'ca_importer_record',
-                name: 'Importer of Record Declaration',
-                document_type: 'declaration',
-                regulation_reference: 'CBSA import requirements'
-            },
-            {
-                code: 'ca_textile_label',
-                name: 'Canada Textile Label Compliance',
-                document_type: 'declaration',
-                regulation_reference: 'Textile Labelling Act (Canada)'
-            },
-            {
-                code: 'ca_carbon_disclosure',
-                name: 'Carbon Disclosure Summary',
-                document_type: 'report',
-                regulation_reference: 'Canadian sustainability disclosure practices'
-            }
-        ]
-    },
-    UK: {
-        market_name: 'United Kingdom',
-        required_documents: [
-            {
-                code: 'uk_import_declaration',
-                name: 'UK Import Declaration',
-                document_type: 'declaration',
-                regulation_reference: 'UK customs import declaration'
-            },
-            {
-                code: 'uk_textile_label',
-                name: 'UK Textile Label Compliance',
-                document_type: 'declaration',
-                regulation_reference: 'UK product and textile labeling'
-            },
-            {
-                code: 'uk_carbon_summary',
-                name: 'Carbon Reporting Summary',
-                document_type: 'report',
-                regulation_reference: 'UK climate disclosure baseline'
-            }
-        ]
-    },
-    CN: {
-        market_name: 'China',
-        required_documents: [
-            {
-                code: 'cn_import_registration',
-                name: 'China Import Registration',
-                document_type: 'declaration',
-                regulation_reference: 'China customs import registration'
-            },
-            {
-                code: 'cn_label_compliance',
-                name: 'China Label Compliance',
-                document_type: 'declaration',
-                regulation_reference: 'China GB labeling standards'
-            },
-            {
-                code: 'cn_carbon_declaration',
-                name: 'Carbon Declaration Summary',
-                document_type: 'report',
-                regulation_reference: 'China low-carbon disclosure baseline'
-            }
-        ]
-    },
-    IN: {
-        market_name: 'India',
-        required_documents: [
-            {
-                code: 'in_import_export_code',
-                name: 'Importer-Exporter Code (IEC) Compliance',
-                document_type: 'declaration',
-                regulation_reference: 'DGFT IEC requirements'
-            },
-            {
-                code: 'in_label_compliance',
-                name: 'India Label Compliance',
-                document_type: 'declaration',
-                regulation_reference: 'Legal Metrology (Packaged Commodities) Rules'
-            },
-            {
-                code: 'in_carbon_summary',
-                name: 'Carbon Reporting Summary',
-                document_type: 'report',
-                regulation_reference: 'India sustainability disclosure baseline'
-            }
-        ]
     }
 };
 
@@ -586,27 +174,27 @@ class ExportMarketsService {
                     docsMap[market.id].push(d);
                 }
             }
-            const scopeMap = this._groupBy(scopeResult.rows, 'market_id');
-            const carbonMap = this._groupBy(carbonResult.rows, 'market_id');
-            const recsMap = this._groupBy(recsResult.rows, 'market_id');
+            const scopeMap = groupBy(scopeResult.rows, 'market_id');
+            const carbonMap = groupBy(carbonResult.rows, 'market_id');
+            const recsMap = groupBy(recsResult.rows, 'market_id');
 
             const payload = markets.map(market => {
                 const marketCode = String(market.market_code || '').trim().toUpperCase();
                 const marketDocs = docsMap[market.id] || [];
 
-                const requiredTemplates = this._getRequiredDocumentsForMarket(marketCode);
-                const requiredCodeSet = new Set(requiredTemplates.map(d => this._normalizeDocumentCode(d.code)));
+                const requiredTemplates = getRequiredDocumentsForMarket(marketCode);
+                const requiredCodeSet = new Set(requiredTemplates.map(d => normalizeDocumentCode(d.code)));
 
                 const requiredDocsByCode = new Map();
                 for (const doc of marketDocs) {
-                    const normalizedDocumentCode = this._normalizeDocumentCode(doc.document_code);
+                    const normalizedDocumentCode = normalizeDocumentCode(doc.document_code);
                     if (normalizedDocumentCode && !requiredDocsByCode.has(normalizedDocumentCode)) {
                         requiredDocsByCode.set(normalizedDocumentCode, doc);
                     }
                 }
 
                 const requiredDocuments = requiredTemplates.map(template => {
-                    const normalizedTemplateCode = this._normalizeDocumentCode(template.code);
+                    const normalizedTemplateCode = normalizeDocumentCode(template.code);
                     const existing = requiredDocsByCode.get(normalizedTemplateCode) || null;
                     const status = existing?.status || 'missing';
 
@@ -651,13 +239,13 @@ class ExportMarketsService {
                 const persistedRecommendationKeySet = new Set(
                     persistedRecommendations
                         .filter(rec => String(rec.type || '').toLowerCase() === 'document')
-                        .map(rec => this._normalizeDocumentCode(rec.missing_item || rec.document_id || ''))
+                        .map(rec => normalizeDocumentCode(rec.missing_item || rec.document_id || ''))
                         .filter(Boolean)
                 );
 
                 const templateByCode = new Map(
                     requiredTemplates.map(template => [
-                        this._normalizeDocumentCode(template.code),
+                        normalizeDocumentCode(template.code),
                         template
                     ])
                 );
@@ -665,7 +253,7 @@ class ExportMarketsService {
                 const autoGeneratedRecommendations = requiredDocuments
                     .filter(doc => !DOCUMENT_UPLOAD_DONE_STATUSES.has(String(doc.status || '').toLowerCase()))
                     .map((doc) => {
-                        const normalizedDocCode = this._normalizeDocumentCode(doc.document_code || doc.document_name || '');
+                        const normalizedDocCode = normalizeDocumentCode(doc.document_code || doc.document_name || '');
                         if (!normalizedDocCode || persistedRecommendationKeySet.has(normalizedDocCode)) {
                             return null;
                         }
@@ -718,7 +306,7 @@ class ExportMarketsService {
                         name: d.document_name,
                         document_code: d.document_code,
                         document_name: d.document_name,
-                        required: requiredCodeSet.has(this._normalizeDocumentCode(d.document_code)),
+                        required: requiredCodeSet.has(normalizeDocumentCode(d.document_code)),
                         status: d.status,
                         valid_to: d.valid_to || null,
                         uploaded_by: d.uploaded_by || null,
@@ -1097,7 +685,7 @@ class ExportMarketsService {
                 .replace(/^\/+/, '');
             const storageKey = explicitStorageKey ||
                 `compliance/${companyId}/${normalizedMarketCode}/${String(documentId || 'document').replace(/[^a-zA-Z0-9._:-]/g, '_')}/${timestamp}_${safeFilename}`;
-            const normalizedDocumentStatus = this._toDocumentStatus(fileData.status);
+            const normalizedDocumentStatus = toDocumentStatus(fileData.status);
             const documentTarget = this._resolveDocumentTarget(
                 normalizedMarketCode,
                 documentId,
@@ -1197,7 +785,7 @@ class ExportMarketsService {
                     id: documentTarget.id || documentId
                 };
             resolvedDocumentMetadata.document_type =
-                this._resolveDocumentTypeForMarket(
+                resolveDocumentTypeForMarket(
                     normalizedMarketCode,
                     resolvedDocumentMetadata.document_code || fileData.document_code
                 ) ||
@@ -1421,7 +1009,7 @@ class ExportMarketsService {
             }
 
             const documentRow = documentResult.rows[0];
-            const currentStatus = this._toDocumentStatus(documentRow.status);
+            const currentStatus = toDocumentStatus(documentRow.status);
             const hasStorageFile = Boolean(String(documentRow.storage_key || '').trim());
 
             if (!hasStorageFile || currentStatus === 'missing') {
@@ -1622,19 +1210,6 @@ class ExportMarketsService {
     // PRIVATE HELPERS
     // =============================================
 
-    _toDocumentStatus(value) {
-        const normalized = String(value || '').trim().toLowerCase();
-        if (
-            normalized === 'missing' ||
-            normalized === 'uploaded' ||
-            normalized === 'approved' ||
-            normalized === 'expired'
-        ) {
-            return normalized;
-        }
-        return 'uploaded';
-    }
-
     async _hasProductComplianceDocumentsTable(client) {
         void client;
         return getSchemaCapabilities().hasProductComplianceDocuments;
@@ -1714,7 +1289,7 @@ class ExportMarketsService {
             return {
                 id: null,
                 market_code: marketCode,
-                market_name: this._resolveMarketName(marketCode),
+                market_name: resolveMarketName(marketCode),
                 status: 'draft',
                 score: 0,
                 verification_status: null,
@@ -1727,35 +1302,8 @@ class ExportMarketsService {
         }).sort((left, right) => String(left.market_name || '').localeCompare(String(right.market_name || '')));
     }
 
-    _readImportValue(row, keys) {
-        for (const key of keys) {
-            if (typeof row[key] === 'undefined' || row[key] === null) continue;
-            const value = String(row[key]).trim();
-            if (value.length > 0) {
-                return value;
-            }
-        }
-        return '';
-    }
-
-    _normalizeImportStorageKey(value) {
-        return String(value || '')
-            .trim()
-            .replace(/\\/g, '/')
-            .replace(/\.\./g, '_')
-            .replace(/^\/+/, '');
-    }
-
-    _normalizeImportDocumentCode(value) {
-        return String(value || '')
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9_]+/g, '_')
-            .replace(/^_+|_+$/g, '');
-    }
-
     async _resolveProductIdFromImportRow(client, companyId, row) {
-        const explicitProductId = this._readImportValue(row, ['product_id', 'productId']);
+        const explicitProductId = readImportValue(row, ['product_id', 'productId']);
         if (explicitProductId) {
             const byIdResult = await client.query(
                 `
@@ -1771,7 +1319,7 @@ class ExportMarketsService {
             }
         }
 
-        const productCode = this._readImportValue(row, ['product_code', 'productCode', 'sku']);
+        const productCode = readImportValue(row, ['product_code', 'productCode', 'sku']);
         if (!productCode) {
             return null;
         }
@@ -1792,20 +1340,20 @@ class ExportMarketsService {
 
     async _resolveOrCreateImportDocument(client, companyId, marketCode, userId, row) {
         const normalizedMarketCode = String(marketCode || '').trim().toUpperCase();
-        const explicitDocumentId = this._readImportValue(row, ['document_id', 'documentId']);
-        const rawDocumentCode = this._readImportValue(row, ['document_code', 'documentCode']);
-        const normalizedDocumentCode = this._normalizeImportDocumentCode(rawDocumentCode);
+        const explicitDocumentId = readImportValue(row, ['document_id', 'documentId']);
+        const rawDocumentCode = readImportValue(row, ['document_code', 'documentCode']);
+        const normalizedDocumentCode = normalizeImportDocumentCode(rawDocumentCode);
         const documentName =
-            this._readImportValue(row, ['document_name', 'documentName']) ||
+            readImportValue(row, ['document_name', 'documentName']) ||
             (normalizedDocumentCode || 'Imported Document');
-        const rawStoragePath = this._readImportValue(
+        const rawStoragePath = readImportValue(
             row,
             ['storage_key', 'document_path', 'file_path', 'path', 'document_url']
         );
-        const normalizedStoragePath = this._normalizeImportStorageKey(rawStoragePath);
-        const explicitStatus = this._readImportValue(row, ['status']);
+        const normalizedStoragePath = normalizeImportStorageKey(rawStoragePath);
+        const explicitStatus = readImportValue(row, ['status']);
         const normalizedStatus = explicitStatus
-            ? this._toDocumentStatus(explicitStatus)
+            ? toDocumentStatus(explicitStatus)
             : (normalizedStoragePath ? 'uploaded' : 'missing');
 
         let documentRow = null;
@@ -1842,19 +1390,19 @@ class ExportMarketsService {
             documentRow = byCodeResult.rows[0] || null;
         }
 
-        const safeFilename = this._readImportValue(row, ['original_filename', 'originalFilename']) ||
+        const safeFilename = readImportValue(row, ['original_filename', 'originalFilename']) ||
             (normalizedStoragePath ? normalizedStoragePath.split('/').pop() : '') ||
             `${normalizedDocumentCode || 'document'}.pdf`;
-        const mimeType = this._readImportValue(row, ['mime_type', 'mimeType']) || 'application/octet-stream';
-        const fileSizeBytesRaw = this._readImportValue(row, ['file_size_bytes', 'fileSizeBytes']);
+        const mimeType = readImportValue(row, ['mime_type', 'mimeType']) || 'application/octet-stream';
+        const fileSizeBytesRaw = readImportValue(row, ['file_size_bytes', 'fileSizeBytes']);
         const fileSizeBytes = Number.isFinite(Number(fileSizeBytesRaw))
             ? Math.max(0, Math.trunc(Number(fileSizeBytesRaw)))
             : 0;
-        const checksumSha256 = this._readImportValue(row, ['checksum_sha256', 'checksumSha256']) || null;
+        const checksumSha256 = readImportValue(row, ['checksum_sha256', 'checksumSha256']) || null;
 
         if (!documentRow) {
             const generatedCode = normalizedDocumentCode ||
-                this._normalizeImportDocumentCode(documentName) ||
+                normalizeImportDocumentCode(documentName) ||
                 `imported_doc_${Date.now()}`;
             const insertResult = await client.query(
                 `
@@ -1893,9 +1441,9 @@ class ExportMarketsService {
         }
 
         const mergedDocumentCode = normalizedDocumentCode ||
-            this._normalizeImportDocumentCode(documentRow.document_code);
+            normalizeImportDocumentCode(documentRow.document_code);
         const mergedDocumentName = documentName || documentRow.document_name || mergedDocumentCode;
-        const mergedStatus = normalizedStoragePath ? normalizedStatus : this._toDocumentStatus(documentRow.status);
+        const mergedStatus = normalizedStoragePath ? normalizedStatus : toDocumentStatus(documentRow.status);
         const mergedStorageProvider = normalizedStoragePath
             ? 'local'
             : (documentRow.storage_provider || null);
@@ -1937,234 +1485,33 @@ class ExportMarketsService {
         return updateResult.rows[0] || documentRow;
     }
 
+    // Delegates to ./exportMarketsService/seeding.js — kept as instance
+    // methods so any existing caller of exportMarketsService._ensure*(...)
+    // keeps working unchanged.
     async _ensureMarketsAndRequiredDocuments(client, companyId) {
-        const markets = await this._ensureExportMarkets(client, companyId);
-        if (markets.length === 0) {
-            return [];
-        }
-
-        await this._ensureRequiredDocuments(client, companyId, markets);
-        await this._ensureMaterialCertificationDocuments(client, companyId, markets);
-        return markets;
+        return ensureMarketsAndRequiredDocuments(client, companyId);
     }
 
     async _ensureExportMarkets(client, companyId) {
-        const targetMarketsResult = await client.query(
-            'SELECT target_markets FROM companies WHERE id = $1 LIMIT 1',
-            [companyId]
-        );
-
-        const companyTargetMarkets = Array.isArray(targetMarketsResult.rows[0]?.target_markets)
-            ? targetMarketsResult.rows[0].target_markets
-            : [];
-
-        const normalizedSelectedCodes = normalizeTargetMarkets(
-            companyTargetMarkets.length > 0 ? companyTargetMarkets : DEFAULT_MARKET_CODES
-        );
-
-        const requestedCodes = normalizedSelectedCodes.length > 0
-            ? normalizedSelectedCodes
-            : DEFAULT_MARKET_CODES.filter(code => SUPPORTED_TARGET_MARKETS_SET.has(code));
-
-        if (requestedCodes.length === 0) {
-            return [];
-        }
-
-        const getMarketsByCodesQuery = `
-            SELECT 
-                em.id,
-                em.market_code,
-                em.market_name,
-                em.status,
-                em.score,
-                em.verification_status,
-                em.verification_date,
-                em.verification_body,
-                em.verification_notes,
-                em.created_at,
-                em.updated_at
-            FROM export_markets em
-            WHERE em.company_id = $1
-              AND UPPER(em.market_code) = ANY($2)
-            ORDER BY em.market_name ASC
-        `;
-
-        let marketsResult = await client.query(getMarketsByCodesQuery, [companyId, requestedCodes]);
-
-        const existingCodes = new Set(
-            marketsResult.rows.map(row => String(row.market_code || '').trim().toUpperCase())
-        );
-
-        const missingCodes = requestedCodes.filter(code => !existingCodes.has(code));
-
-        if (missingCodes.length > 0) {
-            for (const code of missingCodes) {
-                await client.query(
-                    `
-                    INSERT INTO export_markets (
-                        company_id, market_code, market_name, status, score, created_at, updated_at
-                    )
-                    VALUES ($1, $2, $3, 'draft', 0, NOW(), NOW())
-                    ON CONFLICT (company_id, market_code) DO NOTHING
-                    `,
-                    [companyId, code, this._resolveMarketName(code)]
-                );
-            }
-
-            marketsResult = await client.query(getMarketsByCodesQuery, [companyId, requestedCodes]);
-        }
-
-        return marketsResult.rows;
+        return ensureExportMarkets(client, companyId);
     }
 
     async _ensureRequiredDocuments(client, companyId, markets) {
-        const marketCodes = markets.map(m => String(m.market_code || '').trim().toUpperCase());
-        if (marketCodes.length === 0) return;
-
-        const existingDocsResult = await client.query(
-            `
-            SELECT UPPER(market_code) AS market_code, document_code
-            FROM compliance_documents
-            WHERE company_id = $1
-              AND UPPER(market_code) = ANY($2)
-              AND document_code IS NOT NULL
-            `,
-            [companyId, marketCodes]
-        );
-
-        const existingKeys = new Set(
-            existingDocsResult.rows.map(d => `${d.market_code}::${this._normalizeDocumentCode(d.document_code)}`)
-        );
-
-        for (const market of markets) {
-            const marketCode = String(market.market_code || '').trim().toUpperCase();
-            const requiredDocs = this._getRequiredDocumentsForMarket(marketCode);
-
-            for (const doc of requiredDocs) {
-                const normalizedDocCode = this._normalizeDocumentCode(doc.code);
-                const key = `${marketCode}::${normalizedDocCode}`;
-                if (existingKeys.has(key)) {
-                    continue;
-                }
-
-                await client.query(
-                    `
-                    INSERT INTO compliance_documents (
-                        id, company_id, market_code, document_code, document_name,
-                        status, created_at, updated_at
-                    )
-                    SELECT $1, $2, $3, $4, $5, 'missing', NOW(), NOW()
-                    WHERE NOT EXISTS (
-                        SELECT 1
-                        FROM compliance_documents
-                        WHERE company_id = $2
-                          AND UPPER(market_code) = UPPER($3)
-                          AND document_code = $4
-                    )
-                    `,
-                    [randomUUID(), companyId, market.market_code, normalizedDocCode, doc.name]
-                );
-
-                existingKeys.add(key);
-            }
-        }
+        return ensureRequiredDocuments(client, companyId, markets);
     }
 
     async _ensureMaterialCertificationDocuments(client, companyId, markets) {
-        const marketCodes = markets.map(m => String(m.market_code || '').trim().toUpperCase());
-        if (marketCodes.length === 0) return;
-
-        const existingDocsResult = await client.query(
-            `
-            SELECT UPPER(market_code) AS market_code, document_code
-            FROM compliance_documents
-            WHERE company_id = $1
-              AND UPPER(market_code) = ANY($2)
-              AND document_code IS NOT NULL
-            `,
-            [companyId, marketCodes]
-        );
-
-        const existingKeys = new Set(
-            existingDocsResult.rows.map(d => `${d.market_code}::${this._normalizeDocumentCode(d.document_code)}`)
-        );
-
-        for (const market of markets) {
-            const marketCode = String(market.market_code || '').trim().toUpperCase();
-
-            for (const template of MATERIAL_CERTIFICATION_DOCUMENTS) {
-                const normalizedDocumentCode = this._normalizeDocumentCode(template.code);
-                const key = `${marketCode}::${normalizedDocumentCode}`;
-                if (existingKeys.has(key)) {
-                    continue;
-                }
-
-                await client.query(
-                    `
-                    INSERT INTO compliance_documents (
-                        id, company_id, market_code, document_code, document_name,
-                        status, created_at, updated_at
-                    )
-                    SELECT $1, $2, $3, $4, $5, 'missing', NOW(), NOW()
-                    WHERE NOT EXISTS (
-                        SELECT 1
-                        FROM compliance_documents
-                        WHERE company_id = $2
-                          AND UPPER(market_code) = UPPER($3)
-                          AND document_code = $4
-                    )
-                    `,
-                    [
-                        randomUUID(),
-                        companyId,
-                        market.market_code,
-                        normalizedDocumentCode,
-                        template.name
-                    ]
-                );
-
-                existingKeys.add(key);
-            }
-        }
-    }
-
-    _resolveMarketName(marketCode) {
-        const normalizedMarketCode = String(marketCode || '').trim().toUpperCase();
-        return MARKET_REQUIREMENTS_BY_CODE[normalizedMarketCode]?.market_name || `Market ${normalizedMarketCode}`;
-    }
-
-    _getRequiredDocumentsForMarket(marketCode) {
-        const normalizedMarketCode = String(marketCode || '').trim().toUpperCase();
-        const templates = MARKET_REQUIREMENTS_BY_CODE[normalizedMarketCode]?.required_documents;
-        const base = Array.isArray(templates) && templates.length > 0 ? templates : DEFAULT_REQUIRED_DOCUMENTS;
-
-        return base.map(doc => ({
-            code: this._normalizeDocumentCode(doc.code),
-            name: doc.name,
-            document_type: doc.document_type || null,
-            regulation_reference: doc.regulation_reference || null
-        }));
-    }
-
-    _resolveDocumentTypeForMarket(marketCode, documentCode) {
-        const normalizedDocumentCode = this._normalizeDocumentCode(documentCode);
-        if (!normalizedDocumentCode) {
-            return null;
-        }
-
-        const template = this._getRequiredDocumentsForMarket(marketCode)
-            .find(doc => this._normalizeDocumentCode(doc.code) === normalizedDocumentCode);
-        return template?.document_type || null;
+        return ensureMaterialCertificationDocuments(client, companyId, markets);
     }
 
     _resolveDocumentTarget(marketCode, documentId, fileData = {}) {
         const rawDocumentId = String(documentId || '').trim();
         const normalizedMarketCode = String(marketCode || '').trim().toUpperCase();
-        const explicitDocumentCode = this._normalizeDocumentCode(fileData.document_code);
-        const templates = this._getRequiredDocumentsForMarket(normalizedMarketCode);
+        const explicitDocumentCode = normalizeDocumentCode(fileData.document_code);
+        const templates = getRequiredDocumentsForMarket(normalizedMarketCode);
 
         if (UUID_REGEX.test(rawDocumentId)) {
-            const template = templates.find(doc => this._normalizeDocumentCode(doc.code) === explicitDocumentCode);
+            const template = templates.find(doc => normalizeDocumentCode(doc.code) === explicitDocumentCode);
             return {
                 id: rawDocumentId,
                 document_code: explicitDocumentCode || template?.code || null,
@@ -2187,20 +1534,16 @@ class ExportMarketsService {
 
         const normalizedDocumentCode =
             explicitDocumentCode ||
-            this._normalizeDocumentCode(rawDocumentId) ||
-            this._normalizeDocumentCode(fileData.document_name) ||
+            normalizeDocumentCode(rawDocumentId) ||
+            normalizeDocumentCode(fileData.document_name) ||
             `document_${Date.now()}`;
-        const template = templates.find(doc => this._normalizeDocumentCode(doc.code) === normalizedDocumentCode);
+        const template = templates.find(doc => normalizeDocumentCode(doc.code) === normalizedDocumentCode);
 
         return {
             id: null,
             document_code: normalizedDocumentCode,
             document_name: fileData.document_name || template?.name || normalizedDocumentCode
         };
-    }
-
-    _normalizeDocumentCode(documentCode) {
-        return String(documentCode || '').trim().toLowerCase();
     }
 
     async _getMarketByCode(client, companyId, marketCode) {
@@ -2235,7 +1578,7 @@ class ExportMarketsService {
                 SET market_name = EXCLUDED.market_name
                 RETURNING id, market_code, market_name, status, score
             `,
-            [companyId, normalizedMarketCode, this._resolveMarketName(normalizedMarketCode)]
+            [companyId, normalizedMarketCode, resolveMarketName(normalizedMarketCode)]
         );
 
         return insertResult.rows[0] || null;
@@ -2249,8 +1592,8 @@ class ExportMarketsService {
         if (companyId && marketCode) {
             const requiredDocumentCodes = Array.from(
                 new Set(
-                    this._getRequiredDocumentsForMarket(marketCode)
-                        .map(doc => this._normalizeDocumentCode(doc.code))
+                    getRequiredDocumentsForMarket(marketCode)
+                        .map(doc => normalizeDocumentCode(doc.code))
                         .filter(Boolean)
                 )
             );
@@ -2299,15 +1642,6 @@ class ExportMarketsService {
             'UPDATE export_markets SET score = $1, status = $2, updated_at = NOW() WHERE id = $3',
             [score, status, marketId]
         );
-    }
-
-    _groupBy(arr, key) {
-        return arr.reduce((acc, item) => {
-            const k = item[key];
-            if (!acc[k]) acc[k] = [];
-            acc[k].push(item);
-            return acc;
-        }, {});
     }
 
     async _simulateComplianceReport(reportId, companyId) {

@@ -18,6 +18,11 @@ const normalizeDocumentToken = (value) =>
 
 const normalizeLooseDocumentToken = (value) => normalizeDocumentToken(value).replace(/_/g, '');
 
+// Distinct from normalizeDocumentToken: trims/lowercases only, without
+// collapsing non-alphanumeric characters to underscores. Used wherever
+// document codes are compared/keyed as stored (e.g. 'cert_gots').
+const normalizeDocumentCode = (documentCode) => String(documentCode || '').trim().toLowerCase();
+
 const parseJsonObject = (value) => {
     if (!value || typeof value !== 'string') return null;
     try {
@@ -74,12 +79,58 @@ const resolveComplianceDocumentGroup = (document = {}) => {
     return looksLikeMaterialCertification ? 'material_certification' : 'export_compliance';
 };
 
+const DOCUMENT_STATUS_VALUES = new Set(['missing', 'uploaded', 'approved', 'expired']);
+
+const toDocumentStatus = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return DOCUMENT_STATUS_VALUES.has(normalized) ? normalized : 'uploaded';
+};
+
+const readImportValue = (row, keys) => {
+    for (const key of keys) {
+        if (typeof row[key] === 'undefined' || row[key] === null) continue;
+        const value = String(row[key]).trim();
+        if (value.length > 0) {
+            return value;
+        }
+    }
+    return '';
+};
+
+const normalizeImportStorageKey = (value) =>
+    String(value || '')
+        .trim()
+        .replace(/\\/g, '/')
+        .replace(/\.\./g, '_')
+        .replace(/^\/+/, '');
+
+const normalizeImportDocumentCode = (value) =>
+    String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+
+const groupBy = (arr, key) =>
+    arr.reduce((acc, item) => {
+        const k = item[key];
+        if (!acc[k]) acc[k] = [];
+        acc[k].push(item);
+        return acc;
+    }, {});
+
 module.exports = {
     normalizeDocumentToken,
     normalizeLooseDocumentToken,
+    normalizeDocumentCode,
     parseJsonObject,
     toNullableTrimmedString,
     toNonNegativeNumberOrNull,
     buildProductScopeNotes,
-    resolveComplianceDocumentGroup
+    resolveComplianceDocumentGroup,
+    toDocumentStatus,
+    readImportValue,
+    normalizeImportStorageKey,
+    normalizeImportDocumentCode,
+    groupBy
 };

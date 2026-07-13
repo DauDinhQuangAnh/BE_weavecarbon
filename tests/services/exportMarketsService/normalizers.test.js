@@ -1,11 +1,17 @@
 const {
     normalizeDocumentToken,
     normalizeLooseDocumentToken,
+    normalizeDocumentCode,
     parseJsonObject,
     toNullableTrimmedString,
     toNonNegativeNumberOrNull,
     buildProductScopeNotes,
-    resolveComplianceDocumentGroup
+    resolveComplianceDocumentGroup,
+    toDocumentStatus,
+    readImportValue,
+    normalizeImportStorageKey,
+    normalizeImportDocumentCode,
+    groupBy
 } = require('../../../src/services/exportMarketsService/normalizers');
 
 describe('normalizeDocumentToken', () => {
@@ -22,6 +28,18 @@ describe('normalizeDocumentToken', () => {
 describe('normalizeLooseDocumentToken', () => {
     it('strips underscores after normalizing', () => {
         expect(normalizeLooseDocumentToken('Material Cert')).toBe('materialcert');
+    });
+});
+
+describe('normalizeDocumentCode', () => {
+    it('trims and lowercases without collapsing punctuation', () => {
+        expect(normalizeDocumentCode('  CERT_gots  ')).toBe('cert_gots');
+        expect(normalizeDocumentCode('Carbon Footprint Report')).toBe('carbon footprint report');
+    });
+
+    it('handles nullish input', () => {
+        expect(normalizeDocumentCode(null)).toBe('');
+        expect(normalizeDocumentCode(undefined)).toBe('');
     });
 });
 
@@ -98,5 +116,63 @@ describe('resolveComplianceDocumentGroup', () => {
         expect(resolveComplianceDocumentGroup({ document_code: 'carbon_footprint_report' })).toBe(
             'export_compliance'
         );
+    });
+});
+
+describe('toDocumentStatus', () => {
+    it('passes through known statuses', () => {
+        expect(toDocumentStatus('missing')).toBe('missing');
+        expect(toDocumentStatus('APPROVED')).toBe('approved');
+        expect(toDocumentStatus(' expired ')).toBe('expired');
+    });
+
+    it('defaults unknown/empty statuses to uploaded', () => {
+        expect(toDocumentStatus('bogus')).toBe('uploaded');
+        expect(toDocumentStatus(null)).toBe('uploaded');
+        expect(toDocumentStatus(undefined)).toBe('uploaded');
+    });
+});
+
+describe('readImportValue', () => {
+    it('returns the first non-empty matching key', () => {
+        expect(readImportValue({ sku: '', product_code: 'ABC' }, ['sku', 'product_code'])).toBe('ABC');
+    });
+
+    it('returns an empty string when no key matches', () => {
+        expect(readImportValue({}, ['sku', 'product_code'])).toBe('');
+    });
+});
+
+describe('normalizeImportStorageKey', () => {
+    it('converts backslashes to forward slashes and strips leading slashes', () => {
+        expect(normalizeImportStorageKey('\\uploads\\file.pdf')).toBe('uploads/file.pdf');
+    });
+
+    it('neutralizes path traversal segments', () => {
+        expect(normalizeImportStorageKey('../../etc/passwd')).toBe('_/_/etc/passwd');
+    });
+});
+
+describe('normalizeImportDocumentCode', () => {
+    it('lowercases and collapses non-alphanumeric runs to underscores', () => {
+        expect(normalizeImportDocumentCode('Carbon Footprint Report!')).toBe('carbon_footprint_report');
+    });
+
+    it('handles nullish input', () => {
+        expect(normalizeImportDocumentCode(null)).toBe('');
+    });
+});
+
+describe('groupBy', () => {
+    it('groups array items by the given key', () => {
+        const items = [{ type: 'a', v: 1 }, { type: 'b', v: 2 }, { type: 'a', v: 3 }];
+        expect(groupBy(items, 'type')).toEqual({
+            a: [{ type: 'a', v: 1 }, { type: 'a', v: 3 }],
+            b: [{ type: 'b', v: 2 }]
+        });
+    });
+
+    it('returns an empty object for an empty array', () => {
+        expect(groupBy([], 'type')).toEqual({});
     });
 });
