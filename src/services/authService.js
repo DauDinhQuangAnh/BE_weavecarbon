@@ -1,13 +1,11 @@
 const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../config/database');
-const jwtConfig = require('../config/jwt');
 const subscriptionService = require('./subscriptionService');
 const b2cDefaultsService = require('./b2cDefaultsService');
 const logger = require('../utils/logger');
 const { seedDemoB2BData } = require('./demoB2BSeeder');
+const authTokens = require('./authService/tokens');
 const {
   DEFAULT_DOMESTIC_MARKET,
   ensureCompaniesDomesticMarketColumn,
@@ -63,19 +61,11 @@ class AuthService {
   }
 
   hashRefreshToken(token) {
-    return crypto
-      .createHash('sha256')
-      .update(String(token || ''))
-      .digest('hex');
+    return authTokens.hashRefreshToken(token);
   }
 
   decodeJwtExpiry(token) {
-    const decoded = jwt.decode(token);
-    if (!decoded || typeof decoded.exp !== 'number') {
-      return null;
-    }
-
-    return new Date(decoded.exp * 1000);
+    return authTokens.decodeJwtExpiry(token);
   }
 
   async initializeTrial(client, companyId) {
@@ -135,117 +125,39 @@ class AuthService {
   }
 
   async hashPassword(password) {
-    return await bcrypt.hash(password, 10);
+    return authTokens.hashPassword(password);
   }
 
   async verifyPassword(password, hashedPassword) {
-    return await bcrypt.compare(password, hashedPassword);
+    return authTokens.verifyPassword(password, hashedPassword);
   }
 
   generateSystemPassword(length = 20) {
-    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-    const lower = 'abcdefghijkmnopqrstuvwxyz';
-    const numbers = '23456789';
-    const symbols = '!@#$%^&*';
-    const all = `${upper}${lower}${numbers}${symbols}`;
-    const pick = (source) => source.charAt(crypto.randomInt(0, source.length));
-    const password = [
-      pick(upper),
-      pick(lower),
-      pick(numbers),
-      pick(symbols)
-    ];
-
-    while (password.length < length) {
-      password.push(pick(all));
-    }
-
-    for (let index = password.length - 1; index > 0; index -= 1) {
-      const swapIndex = crypto.randomInt(0, index + 1);
-      [password[index], password[swapIndex]] = [password[swapIndex], password[index]];
-    }
-
-    return password.join('');
+    return authTokens.generateSystemPassword(length);
   }
 
   generateAccessToken(userId, email, roles, companyId = null, isDemo = false) {
-    return jwt.sign(
-      {
-        sub: userId,
-        type: 'access',
-        email,
-        roles,
-        is_demo: isDemo,
-        company_id: companyId
-      },
-      jwtConfig.jwtSecret,
-      {
-        expiresIn: jwtConfig.jwtExpiresIn,
-        issuer: jwtConfig.jwtIssuer,
-        audience: jwtConfig.jwtAudience
-      }
-    );
+    return authTokens.generateAccessToken(userId, email, roles, companyId, isDemo);
   }
 
   generateRefreshToken(userId, rememberMe = true) {
-    return jwt.sign(
-      { sub: userId, type: 'refresh', jti: uuidv4(), remember_me: rememberMe !== false },
-      jwtConfig.jwtRefreshSecret,
-      {
-        expiresIn: jwtConfig.jwtRefreshExpiresIn,
-        issuer: jwtConfig.jwtIssuer,
-        audience: jwtConfig.jwtAudience
-      }
-    );
+    return authTokens.generateRefreshToken(userId, rememberMe);
   }
 
   generateCompanyInviteToken({ email, companyId }) {
-    return jwt.sign(
-      {
-        email: String(email || '').trim().toLowerCase(),
-        company_id: companyId,
-        type: 'company_invite'
-      },
-      jwtConfig.jwtSecret,
-      {
-        expiresIn: '7d',
-        issuer: jwtConfig.jwtIssuer,
-        audience: jwtConfig.jwtAudience
-      }
-    );
+    return authTokens.generateCompanyInviteToken({ email, companyId });
   }
 
   verifyAccessToken(token) {
-    try {
-      return jwt.verify(token, jwtConfig.jwtSecret, {
-        issuer: jwtConfig.jwtIssuer,
-        audience: jwtConfig.jwtAudience
-      });
-    } catch (error) {
-      return null;
-    }
+    return authTokens.verifyAccessToken(token);
   }
 
   verifyRefreshToken(token) {
-    try {
-      return jwt.verify(token, jwtConfig.jwtRefreshSecret, {
-        issuer: jwtConfig.jwtIssuer,
-        audience: jwtConfig.jwtAudience
-      });
-    } catch (error) {
-      return null;
-    }
+    return authTokens.verifyRefreshToken(token);
   }
 
   verifyCompanyInviteToken(token) {
-    try {
-      return jwt.verify(token, jwtConfig.jwtSecret, {
-        issuer: jwtConfig.jwtIssuer,
-        audience: jwtConfig.jwtAudience
-      });
-    } catch (error) {
-      return null;
-    }
+    return authTokens.verifyCompanyInviteToken(token);
   }
 
   async storeRefreshToken(refreshToken, userId, metadata = {}) {
@@ -417,19 +329,11 @@ class AuthService {
   }
 
   generateVerificationToken(email) {
-    return jwt.sign(
-      { email, type: 'email_verification' },
-      jwtConfig.jwtSecret,
-      { expiresIn: '24h' }
-    );
+    return authTokens.generateVerificationToken(email);
   }
 
   verifyEmailToken(token) {
-    try {
-      return jwt.verify(token, jwtConfig.jwtSecret);
-    } catch (error) {
-      return null;
-    }
+    return authTokens.verifyEmailToken(token);
   }
 
   async createInvitedCompanyUser({ client, email, fullName, companyId }) {

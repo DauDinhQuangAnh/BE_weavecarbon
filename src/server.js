@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const swaggerUi = require('swagger-ui-express');
 require('dotenv').config();
 
 const { bootstrapApplication } = require('./bootstrap/appBootstrap');
@@ -11,6 +12,7 @@ const { errorHandler, notFound } = require('./middleware/errorHandler');
 const { apiLimiter } = require('./middleware/rateLimiter');
 const { sendSuccess } = require('./utils/http');
 const logger = require('./utils/logger');
+const swaggerSpec = require('./config/swagger');
 
 const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
@@ -145,6 +147,11 @@ app.get('/health', async (req, res) => {
     res.status(503).json({ success: false, error: { code: 'DB_UNAVAILABLE', message: 'Database not reachable' } });
   }
 });
+
+const apiDocsEnabled = process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'true';
+if (apiDocsEnabled) {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
 
 apiRoutes.forEach(([basePath, routeHandler]) => {
   app.use(basePath, routeHandler);

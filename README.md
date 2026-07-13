@@ -8,6 +8,8 @@ Backend API for WeaveCarbon, built with Node.js, Express, and PostgreSQL.
 npm run dev
 npm run start
 npm run check:syntax
+npm run lint
+npm test
 ```
 
 ## Structure
@@ -31,6 +33,11 @@ npm run check:syntax
 - Keep request and response shapes stable for FE compatibility
 - Remove debug/manual scripts that are not part of runtime
 - Add repeatable validation checks before each cleanup wave
+
+## API Docs
+
+- OpenAPI/Swagger UI is served at `/api-docs` (enabled by default outside `NODE_ENV=production`; set `ENABLE_API_DOCS=true` to force-enable in production)
+- Spec is generated from `@openapi` JSDoc blocks on route handlers in `src/routes/*.js` (see `src/config/swagger.js`); `src/routes/auth.js` has the first fully-annotated route group — extend other route files incrementally using the same pattern
 
 ## VNPAY
 

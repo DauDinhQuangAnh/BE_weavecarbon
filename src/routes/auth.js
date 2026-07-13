@@ -244,6 +244,36 @@ async function issueAccessBackedSession(req, res, accessToken, {
 }
 
 
+/**
+ * @openapi
+ * /auth/signup:
+ *   post:
+ *     summary: Register a new user (and optionally a B2B company)
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password, full_name, role]
+ *             properties:
+ *               email: { type: string, format: email }
+ *               password: { type: string, format: password }
+ *               full_name: { type: string }
+ *               role: { type: string, enum: [b2b, b2c] }
+ *               company_name: { type: string }
+ *               business_type: { type: string }
+ *               domestic_market: { type: string }
+ *               target_markets: { type: array, items: { type: string } }
+ *               phone: { type: string }
+ *     responses:
+ *       201:
+ *         description: Account created; verification email sent.
+ *       409:
+ *         description: Email already registered (and verified), or a company invite is pending.
+ */
 // 1. SIGNUP
 router.post('/signup', signupLimiter, signupValidation, validate, async (req, res, next) => {
   try {
@@ -360,6 +390,32 @@ router.post('/signup', signupLimiter, signupValidation, validate, async (req, re
   }
 });
 
+/**
+ * @openapi
+ * /auth/signin:
+ *   post:
+ *     summary: Sign in with email and password
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email: { type: string, format: email }
+ *               password: { type: string, format: password }
+ *               remember_me: { type: boolean, default: true }
+ *     responses:
+ *       200:
+ *         description: Signed in. Sets a refresh-token cookie and returns an access token.
+ *       401:
+ *         description: Invalid email or password.
+ *       403:
+ *         description: Email not verified.
+ */
 // 2. SIGNIN
 router.post('/signin', signinLimiter, signinValidation, validate, async (req, res, next) => {
   try {
@@ -452,6 +508,24 @@ router.post('/signin', signinLimiter, signinValidation, validate, async (req, re
   }
 });
 
+/**
+ * @openapi
+ * /auth/signout:
+ *   post:
+ *     summary: Sign out (revoke the current refresh token, or all sessions)
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               all_devices: { type: boolean, default: false }
+ *     responses:
+ *       200:
+ *         description: Session(s) revoked and refresh-token cookie cleared.
+ */
 // 3. SIGNOUT
 router.post('/signout', async (req, res, next) => {
   try {
@@ -484,6 +558,20 @@ router.post('/signout', async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /auth/refresh:
+ *   post:
+ *     summary: Rotate the refresh token and issue a new access token
+ *     tags: [Auth]
+ *     security: []
+ *     description: Reads the refresh token from the httpOnly cookie (or request body/header, depending on client).
+ *     responses:
+ *       200:
+ *         description: New access token issued; refresh-token cookie rotated.
+ *       401:
+ *         description: No active session / invalid or expired refresh token.
+ */
 // 4. REFRESH TOKEN
 router.post('/refresh', refreshLimiter, refreshValidation, validate, async (req, res, next) => {
   try {
@@ -503,6 +591,19 @@ router.post('/refresh', refreshLimiter, refreshValidation, validate, async (req,
   }
 });
 
+/**
+ * @openapi
+ * /auth/session:
+ *   get:
+ *     summary: Bootstrap the current session from a refresh-token cookie or bearer access token
+ *     tags: [Auth]
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Current user/company/session data.
+ *       401:
+ *         description: No active session was found.
+ */
 // 4B. SESSION BOOTSTRAP
 router.get('/session', refreshLimiter, async (req, res, next) => {
   try {

@@ -4,37 +4,16 @@ const path = require('path');
 const fs = require('fs');
 const { UPLOADS_ROOT } = require('../config/runtime');
 const analyticsService = require('./analyticsService');
-const logger = require('../utils/logger');
 const reportJobQueue = require('./reportJobQueue');
 const pdfReportService = require('./pdfReportService');
 
 const PDF_REPORT_TYPES = new Set(['product_carbon', 'batch_export', 'facility_emission', 'compliance']);
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const normalizeUuid = (value) => {
-    const text = String(value || '').trim();
-    return UUID_REGEX.test(text) ? text : null;
-};
-
-const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope) => {
-    try {
-        const event = await analyticsService.enqueueEvent(client, payload);
-        if (event?.id) {
-            eventIds.push(event.id);
-        }
-    } catch (error) {
-        logger.error({ err: error }, `[reportsService] Failed to queue ${scope}`);
-    }
-};
-
-const safeTrackAnalyticsEvent = async (payload, scope) => {
-    try {
-        await analyticsService.trackEvent(payload);
-    } catch (error) {
-        logger.error({ err: error }, `[reportsService] Failed to track ${scope}`);
-    }
-};
+const {
+    normalizeUuid,
+    pushTransactionalAnalyticsEvent,
+    safeTrackAnalyticsEvent
+} = require('./reportsService/helpers');
 
 class ReportsService {
     async getActiveV2Template() {

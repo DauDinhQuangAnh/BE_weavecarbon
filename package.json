@@ -12,6 +12,7 @@
     "build:release": "node scripts/build-release.js",
     "clean:local": "node scripts/clean-local.js",
     "check:syntax": "node scripts/check-syntax.js",
+    "lint": "eslint .",
     "test": "jest"
   },
   "keywords": [
@@ -38,9 +39,14 @@
     "pdfkit": "^0.19.1",
     "pg": "^8.11.3",
     "pino": "^10.3.1",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^14.0.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.7.0",
     "jest": "^30.4.2",
     "nodemon": "^3.1.14",
     "pino-pretty": "^13.1.3"

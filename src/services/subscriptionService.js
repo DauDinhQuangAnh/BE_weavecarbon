@@ -1,19 +1,19 @@
 const pool = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
-const crypto = require('crypto');
 const axios = require('axios');
 const { assertSchemaCapability } = require('../config/schemaCapabilities');
 const analyticsService = require('./analyticsService');
 const logger = require('../utils/logger');
+const planRules = require('./subscriptionService/planRules');
+const subscriptionHelpers = require('./subscriptionService/helpers');
+const vnpay = require('./subscriptionService/vnpay');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TRIAL_DAYS = 14;
 const STANDARD_BILLING_DAYS = 30;
 const SCHEMA_QUERY_TIMEOUT_MS = 8000;
 const PAYMENT_SESSION_EXPIRY_MINUTES = 30;
-const VNPAY_PAYMENT_URL_EXPIRY_MINUTES = 15;
 const VNPAY_QUERYDR_MIN_INTERVAL_MS = 10 * 1000;
-const VNPAY_SUCCESS_CODE = '00';
 
 const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope) => {
     try {
@@ -27,171 +27,56 @@ const pushTransactionalAnalyticsEvent = async (client, eventIds, payload, scope)
 };
 
 class SubscriptionService {
-    PLAN_LIMITS = {
-        trial: {
-            name: 'Trial',
-            price_monthly: 149000,
-            products: 100,
-            members: 5,
-            api_calls_per_month: 10000
-        },
-        standard: {
-            name: 'Standard',
-            price_monthly: 0,
-            products: 20,
-            members: 20,
-            api_calls_per_month: 100000
-        },
-        export: {
-            name: 'Export',
-            price_monthly: 3000000,
-            products: -1,
-            members: 50,
-            api_calls_per_month: -1
-        }
-    };
+    PLAN_LIMITS = planRules.PLAN_LIMITS;
 
-    STANDARD_SKU_PACKAGES = {
-        20: {
-            sku_increment: 20,
-            name: 'Standard +20 SKU',
-            price_monthly: 899000
-        },
-        35: {
-            sku_increment: 35,
-            name: 'Standard +35 SKU',
-            price_monthly: 1199000
-        },
-        50: {
-            sku_increment: 50,
-            name: 'Standard +50 SKU',
-            price_monthly: 1499000
-        }
-    };
+    STANDARD_SKU_PACKAGES = planRules.STANDARD_SKU_PACKAGES;
 
-    PLAN_RANK = {
-        trial: 1,
-        standard: 2,
-        standard_20: 2,
-        standard_35: 2,
-        standard_50: 2,
-        export: 3
-    };
+    PLAN_RANK = planRules.PLAN_RANK;
 
-    STANDARD_PLAN_IDS = new Set(['standard', 'standard_20', 'standard_35', 'standard_50']);
+    STANDARD_PLAN_IDS = planRules.STANDARD_PLAN_IDS;
 
-    ALLOWED_TARGET_PLANS = new Set([
-        'trial',
-        'standard',
-        'standard_20',
-        'standard_35',
-        'standard_50',
-        'export'
-    ]);
+    ALLOWED_TARGET_PLANS = planRules.ALLOWED_TARGET_PLANS;
 
-    CONTACT_INFO = {
-        name: 'Nguyen Van A',
-        phone: '123456789'
-    };
+    CONTACT_INFO = planRules.CONTACT_INFO;
 
     constructor() {
         this._schemaReady = null;
     }
 
     buildError(message, code, statusCode) {
-        const error = new Error(message);
-        error.code = code;
-        error.statusCode = statusCode;
-        return error;
+        return subscriptionHelpers.buildError(message, code, statusCode);
     }
 
     normalizePlanId(value, fallback = 'trial') {
-        const normalized = String(value || '')
-            .trim()
-            .toLowerCase()
-            .replace(/-/g, '_');
-
-        if (!normalized) return fallback;
-        if (normalized === 'trial') return 'trial';
-        if (normalized === 'export') return 'export';
-        if (normalized === 'standard') return 'standard';
-        if (normalized.includes('standard_50')) return 'standard';
-        if (normalized.includes('standard_35')) return 'standard';
-        if (normalized.includes('standard_20')) return 'standard';
-        if (normalized.includes('standard50')) return 'standard';
-        if (normalized.includes('standard35')) return 'standard';
-        if (normalized.includes('standard20')) return 'standard';
-        if (normalized.includes('standard')) return 'standard';
-        return fallback;
+        return planRules.normalizePlanId(value, fallback);
     }
 
     resolveStandardPlanBySkuLimit(value, fallback = 'standard_20') {
-        const numericValue = Number(value);
-        if (numericValue >= 50) return 'standard_50';
-        if (numericValue >= 35) return 'standard_35';
-        if (numericValue >= 20) return 'standard_20';
-        return fallback;
+        return planRules.resolveStandardPlanBySkuLimit(value, fallback);
     }
 
     inferLegacyStandardSkuLimit(value, fallback = 20) {
-        const normalized = String(value || '')
-            .trim()
-            .toLowerCase()
-            .replace(/-/g, '_');
-
-        if (!normalized) return fallback;
-        if (normalized.includes('standard_50') || normalized.includes('standard50')) return 50;
-        if (normalized.includes('standard_35') || normalized.includes('standard35')) return 35;
-        if (normalized.includes('standard_20') || normalized.includes('standard20')) return 20;
-        if (normalized.includes('standard')) return 20;
-        return fallback;
+        return planRules.inferLegacyStandardSkuLimit(value, fallback);
     }
 
     resolveStandardPackage(value, fallback = 20) {
-        const numericValue = Number(value);
-        if (numericValue >= 50) return this.STANDARD_SKU_PACKAGES[50];
-        if (numericValue >= 35) return this.STANDARD_SKU_PACKAGES[35];
-        if (numericValue >= 20) return this.STANDARD_SKU_PACKAGES[20];
-        return this.STANDARD_SKU_PACKAGES[fallback] || this.STANDARD_SKU_PACKAGES[20];
+        return planRules.resolveStandardPackage(value, fallback);
     }
 
     resolveRequestedTargetPlan(targetPlan, standardSkuLimit, fallback = 'trial') {
-        const normalizedToken = String(targetPlan || '')
-            .trim()
-            .toLowerCase()
-            .replace(/-/g, '_');
-
-        if (normalizedToken === 'standard') {
-            return 'standard';
-        }
-
-        if (normalizedToken.includes('standard')) {
-            return 'standard';
-        }
-
-        return this.normalizePlanId(targetPlan, fallback);
+        return planRules.resolveRequestedTargetPlan(targetPlan, standardSkuLimit, fallback);
     }
 
     isStandardPlan(planId) {
-        const normalized = this.normalizePlanId(planId, 'trial');
-        return this.STANDARD_PLAN_IDS.has(normalized);
+        return planRules.isStandardPlan(planId);
     }
 
     resolvePlanRank(planId) {
-        const normalized = this.normalizePlanId(planId, 'trial');
-        return this.PLAN_RANK[normalized] || 0;
+        return planRules.resolvePlanRank(planId);
     }
 
     resolvePlanDetails(planId, options = {}) {
-        const normalized = this.normalizePlanId(planId, 'trial');
-        if (normalized === 'standard') {
-            const standardSkuLimit = Math.max(0, Number(options.standardSkuLimit || 0)) || 20;
-            return {
-                ...this.PLAN_LIMITS.standard,
-                products: standardSkuLimit
-            };
-        }
-        return this.PLAN_LIMITS[normalized] || this.PLAN_LIMITS.trial;
+        return planRules.resolvePlanDetails(planId, options);
     }
 
     async ensurePricingPlanEnumValues() {
@@ -243,339 +128,91 @@ class SubscriptionService {
     }
 
     toIsoOrNull(value) {
-        if (!value) return null;
-        const parsed = value instanceof Date ? value : new Date(value);
-        if (Number.isNaN(parsed.getTime())) return null;
-        return parsed.toISOString();
+        return subscriptionHelpers.toIsoOrNull(value);
     }
 
     calcDaysRemaining(toDate) {
-        if (!toDate) return 0;
-        const end = new Date(toDate).getTime();
-        return Math.max(0, Math.ceil((end - Date.now()) / DAY_MS));
+        return subscriptionHelpers.calcDaysRemaining(toDate);
     }
 
     getBackendBaseUrl() {
-        return (process.env.AUTH_PUBLIC_BASE_URL || process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 4000}`).replace(/\/+$/, '');
+        return vnpay.getBackendBaseUrl();
     }
 
     getVnpayMode() {
-        return (process.env.VNPAY_MODE || 'sandbox').trim().toLowerCase();
+        return vnpay.getVnpayMode();
     }
 
     getVnpayConfig() {
-        const mode = this.getVnpayMode();
-        const backendBaseUrl = this.getBackendBaseUrl();
-        const payUrl = (process.env.VNPAY_PAY_URL || 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html').trim();
-        const queryDrUrl = (process.env.VNPAY_QUERYDR_URL || 'https://sandbox.vnpayment.vn/merchant_webapi/api/transaction').trim();
-        const returnUrl = (process.env.VNPAY_RETURN_URL || `${backendBaseUrl}/api/subscription/vnpay/return`).trim();
-        const ipnUrl = (process.env.VNPAY_IPN_URL || `${backendBaseUrl}/api/subscription/vnpay/ipn`).trim();
-        const tmnCode = (process.env.VNPAY_TMN_CODE || '').trim();
-        const hashSecret = (process.env.VNPAY_HASH_SECRET || '').trim();
-
-        return { mode, backendBaseUrl, payUrl, queryDrUrl, returnUrl, ipnUrl, tmnCode, hashSecret };
+        return vnpay.getVnpayConfig();
     }
 
     formatVnpayDate(date = new Date()) {
-        const offsetMs = 7 * 60 * 60 * 1000;
-        const local = new Date(date.getTime() + offsetMs);
-        const yyyy = local.getUTCFullYear();
-        const MM = String(local.getUTCMonth() + 1).padStart(2, '0');
-        const dd = String(local.getUTCDate()).padStart(2, '0');
-        const HH = String(local.getUTCHours()).padStart(2, '0');
-        const mm = String(local.getUTCMinutes()).padStart(2, '0');
-        const ss = String(local.getUTCSeconds()).padStart(2, '0');
-        return `${yyyy}${MM}${dd}${HH}${mm}${ss}`;
+        return vnpay.formatVnpayDate(date);
     }
 
     buildVnpaySignedPayload(params) {
-        const orderedKeys = Object.keys(params).sort();
-        return orderedKeys
-            .map((key) => {
-                const value = params[key];
-                const normalizedValue = value === null || typeof value === 'undefined' ? '' : String(value);
-                return `${encodeURIComponent(key)}=${encodeURIComponent(normalizedValue).replace(/%20/g, '+')}`;
-            })
-            .join('&');
+        return vnpay.buildVnpaySignedPayload(params);
     }
 
     signVnpayParams(params, hashSecret) {
-        const payload = this.buildVnpaySignedPayload(params);
-        return crypto.createHmac('sha512', hashSecret).update(Buffer.from(payload, 'utf-8')).digest('hex');
+        return vnpay.signVnpayParams(params, hashSecret);
     }
 
     signVnpayPipePayload(values, hashSecret) {
-        const payload = values
-            .map((value) => (value === null || typeof value === 'undefined' ? '' : String(value)))
-            .join('|');
-        return crypto.createHmac('sha512', hashSecret).update(Buffer.from(payload, 'utf-8')).digest('hex');
+        return vnpay.signVnpayPipePayload(values, hashSecret);
     }
 
     normalizeMetadata(value) {
-        return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        return subscriptionHelpers.normalizeMetadata(value);
     }
 
     mergeMetadata(existingValue, patchValue) {
-        const existing = this.normalizeMetadata(existingValue);
-        const patch = this.normalizeMetadata(patchValue);
-        const next = { ...existing };
-
-        for (const [key, value] of Object.entries(patch)) {
-            if (typeof value !== 'undefined') {
-                next[key] = value;
-            }
-        }
-
-        return next;
+        return subscriptionHelpers.mergeMetadata(existingValue, patchValue);
     }
 
     toPublicPaymentStatus(status) {
-        if (status === 'success') return 'paid';
-        if (status === 'expired') return 'expired';
-        if (status === 'failed' || status === 'cancelled') return 'failed';
-        return 'pending';
+        return subscriptionHelpers.toPublicPaymentStatus(status);
     }
 
     isPaymentSessionExpired(session) {
-        if (!session?.expires_at) return false;
-        return new Date(session.expires_at).getTime() < Date.now();
+        return subscriptionHelpers.isPaymentSessionExpired(session);
     }
 
     parseVnpayTimestamp(value) {
-        const raw = String(value || '').trim();
-        if (!/^\d{14}$/.test(raw)) return null;
-
-        const year = Number(raw.slice(0, 4));
-        const month = Number(raw.slice(4, 6)) - 1;
-        const day = Number(raw.slice(6, 8));
-        const hour = Number(raw.slice(8, 10));
-        const minute = Number(raw.slice(10, 12));
-        const second = Number(raw.slice(12, 14));
-        const parsed = new Date(Date.UTC(year, month, day, hour - 7, minute, second));
-
-        return Number.isNaN(parsed.getTime()) ? null : parsed;
+        return vnpay.parseVnpayTimestamp(value);
     }
 
     createVnpayRequestId(prefix = 'QDR') {
-        const random = Math.floor(Math.random() * 1_000_000)
-            .toString()
-            .padStart(6, '0');
-        return `${prefix}${Date.now()}${random}`.slice(0, 32);
+        return vnpay.createVnpayRequestId(prefix);
     }
 
     isSuccessfulVnpayResult(responseCode, transactionStatus = '') {
-        const normalizedResponseCode = String(responseCode || '').trim();
-        const normalizedTransactionStatus = String(transactionStatus || '').trim();
-        return (
-            normalizedResponseCode === VNPAY_SUCCESS_CODE &&
-            (!normalizedTransactionStatus || normalizedTransactionStatus === VNPAY_SUCCESS_CODE)
-        );
+        return vnpay.isSuccessfulVnpayResult(responseCode, transactionStatus);
     }
 
     isFailedVnpayResult(responseCode, transactionStatus = '') {
-        const normalizedResponseCode = String(responseCode || '').trim();
-        const normalizedTransactionStatus = String(transactionStatus || '').trim();
-
-        if (!normalizedResponseCode && !normalizedTransactionStatus) {
-            return false;
-        }
-
-        return (
-            (normalizedResponseCode && normalizedResponseCode !== VNPAY_SUCCESS_CODE) ||
-            (normalizedTransactionStatus && normalizedTransactionStatus !== VNPAY_SUCCESS_CODE)
-        );
+        return vnpay.isFailedVnpayResult(responseCode, transactionStatus);
     }
 
     extractClientIp(rawValue) {
-        if (!rawValue) return '127.0.0.1';
-        if (Array.isArray(rawValue)) {
-            return this.extractClientIp(rawValue[0]);
-        }
-        const normalized = String(rawValue).split(',')[0].trim();
-        if (!normalized) return '127.0.0.1';
-        if (normalized === '::1') return '127.0.0.1';
-        return normalized.replace('::ffff:', '');
+        return vnpay.extractClientIp(rawValue);
     }
 
     buildVnpayPaymentUrl(options) {
-        const config = this.getVnpayConfig();
-        if (!config.tmnCode || !config.hashSecret) {
-            throw this.buildError(
-                'VNPay is not configured. Missing VNPAY_TMN_CODE or VNPAY_HASH_SECRET.',
-                'PAYMENT_CONFIG_MISSING',
-                500
-            );
-        }
-
-        const createDate = this.formatVnpayDate(new Date());
-        const expireDate = this.formatVnpayDate(
-            new Date(Date.now() + VNPAY_PAYMENT_URL_EXPIRY_MINUTES * 60 * 1000)
-        );
-
-        const params = {
-            vnp_Version: '2.1.0',
-            vnp_Command: 'pay',
-            vnp_TmnCode: config.tmnCode,
-            vnp_Locale: 'vn',
-            vnp_CurrCode: 'VND',
-            vnp_TxnRef: options.transactionRef,
-            vnp_OrderInfo: options.orderInfo,
-            vnp_OrderType: 'other',
-            vnp_Amount: Math.round(Number(options.amount) * 100),
-            vnp_ReturnUrl: config.returnUrl,
-            vnp_IpAddr: this.extractClientIp(options.ipAddr),
-            vnp_CreateDate: createDate,
-            vnp_ExpireDate: expireDate
-        };
-        if (options.bankCode) {
-            params.vnp_BankCode = String(options.bankCode).trim();
-        }
-
-        const secureHash = this.signVnpayParams(params, config.hashSecret);
-        const query = `${this.buildVnpaySignedPayload(params)}&vnp_SecureHash=${secureHash}`;
-        return {
-            paymentUrl: `${config.payUrl}?${query}`,
-            createDate,
-            expireDate,
-            bankCode: options.bankCode ? String(options.bankCode).trim() : '',
-            orderInfo: String(options.orderInfo || ''),
-            amount: Math.round(Number(options.amount) || 0),
-            transactionRef: String(options.transactionRef || '')
-        };
+        return vnpay.buildVnpayPaymentUrl(options);
     }
 
     verifyVnpayReturnQuery(query) {
-        const config = this.getVnpayConfig();
-        const secureHash = String(query.vnp_SecureHash || '').trim();
-        const secureHashType = String(query.vnp_SecureHashType || '').trim();
-
-        if (!secureHash || !config.hashSecret) {
-            return {
-                isValidSignature: false,
-                responseCode: String(query.vnp_ResponseCode || ''),
-                transactionStatus: String(query.vnp_TransactionStatus || ''),
-                transactionRef: String(query.vnp_TxnRef || ''),
-                amount: Number(query.vnp_Amount || 0) || 0,
-                transactionNo: String(query.vnp_TransactionNo || ''),
-                bankCode: String(query.vnp_BankCode || ''),
-                cardType: String(query.vnp_CardType || ''),
-                payDate: String(query.vnp_PayDate || ''),
-                orderInfo: String(query.vnp_OrderInfo || ''),
-                rawPayload: {},
-                secureHashType
-            };
-        }
-
-        const payload = {};
-        for (const [key, value] of Object.entries(query)) {
-            if (key === 'vnp_SecureHash' || key === 'vnp_SecureHashType') continue;
-            payload[key] = typeof value === 'string' ? value : Array.isArray(value) ? value[0] : String(value || '');
-        }
-
-        const calculatedHash = this.signVnpayParams(payload, config.hashSecret);
-        return {
-            isValidSignature: calculatedHash.toLowerCase() === secureHash.toLowerCase(),
-            responseCode: String(payload.vnp_ResponseCode || ''),
-            transactionStatus: String(payload.vnp_TransactionStatus || ''),
-            transactionRef: String(payload.vnp_TxnRef || ''),
-            amount: Number(payload.vnp_Amount || 0) || 0,
-            transactionNo: String(payload.vnp_TransactionNo || ''),
-            bankCode: String(payload.vnp_BankCode || ''),
-            cardType: String(payload.vnp_CardType || ''),
-            payDate: String(payload.vnp_PayDate || ''),
-            orderInfo: String(payload.vnp_OrderInfo || ''),
-            rawPayload: payload,
-            secureHashType
-        };
+        return vnpay.verifyVnpayReturnQuery(query);
     }
 
     buildVnpayQueryDrRequest(session, options = {}) {
-        const config = this.getVnpayConfig();
-        if (!config.tmnCode || !config.hashSecret) {
-            throw this.buildError(
-                'VNPay is not configured. Missing VNPAY_TMN_CODE or VNPAY_HASH_SECRET.',
-                'PAYMENT_CONFIG_MISSING',
-                500
-            );
-        }
-
-        const metadata = this.normalizeMetadata(session?.metadata);
-        const transactionDate = String(metadata.vnpay_payment_create_date || '').trim();
-        if (!transactionDate) {
-            throw this.buildError(
-                'Payment session is missing VNPAY create date for QueryDR.',
-                'VNPAY_QUERYDR_MISSING_CREATE_DATE',
-                400
-            );
-        }
-
-        const requestId = this.createVnpayRequestId();
-        const createDate = this.formatVnpayDate(new Date());
-        const ipAddr = this.extractClientIp(options.ipAddr);
-        const orderInfo = String(
-            metadata.vnpay_order_info ||
-            metadata.order_info ||
-            `Thanh toan goi ${session.target_plan}`
-        );
-        const requestPayload = {
-            vnp_RequestId: requestId,
-            vnp_Version: '2.1.0',
-            vnp_Command: 'querydr',
-            vnp_TmnCode: config.tmnCode,
-            vnp_TxnRef: String(session.gateway_transaction_ref || ''),
-            vnp_OrderInfo: orderInfo,
-            vnp_TransactionDate: transactionDate,
-            vnp_CreateDate: createDate,
-            vnp_IpAddr: ipAddr
-        };
-
-        requestPayload.vnp_SecureHash = this.signVnpayPipePayload(
-            [
-                requestPayload.vnp_RequestId,
-                requestPayload.vnp_Version,
-                requestPayload.vnp_Command,
-                requestPayload.vnp_TmnCode,
-                requestPayload.vnp_TxnRef,
-                requestPayload.vnp_TransactionDate,
-                requestPayload.vnp_CreateDate,
-                requestPayload.vnp_IpAddr,
-                requestPayload.vnp_OrderInfo
-            ],
-            config.hashSecret
-        );
-
-        return requestPayload;
+        return vnpay.buildVnpayQueryDrRequest(session, options);
     }
 
     verifyVnpayQueryDrResponse(payload) {
-        const config = this.getVnpayConfig();
-        const secureHash = String(payload?.vnp_SecureHash || '').trim();
-        if (!secureHash || !config.hashSecret) {
-            return false;
-        }
-
-        const calculatedHash = this.signVnpayPipePayload(
-            [
-                payload.vnp_RequestId,
-                payload.vnp_Version,
-                payload.vnp_Command,
-                payload.vnp_TmnCode,
-                payload.vnp_ResponseCode,
-                payload.vnp_Message,
-                payload.vnp_TxnRef,
-                payload.vnp_Amount,
-                payload.vnp_BankCode,
-                payload.vnp_PayDate,
-                payload.vnp_TransactionNo,
-                payload.vnp_TransactionStatus,
-                payload.vnp_OrderInfo,
-                payload.vnp_PromotionCode,
-                payload.vnp_PromotionAmount
-            ],
-            config.hashSecret
-        );
-
-        return calculatedHash.toLowerCase() === secureHash.toLowerCase();
+        return vnpay.verifyVnpayQueryDrResponse(payload);
     }
 
     async getCompanyAndCycle(client, companyId, options = {}) {
