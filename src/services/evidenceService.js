@@ -147,9 +147,28 @@ class EvidenceService {
   async updateExtractedJson(evidenceId, extractedJson, newStatus = 'ocr_parsed') {
     await pool.query(
       `UPDATE evidence_documents
-       SET extracted_json = $1, status = $2, updated_at = now()
+       SET extracted_json = $1,
+           status = $2,
+           warnings = '[]'::jsonb,
+           extraction_error = NULL,
+           updated_at = now()
        WHERE id = $3`,
       [JSON.stringify(extractedJson || {}), newStatus, evidenceId]
+    );
+  }
+
+  // Records why AI extraction produced no usable data, so the frontend can show a reason
+  // instead of a silent "no fields" state. `reason` is a short, user-facing message.
+  async markExtractionFailed(evidenceId, reason) {
+    const message = String(reason || 'AI không đọc được chứng từ.').slice(0, 500);
+    await pool.query(
+      `UPDATE evidence_documents
+       SET status = 'extract_failed',
+           warnings = $1::jsonb,
+           extraction_error = $2,
+           updated_at = now()
+       WHERE id = $3`,
+      [JSON.stringify([message]), message, evidenceId]
     );
   }
 
@@ -208,6 +227,7 @@ class EvidenceService {
       verificationLevel: level,
       trustScore: level >= 3 ? level * 20 : null,
       warnings: row.warnings || null,
+      extractionError: row.extraction_error || null,
       lockedAt: row.locked_at,
       uploadedAt: row.uploaded_at,
       createdAt: row.created_at,
