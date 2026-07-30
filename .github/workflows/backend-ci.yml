@@ -61,6 +61,14 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    env:
+      # src/config/jwt.js throws at require-time if these are unset — several
+      # unit-test files pull it in transitively (auth middleware, authService
+      # tokens, jwt config itself) even though none of them touch a real DB.
+      JWT_SECRET: ci-test-secret
+      JWT_REFRESH_SECRET: ci-test-refresh-secret
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
     steps:
       - name: Checkout
         uses: actions/checkout@v4
