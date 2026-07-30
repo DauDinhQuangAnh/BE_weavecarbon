@@ -1,0 +1,83 @@
+name: Dependency Audit (scheduled)
+
+on:
+  schedule:
+    # Every Monday 03:00 UTC — surfaces a new high/critical advisory on a fixed
+    # cadence instead of only discovering it when it blocks an unrelated PR's deploy.
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        id: audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Open or update tracking issue
+        if: steps.audit.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = "Dependency audit: new high/critical advisories";
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              "The scheduled dependency audit failed — `npm audit --audit-level=high` found a new",
+              "high/critical advisory.",
+              "",
+              `Failed run: ${runUrl}`,
+              "",
+              "Note: this repo's `npm audit` has no allowlist mechanism (unlike the frontend repo's",
+              "`audit-ci.jsonc`), so any high/critical finding blocks Backend CI unconditionally —",
+              "including advisories with no patched release yet. Run `npm audit --audit-level=high`",
+              "locally to see the new finding(s) and either upgrade the flagged dependency, or decide",
+              "whether this repo should adopt an audit-ci-style allowlist for cases with no fix available."
+            ].join("\n");
+
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: ["dependency-audit"]
+            });
+            const match = existing.find((issue) => issue.title === title);
+
+            if (match) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: match.number,
+                body
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ["dependency-audit"]
+              });
+            }
+
+      - name: Fail the job so the schedule shows red
+        if: steps.audit.outcome == 'failure'
+        run: exit 1
