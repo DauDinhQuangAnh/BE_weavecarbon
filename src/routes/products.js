@@ -65,7 +65,11 @@ const BULK_TEMPLATE_COLUMNS = [
 ];
 
 function escapeCsvValue(value) {
-  const text = String(value ?? '');
+  let text = String(value ?? '');
+  // Neutralise CSV/formula injection unless the value is a plain number.
+  if (/^[=+\-@\t\r]/.test(text) && !/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(text.trim())) {
+    text = "'" + text;
+  }
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 

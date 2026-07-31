@@ -910,7 +910,13 @@ class ReportsService {
      */
     _csvEscape(val) {
         if (val === null || val === undefined) return '';
-        const str = String(val);
+        let str = String(val);
+        // Neutralise CSV/formula injection: Excel/Sheets execute cells starting with
+        // = + - @ (or tab/CR). Prefix with an apostrophe unless the value is a plain
+        // number (so legitimate negatives like -5.2 are preserved).
+        if (/^[=+\-@\t\r]/.test(str) && !/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(str.trim())) {
+            str = "'" + str;
+        }
         if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
             return '"' + str.replace(/"/g, '""') + '"';
         }
