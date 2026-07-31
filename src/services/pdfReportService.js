@@ -488,7 +488,7 @@ async function generateCompliancePdf(doc, companyId) {
 
     addPageHeader(doc,
       'Sẵn sàng Tuân thủ',
-      'EU CBAM · EUDR · TT 01/2022 · Phân tích khoảng trống dữ liệu',
+      'EU CBAM · EUDR · Kiểm kê KNK VN (TT 38/2023/TT-BCT) · Phân tích khoảng trống dữ liệu',
       company.name
     );
 
@@ -559,7 +559,7 @@ async function generateCompliancePdf(doc, companyId) {
     }
 
     addDisclaimer(doc);
-    addFooter(doc, 'Sẵn sàng Tuân thủ', 'EU CBAM Regulation 2023/956 · EUDR 2023/1115 · TT 01/2022/TT-BCT');
+    addFooter(doc, 'Sẵn sàng Tuân thủ', 'EU CBAM Regulation 2023/956 · EUDR 2023/1115 · NĐ 06/2022/NĐ-CP · TT 38/2023/TT-BCT');
     return evidence.length;
   } finally {
     client.release();
