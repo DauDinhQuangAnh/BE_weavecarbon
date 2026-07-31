@@ -1,3 +1,4 @@
+const path = require('path');
 const PDFDocument = require('pdfkit');
 const pool = require('../config/database');
 
@@ -7,6 +8,15 @@ const MUTED = '#666666';
 const DARK = '#1a1a1a';
 const RED = '#d32f2f';
 const COL_GAP = 6;
+
+// Embedded Vietnamese-capable fonts. pdfkit's built-in Helvetica is WinAnsi-only
+// and cannot render Vietnamese diacritics (ế, ữ, ạ…), which made every report look
+// broken. Be Vietnam Pro (SIL OFL) covers full Vietnamese + subscript ₂ for "CO₂e".
+const FONT_DIR = path.join(__dirname, '..', 'assets', 'fonts');
+const FONT_REGULAR_PATH = path.join(FONT_DIR, 'BeVietnamPro-Regular.ttf');
+const FONT_BOLD_PATH = path.join(FONT_DIR, 'BeVietnamPro-Bold.ttf');
+const FONT = 'VN';
+const FONT_B = 'VN-Bold';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -31,26 +41,26 @@ function addPageHeader(doc, title, subtitle, companyName) {
   doc.rect(0, 0, doc.page.width, 52).fill(BRAND);
 
   // Title
-  doc.fillColor('#ffffff').fontSize(16).font('Helvetica-Bold')
+  doc.fillColor('#ffffff').fontSize(16).font(FONT_B)
      .text('WeaveCarbon', 40, 14)
-     .fontSize(10).font('Helvetica')
+     .fontSize(10).font(FONT)
      .text('Carbon Intelligence Platform', 40, 33);
 
   // Report title block (right side)
-  doc.fontSize(9).font('Helvetica')
+  doc.fontSize(9).font(FONT)
      .text(nowStr(), 0, 18, { align: 'right', width: doc.page.width - 40 });
 
   // Title section
-  doc.fillColor(DARK).fontSize(18).font('Helvetica-Bold')
+  doc.fillColor(DARK).fontSize(18).font(FONT_B)
      .text(title, 40, 72);
 
   if (subtitle) {
-    doc.fillColor(MUTED).fontSize(10).font('Helvetica')
+    doc.fillColor(MUTED).fontSize(10).font(FONT)
        .text(subtitle, 40, 96);
   }
 
   if (companyName) {
-    doc.fillColor(BRAND).fontSize(10).font('Helvetica-Bold')
+    doc.fillColor(BRAND).fontSize(10).font(FONT_B)
        .text(companyName, 40, subtitle ? 112 : 96);
   }
 
@@ -62,16 +72,24 @@ function addPageHeader(doc, title, subtitle, companyName) {
 
 function addSectionTitle(doc, text) {
   doc.moveDown(0.8);
-  doc.rect(40, doc.y, doc.page.width - 80, 20).fill(BRAND_LIGHT);
-  doc.fillColor(BRAND).fontSize(10).font('Helvetica-Bold')
-     .text(text, 46, doc.y - 16);
-  doc.moveDown(0.3);
+  // Page-break guard so a heading never lands alone at the very bottom.
+  if (doc.y + 30 > doc.page.height - 60) {
+    doc.addPage();
+    doc.y = 50;
+  }
+  const barY = doc.y;
+  const barH = 20;
+  doc.rect(40, barY, doc.page.width - 80, barH).fill(BRAND_LIGHT);
+  doc.fillColor(BRAND).fontSize(10).font(FONT_B)
+     .text(text, 46, barY + 6, { lineBreak: false });
+  doc.y = barY + barH;      // move cursor below the bar (previous code drew text above it)
+  doc.moveDown(0.5);
 }
 
 function addKpi(doc, label, value, unit = '') {
   const x = doc.x;
-  doc.fillColor(MUTED).fontSize(8).font('Helvetica').text(label, x, doc.y);
-  doc.fillColor(DARK).fontSize(13).font('Helvetica-Bold')
+  doc.fillColor(MUTED).fontSize(8).font(FONT).text(label, x, doc.y);
+  doc.fillColor(DARK).fontSize(13).font(FONT_B)
      .text(`${value} ${unit}`.trim(), x, doc.y);
   doc.moveDown(0.2);
 }
@@ -82,16 +100,35 @@ function addKpiRow(doc, items) {
   items.forEach((item, i) => {
     const cx = 40 + i * colW;
     doc.rect(cx, startY, colW - 4, 42).fill(BRAND_LIGHT).stroke('#d0e8d8');
-    doc.fillColor(MUTED).fontSize(7.5).font('Helvetica')
+    doc.fillColor(MUTED).fontSize(7.5).font(FONT)
        .text(item.label, cx + 6, startY + 4, { width: colW - 12 });
-    doc.fillColor(BRAND).fontSize(14).font('Helvetica-Bold')
+    doc.fillColor(BRAND).fontSize(14).font(FONT_B)
        .text(item.value, cx + 6, startY + 15, { width: colW - 12 });
     if (item.unit) {
-      doc.fillColor(MUTED).fontSize(7.5).font('Helvetica')
+      doc.fillColor(MUTED).fontSize(7.5).font(FONT)
          .text(item.unit, cx + 6, startY + 30, { width: colW - 12 });
     }
   });
   doc.y = startY + 50;
+}
+
+// Vector check (✓) / cross (✗) drawn with paths — the embedded font has no
+// U+2713/U+2717 glyphs, so drawing them keeps the checklist crisp and font-agnostic.
+function drawStatusMark(doc, x, y, ok, size = 9) {
+  doc.save().lineWidth(1.4);
+  if (ok) {
+    doc.strokeColor(BRAND)
+       .moveTo(x, y + size * 0.55)
+       .lineTo(x + size * 0.38, y + size * 0.9)
+       .lineTo(x + size * 0.95, y + size * 0.12)
+       .stroke();
+  } else {
+    doc.strokeColor(RED)
+       .moveTo(x, y + size * 0.12).lineTo(x + size * 0.85, y + size * 0.9)
+       .moveTo(x + size * 0.85, y + size * 0.12).lineTo(x, y + size * 0.9)
+       .stroke();
+  }
+  doc.restore();
 }
 
 /**
@@ -112,6 +149,14 @@ function drawTable(doc, columns, rows, options = {}) {
   const autoW = autoCount ? (tableW - totalFixed) / autoCount : 0;
   const cols = columns.map(c => ({ ...c, w: c.width || autoW }));
 
+  // Guard against column widths overflowing the table: scale them down to fit
+  // so the last column never gets clipped off the right edge of the page.
+  const totalW = cols.reduce((s, c) => s + c.w, 0);
+  if (totalW > tableW) {
+    const scale = tableW / totalW;
+    cols.forEach((c) => { c.w *= scale; });
+  }
+
   let y = doc.y;
 
   // Check space
@@ -125,7 +170,7 @@ function drawTable(doc, columns, rows, options = {}) {
   doc.rect(startX, y, tableW, headerH).fill(BRAND);
   let cx = startX;
   cols.forEach(col => {
-    doc.fillColor('#ffffff').fontSize(fontSize).font('Helvetica-Bold')
+    doc.fillColor('#ffffff').fontSize(fontSize).font(FONT_B)
        .text(col.label, cx + COL_GAP, y + 5, { width: col.w - COL_GAP * 2, ellipsis: true });
     cx += col.w;
   });
@@ -140,7 +185,7 @@ function drawTable(doc, columns, rows, options = {}) {
       doc.rect(startX, y, tableW, headerH).fill(BRAND);
       let hx = startX;
       cols.forEach(col => {
-        doc.fillColor('#ffffff').fontSize(fontSize).font('Helvetica-Bold')
+        doc.fillColor('#ffffff').fontSize(fontSize).font(FONT_B)
            .text(col.label, hx + COL_GAP, y + 5, { width: col.w - COL_GAP * 2, ellipsis: true });
         hx += col.w;
       });
@@ -154,7 +199,7 @@ function drawTable(doc, columns, rows, options = {}) {
     cols.forEach(col => {
       const val = col.format ? col.format(row[col.key], row) : (row[col.key] ?? '—');
       const color = col.color ? col.color(row[col.key], row) : DARK;
-      doc.fillColor(color).fontSize(fontSize).font('Helvetica')
+      doc.fillColor(color).fontSize(fontSize).font(FONT)
          .text(String(val), cx + COL_GAP, y + 5, { width: col.w - COL_GAP * 2, ellipsis: true });
       cx += col.w;
     });
@@ -170,23 +215,30 @@ function drawTable(doc, columns, rows, options = {}) {
   doc.y = y + 6;
 
   if (rows.length > maxRows) {
-    doc.fillColor(MUTED).fontSize(8).font('Helvetica')
+    doc.fillColor(MUTED).fontSize(8).font(FONT)
        .text(`... và ${rows.length - maxRows} dòng nữa (xem export CSV để có đầy đủ)`, startX, doc.y);
     doc.moveDown(0.3);
   }
 }
 
 function addFooter(doc, reportType, methodology) {
+  // The footer sits in the bottom margin band. Zero the bottom margin while drawing
+  // so pdfkit doesn't auto-paginate (which previously spilled the footer onto blank
+  // extra pages). lineBreak:false + ellipsis keeps each line on one row.
+  const prevBottom = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
   const y = doc.page.height - 44;
   doc.moveTo(40, y).lineTo(doc.page.width - 40, y).strokeColor('#cccccc').lineWidth(0.5).stroke();
-  doc.fillColor(MUTED).fontSize(7.5).font('Helvetica')
-     .text(`Phương pháp luận: ${methodology}`, 40, y + 6, { width: doc.page.width - 80 })
-     .text(`WeaveCarbon — Báo cáo ${reportType} — Tạo tự động ${nowStr()}`, 40, y + 18, { width: doc.page.width - 80 });
+  const opts = { width: doc.page.width - 80, lineBreak: false, ellipsis: true };
+  doc.fillColor(MUTED).fontSize(7.5).font(FONT)
+     .text(`Phương pháp luận: ${methodology}`, 40, y + 6, opts);
+  doc.text(`WeaveCarbon — Báo cáo ${reportType} — Tạo tự động ${nowStr()}`, 40, y + 18, opts);
+  doc.page.margins.bottom = prevBottom;
 }
 
 function addDisclaimer(doc) {
   addSectionTitle(doc, 'Tuyên bố miễn trừ trách nhiệm');
-  doc.fillColor(MUTED).fontSize(8).font('Helvetica')
+  doc.fillColor(MUTED).fontSize(8).font(FONT)
      .text(
        'Báo cáo này được tạo tự động từ dữ liệu nhập bởi người dùng. Đây là ước tính tiền-kiểm tra (pre-audit), ' +
        'không phải chứng chỉ chính thức và cần đơn vị thẩm tra độc lập để sử dụng trong giao dịch thương mại. ' +
@@ -305,7 +357,7 @@ async function generateBatchExportPdf(doc, companyId) {
     ], rows);
 
     addSectionTitle(doc, 'Phương pháp tính phát thải vận chuyển');
-    doc.fillColor(DARK).fontSize(8.5).font('Helvetica')
+    doc.fillColor(DARK).fontSize(8.5).font(FONT)
        .text(
          'Phát thải vận chuyển được tính theo công thức: CO₂e = Khoảng cách (km) × Khối lượng (t) × Hệ số phát thải (kg CO₂e / t·km). ' +
          'Hệ số phát thải: Đường biển 0.013 · Đường hàng không 0.602 · Đường bộ 0.062 · Đường sắt 0.028 (DEFRA 2025).',
@@ -363,7 +415,7 @@ async function generateFacilityEmissionPdf(doc, companyId) {
     addSectionTitle(doc, 'Hóa đơn điện — Scope 2');
 
     if (elec.length === 0) {
-      doc.fillColor(MUTED).fontSize(9).font('Helvetica')
+      doc.fillColor(MUTED).fontSize(9).font(FONT)
          .text('Chưa có hóa đơn điện. Tải chứng từ tại trang Chứng từ.', 40, doc.y);
       doc.moveDown(0.5);
     } else {
@@ -380,7 +432,7 @@ async function generateFacilityEmissionPdf(doc, companyId) {
     addSectionTitle(doc, 'Hóa đơn nhiên liệu — Scope 1');
 
     if (fuels.length === 0) {
-      doc.fillColor(MUTED).fontSize(9).font('Helvetica')
+      doc.fillColor(MUTED).fontSize(9).font(FONT)
          .text('Chưa có hóa đơn nhiên liệu.', 40, doc.y);
       doc.moveDown(0.5);
     } else {
@@ -442,7 +494,7 @@ async function generateCompliancePdf(doc, companyId) {
 
     // Company info
     addSectionTitle(doc, 'Thông tin doanh nghiệp');
-    doc.fillColor(DARK).fontSize(9).font('Helvetica')
+    doc.fillColor(DARK).fontSize(9).font(FONT)
        .text(`Thị trường mục tiêu: ${markets}`, 40, doc.y)
        .moveDown(0.2)
        .text(`Ngày tạo báo cáo: ${nowStr()}`)
@@ -470,18 +522,18 @@ async function generateCompliancePdf(doc, companyId) {
     checks[2].ok = parseInt(elecCheck.rows[0].count) > 0;
 
     checks.forEach(c => {
-      doc.fillColor(c.ok ? BRAND : RED).fontSize(9).font('Helvetica-Bold')
-         .text(c.ok ? '✓' : '✗', 40, doc.y, { continued: true, width: 20 })
-         .fillColor(DARK).font('Helvetica')
-         .text(`  ${c.label}`, { continued: false });
-      doc.moveDown(0.2);
+      const rowY = doc.y;
+      drawStatusMark(doc, 42, rowY + 1, c.ok);
+      doc.fillColor(DARK).fontSize(9).font(FONT)
+         .text(c.label, 58, rowY, { width: doc.page.width - 100 });
+      doc.moveDown(0.35);
     });
 
     // Evidence table
     addSectionTitle(doc, 'Danh sách chứng từ');
 
     if (evidence.length === 0) {
-      doc.fillColor(MUTED).fontSize(9).font('Helvetica')
+      doc.fillColor(MUTED).fontSize(9).font(FONT)
          .text('Chưa có chứng từ nào được tải lên.', 40, doc.y);
       doc.moveDown(0.5);
     } else {
@@ -535,6 +587,9 @@ async function generatePdf(reportType, companyId) {
   if (!generator) throw new Error(`Unknown PDF report type: ${reportType}`);
 
   const doc = new PDFDocument({ size: 'A4', margin: 40, autoFirstPage: true });
+  doc.registerFont(FONT, FONT_REGULAR_PATH);
+  doc.registerFont(FONT_B, FONT_BOLD_PATH);
+  doc.font(FONT);
   const chunks = [];
 
   doc.on('data', chunk => chunks.push(chunk));
