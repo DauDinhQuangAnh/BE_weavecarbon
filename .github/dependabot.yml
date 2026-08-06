@@ -1,0 +1,28 @@
+version: 2
+# Keeps dependencies patched automatically so security advisories are usually
+# fixed by a merged PR before they would ever surface in the CI audit.
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+    open-pull-requests-limit: 8
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Bundle non-major updates into a single PR to keep the review queue small.
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels: ["dependencies", "github-actions"]
+    commit-message:
+      prefix: "chore(ci)"

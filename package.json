@@ -13,7 +13,10 @@
     "clean:local": "node scripts/clean-local.js",
     "check:syntax": "node scripts/check-syntax.js",
     "lint": "eslint .",
-    "test": "jest"
+    "test": "jest",
+    "verify": "npm run check:syntax && npm run lint",
+    "verify:full": "npm run check:syntax && npm run lint && npm test",
+    "prepare": "git config core.hooksPath .githooks || exit 0"
   },
   "keywords": [
     "carbon",

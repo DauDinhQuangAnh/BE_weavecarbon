@@ -29,8 +29,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Dependency vulnerability audit (high/critical fails the build)
+      - name: Dependency vulnerability audit (advisory — does NOT block the push)
+        # Non-blocking on purpose: a newly-published advisory in a transitive dep
+        # must not block an unrelated code push. Enforcement lives elsewhere:
+        #   • Dependabot opens fix PRs automatically (.github/dependabot.yml)
+        #   • the weekly "Dependency Audit (scheduled)" workflow files a tracking issue
         run: npm audit --audit-level=high
+        continue-on-error: true
 
   lint-syntax:
     runs-on: ubuntu-latest

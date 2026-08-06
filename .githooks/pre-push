@@ -1,0 +1,19 @@
+#!/bin/sh
+# WeaveCarbon pre-push safety net.
+# Runs the fast local checks (syntax + lint) so obvious errors are caught here
+# instead of failing in CI after a push. Full jest tests run in CI (they need
+# Node 22; the local machine's newer Node can trip jest's module resolution).
+#
+# Auto-installed via the package.json "prepare" script (core.hooksPath=.githooks).
+# Bypass a single push with:  git push --no-verify
+# Skip gracefully if npm isn't on this hook's PATH (CI still runs every check).
+if ! command -v npm >/dev/null 2>&1; then
+  printf '⚠ pre-push: npm not on PATH — skipping local checks (CI will run them).\n'
+  exit 0
+fi
+printf '\n▶ pre-push: npm run verify (syntax + lint)…\n'
+if ! npm run verify --silent; then
+  printf '\n✗ pre-push checks failed — fix the errors above, or bypass once with:\n    git push --no-verify\n\n'
+  exit 1
+fi
+printf '✓ pre-push checks passed.\n\n'
