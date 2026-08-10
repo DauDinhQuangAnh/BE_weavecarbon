@@ -128,7 +128,8 @@ router.get('/', listProductsValidation, validate, asyncHandler(async (req, res) 
     page_size: parsePositiveInt(req.query.page_size, 20),
     sort_by: req.query.sort_by || 'updated_at',
     sort_order: req.query.sort_order || 'desc',
-    include: req.query.include
+    include: req.query.include,
+    view: req.query.view
   });
 
   return sendSuccess(res, {

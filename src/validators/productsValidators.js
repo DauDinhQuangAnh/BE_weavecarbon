@@ -44,7 +44,12 @@ const listProductsValidation = [
     query('include')
         .optional()
         .isString()
-        .withMessage('Include must be a comma-separated string')
+        .withMessage('Include must be a comma-separated string'),
+
+    query('view')
+        .optional()
+        .isIn(['summary'])
+        .withMessage('View must be summary')
 ];
 
 /**

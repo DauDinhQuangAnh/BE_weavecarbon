@@ -59,8 +59,14 @@ class ProductsService {
             page_size = 20,
             sort_by = 'updated_at',
             sort_order = 'desc',
-            include
+            include,
+            view
         } = filters;
+
+        // Summary view: skip the latest-shipment join and the per-row logistics
+        // payload (addresses, transport legs, v2 metadata) for consumers that only
+        // need the core catalog + carbon totals (e.g. the global ProductContext).
+        const isSummary = view === 'summary';
 
         const client = await pool.connect();
         try {
@@ -149,30 +155,72 @@ class ProductsService {
                     snapshotsMap[row.product_id] = row.payload;
                 });
 
-                const latestShipmentQuery = `
-                    SELECT DISTINCT ON (sp.product_id)
-                        sp.product_id,
-                        sp.shipment_id,
-                        s.reference_number
-                    FROM shipment_products sp
-                    INNER JOIN shipments s ON s.id = sp.shipment_id
-                    WHERE sp.product_id = ANY($1::uuid[])
-                      AND s.company_id = $2
-                    ORDER BY
-                        sp.product_id,
-                        s.updated_at DESC NULLS LAST,
-                        s.created_at DESC NULLS LAST
-                `;
-                const latestShipmentResult = await client.query(latestShipmentQuery, [productIds, companyId]);
-                latestShipmentResult.rows.forEach((row) => {
-                    latestShipmentMap[row.product_id] = {
-                        shipmentId: row.shipment_id,
-                        referenceNumber: row.reference_number
-                    };
-                });
+                if (!isSummary) {
+                    const latestShipmentQuery = `
+                        SELECT DISTINCT ON (sp.product_id)
+                            sp.product_id,
+                            sp.shipment_id,
+                            s.reference_number
+                        FROM shipment_products sp
+                        INNER JOIN shipments s ON s.id = sp.shipment_id
+                        WHERE sp.product_id = ANY($1::uuid[])
+                          AND s.company_id = $2
+                        ORDER BY
+                            sp.product_id,
+                            s.updated_at DESC NULLS LAST,
+                            s.created_at DESC NULLS LAST
+                    `;
+                    const latestShipmentResult = await client.query(latestShipmentQuery, [productIds, companyId]);
+                    latestShipmentResult.rows.forEach((row) => {
+                        latestShipmentMap[row.product_id] = {
+                            shipmentId: row.shipment_id,
+                            referenceNumber: row.reference_number
+                        };
+                    });
+                }
             }
 
             const items = productsResult.rows.map(row => {
+                if (isSummary) {
+                    const snapshotSummary = toPayloadObject(snapshotsMap[row.id]);
+                    const summaryConfidence = (() => {
+                        const computed = computeDataConfidenceScore(snapshotSummary);
+                        if (computed > 0) return computed;
+                        return clampConfidenceScore(row.data_confidence_score);
+                    })();
+
+                    return {
+                        id: row.id,
+                        productCode: row.sku,
+                        productName: row.name,
+                        productType: row.category,
+                        weightPerUnit: row.weight_kg ? row.weight_kg * 1000 : null,
+                        quantity: snapshotSummary.quantity || null,
+                        status: dbToFeStatus(row.status),
+                        materials: snapshotSummary.materials || [],
+                        carbonResults: {
+                            perProduct: {
+                                materials: parseFloat(row.materials_co2e) || 0,
+                                production: parseFloat(row.production_co2e) || 0,
+                                energy: snapshotSummary.carbonResults?.perProduct?.energy || 0,
+                                transport: parseFloat(row.transport_co2e) || 0,
+                                packaging: parseFloat(row.packaging_co2e) || 0,
+                                total: parseFloat(row.total_co2e) || 0
+                            },
+                            totalBatch: snapshotSummary.carbonResults?.totalBatch || {},
+                            confidenceLevel: getConfidenceLevel(summaryConfidence),
+                            confidenceScore: summaryConfidence,
+                            proxyUsed: snapshotSummary.carbonResults?.proxyUsed || false,
+                            proxyNotes: snapshotSummary.carbonResults?.proxyNotes || [],
+                            scope1: snapshotSummary.carbonResults?.scope1 || 0,
+                            scope2: snapshotSummary.carbonResults?.scope2 || 0,
+                            scope3: snapshotSummary.carbonResults?.scope3 || 0
+                        },
+                        createdAt: row.created_at,
+                        updatedAt: row.updated_at
+                    };
+                }
+
                 const latestShipment = latestShipmentMap[row.id] || null;
                 const snapshot = toPayloadObject(snapshotsMap[row.id]);
                 const destinationMarket = extractDestinationMarketFromPayload(
