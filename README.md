@@ -1,6 +1,22 @@
-# WeaveCarbon BE
+# WeaveCarbon — Backend API
 
-Backend API for WeaveCarbon, built with Node.js, Express, and PostgreSQL.
+The API behind WeaveCarbon, built with **Node.js, Express and PostgreSQL**. It is
+the system of record: it persists product carbon assessments, serves the
+dashboard/compliance data the web client (`Weavecarbon`) renders, handles VNPAY
+billing, and brokers requests to the Python RAG service (`rag/`).
+
+## Role in the platform
+
+The carbon *methodology* lives in the frontend engine; this service is the
+persistence and orchestration layer:
+
+- **Persistence & aggregation** — products, assessment snapshots, shipments,
+  electricity/fuel invoices (Scope 1/2), evidence documents, audit trail.
+- **Auditability** — product and evidence changes are recorded so a carbon
+  result can be traced back to its source data (CBAM-style pre-audit).
+- **Export & compliance** — market requirements, required-document checklists,
+  and report generation (CBAM-style XLSX / PDF).
+- **Payments** — VNPAY redirect checkout; the IPN callback is the source of truth.
 
 ## Commands
 
@@ -14,44 +30,43 @@ npm test
 
 ## Structure
 
-- `src/routes/`: HTTP route modules
-- `src/services/`: business logic and database orchestration
-- `src/validators/`: request validation rules
-- `src/middleware/`: auth, validation, rate limiting, error handling
-- `src/config/`: environment-driven infrastructure config
-- `uploads/`: runtime-generated files and report artifacts
+- `src/routes/` — HTTP route modules (thin; delegate to services)
+- `src/services/` — business logic + database orchestration
+- `src/validators/` — request validation
+- `src/middleware/` — auth, validation, rate limiting, error handling
+- `src/config/` — environment-driven infrastructure config
+- `uploads/` — runtime-generated report artifacts (not source)
 
-## Cleanup Baseline
+## API docs
 
-- All files in `src/` pass `node --check`
-- Large services should be split without changing route contracts
-- `uploads/` is runtime data and should not be treated as source
+OpenAPI / Swagger UI at `/api-docs` (enabled by default outside
+`NODE_ENV=production`; set `ENABLE_API_DOCS=true` to force it). The spec is
+generated from `@openapi` JSDoc blocks on route handlers; `src/routes/auth.js`
+is the reference for the annotation style.
 
-## Refactor Priorities
+**Product list `view`** — `GET /api/products?view=summary` returns the core
+catalog + carbon totals only (no per-product logistics payload or latest-shipment
+join), for consumers like the frontend `ProductContext`. Omit `view` for the full
+payload.
 
-- Split oversized services into query helpers, mappers, and domain utilities
-- Keep request and response shapes stable for FE compatibility
-- Remove debug/manual scripts that are not part of runtime
-- Add repeatable validation checks before each cleanup wave
+## Performance & conventions
 
-## API Docs
+- List endpoints paginate and select explicit columns; batch / lateral joins are
+  used instead of per-row queries to avoid N+1. The dashboard overview is cached
+  server-side.
+- Keep request/response shapes stable for FE compatibility; split large services
+  into query helpers and mappers rather than changing route contracts.
 
-- OpenAPI/Swagger UI is served at `/api-docs` (enabled by default outside `NODE_ENV=production`; set `ENABLE_API_DOCS=true` to force-enable in production)
-- Spec is generated from `@openapi` JSDoc blocks on route handlers in `src/routes/*.js` (see `src/config/swagger.js`); `src/routes/auth.js` has the first fully-annotated route group — extend other route files incrementally using the same pattern
+## CI / CD
 
-## VNPAY
-
-- Standard checkout now uses redirect-based VNPAY PAY with `VNPAYQR`
-- IPN is the payment source of truth; FE polls payment status after return
+- `backend-ci.yml` — syntax + lint on push/PR (npm audit is non-blocking).
+- `backend-deploy.yml` — deploys the full VPS stack on pushes to `main`.
+- `dependency-audit.yml` — weekly `npm audit`; opens a tracking issue on new
+  high/critical advisories (non-blocking, does not fail the run).
+- Deploy secrets: `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`
+  (the deploy job exits cleanly if they are missing).
 
 ## Docker
 
-- Backend can now be built with the included `Dockerfile`
-- For full FE + BE + DB deployment on one VPS, use the FE repo deployment stack (`docker-compose.vps.yml` + `DEPLOY_VPS.md`)
-
-## GitHub Actions
-
-- `.github/workflows/backend-ci.yml` runs syntax validation on pushes and pull requests
-- `.github/workflows/backend-deploy.yml` deploys the full VPS stack on pushes to `main` or manual dispatch
-- Add the same repository secrets as the FE repo: `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`
-- If those secrets are missing, the deploy workflow starts but exits cleanly with a skip message instead of failing syntax validation
+The backend builds with the included `Dockerfile`. For the full FE+BE+DB stack,
+use the FE repo's `docker-compose.vps.yml` + `DEPLOY_VPS.md`.
