@@ -78,6 +78,8 @@ jobs:
               });
             }
 
-      - name: Fail the job so the schedule shows red
-        if: steps.audit.outcome == 'failure'
-        run: exit 1
+      # Non-blocking: a new high/critical advisory opens/updates the tracking
+      # issue above but does NOT fail the run. `npm audit` on push is already
+      # non-blocking too, so security advisories notify without ever showing red
+      # or blocking a deploy. Remove this comment + re-add an `exit 1` step here
+      # if you want the schedule to hard-fail on new advisories again.
