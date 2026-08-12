@@ -13,6 +13,7 @@ const {
     mapMaterialReward,
     resolveAnalysisMaterial,
     inferAnalysisItems,
+    mapRagGarmentItemsToProducts,
     mapCoupon,
     mapCollectionPointSummary,
     mapDonationSummary
@@ -52,6 +53,58 @@ describe('computeDonationCo2Saved', () => {
         expect(computeDonationCo2Saved('charity', 8.0, 0)).toBe(0);
         expect(computeDonationCo2Saved('charity', 8.0, -1)).toBe(0);
         expect(computeDonationCo2Saved('charity', 'x', 1)).toBe(0);
+    });
+});
+
+describe('mapRagGarmentItemsToProducts', () => {
+    const materials = [
+        { id: 'm-cotton', material_name: '100% Cotton', material_category: 'fabric', is_active: true },
+        { id: 'm-poly', material_name: '100% Polyester', material_category: 'fabric', is_active: true },
+        { id: 'm-other', material_name: 'Other Material (Proxy)', is_active: true }
+    ];
+
+    it('maps RAG vision items to the donation product shape', () => {
+        const products = mapRagGarmentItemsToProducts(
+            [{ name: 'Áo thun', item_type: 'shirt', material: 'cotton', weight_kg: 0.25, condition: 'good' }],
+            materials,
+            'charity'
+        );
+        expect(products).toHaveLength(1);
+        expect(products[0]).toMatchObject({
+            item_name: 'Áo thun',
+            item_type: 'shirt',
+            material_id: 'm-cotton',
+            condition: 'good',
+            weight_kg: 0.25,
+            confidence: 0.7
+        });
+    });
+
+    it('falls back to a proxy material and per-type weight when data is missing', () => {
+        const [product] = mapRagGarmentItemsToProducts(
+            [{ name: 'Quần', item_type: 'pants', material: 'mysteryfibre' }],
+            materials,
+            'recycle'
+        );
+        expect(product.material_id).toBe('m-other');
+        expect(product.weight_kg).toBe(0.6); // pants default
+        expect(product.condition).toBe('fair'); // recycle default
+    });
+
+    it('normalises unknown item types to "other" and skips malformed entries', () => {
+        const products = mapRagGarmentItemsToProducts(
+            [{ name: 'X', item_type: 'hat', material: 'polyester' }, 'bad', null, 42, {}],
+            materials,
+            'charity'
+        );
+        expect(products).toHaveLength(2);
+        expect(products[0].item_type).toBe('other');
+        expect(products[1].item_name).toBe('Món dệt may');
+    });
+
+    it('returns an empty array for non-array input', () => {
+        expect(mapRagGarmentItemsToProducts(null, materials, 'charity')).toEqual([]);
+        expect(mapRagGarmentItemsToProducts(undefined, materials, 'charity')).toEqual([]);
     });
 });
 

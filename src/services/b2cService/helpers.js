@@ -188,6 +188,63 @@ const inferAnalysisItems = (fileName, category) => {
   ];
 };
 
+const GARMENT_ITEM_TYPES = new Set(['shirt', 'pants', 'jacket', 'dress', 'bag', 'shoes', 'other']);
+const GARMENT_CONDITIONS = new Set(['good', 'fair', 'poor']);
+const GARMENT_TYPE_WEIGHTS = {
+  shirt: 0.25,
+  pants: 0.6,
+  jacket: 0.9,
+  dress: 0.45,
+  bag: 0.35,
+  shoes: 0.8,
+  other: 0.3
+};
+
+// Map the RAG /extract Gemini-vision result (an { items: [...] } array) into the
+// donation-analysis product shape the wizard consumes. Defensive: skips malformed
+// entries, clamps missing weights to a per-type default, and resolves the free-text
+// material hint to a catalogue material id.
+const mapRagGarmentItemsToProducts = (items, materials, category) => {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  const defaultCondition = category === 'charity' ? 'good' : 'fair';
+  const products = [];
+
+  for (const raw of items) {
+    if (!raw || typeof raw !== 'object') {
+      continue;
+    }
+
+    const itemName =
+      normalizeOptionalString(raw.name) || normalizeOptionalString(raw.item_name);
+    const itemTypeRaw = String(raw.item_type || '').toLowerCase().trim();
+    const itemType = GARMENT_ITEM_TYPES.has(itemTypeRaw) ? itemTypeRaw : 'other';
+    const materialHint = normalizeOptionalString(raw.material) || '';
+    const material = resolveAnalysisMaterial(materials, materialHint);
+    const parsedWeight = toNumber(raw.weight_kg, Number.NaN);
+    const weightKg =
+      Number.isFinite(parsedWeight) && parsedWeight > 0
+        ? roundTo(parsedWeight)
+        : GARMENT_TYPE_WEIGHTS[itemType] || 0.3;
+    const conditionRaw = String(raw.condition || '').toLowerCase().trim();
+    const condition = GARMENT_CONDITIONS.has(conditionRaw) ? conditionRaw : defaultCondition;
+
+    products.push({
+      item_name: itemName || 'Món dệt may',
+      item_type: itemType,
+      material_id: material?.id || 'other',
+      custom_material_name: material ? undefined : 'Other Material',
+      condition,
+      weight_kg: weightKg,
+      confidence: 0.7
+    });
+  }
+
+  return products;
+};
+
 const mapCoupon = (row) => ({
   id: row.id,
   title: row.title,
@@ -281,6 +338,7 @@ module.exports = {
   mapMaterialReward,
   resolveAnalysisMaterial,
   inferAnalysisItems,
+  mapRagGarmentItemsToProducts,
   mapCoupon,
   mapCollectionPointSummary,
   mapDonationSummary

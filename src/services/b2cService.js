@@ -1,8 +1,10 @@
 ﻿const fs = require('fs');
 const path = require('path');
 const pool = require('../config/database');
+const logger = require('../utils/logger');
 const { UPLOADS_ROOT } = require('../config/runtime');
 const b2cDefaultsService = require('./b2cDefaultsService');
+const chatService = require('./chatService');
 const {
   DONATION_IMAGE_LEVELS,
   ALLOWED_CATEGORIES,
@@ -22,6 +24,7 @@ const {
   mapMaterialReward,
   resolveAnalysisMaterial,
   inferAnalysisItems,
+  mapRagGarmentItemsToProducts,
   mapCoupon,
   mapCollectionPointSummary,
   mapDonationSummary
@@ -285,27 +288,78 @@ class B2CService {
     const normalizedCategory = ALLOWED_CATEGORIES.has(category) ? category : 'recycle';
     const materialsPayload = await this.listMaterialRewards();
     const materials = materialsPayload.items.filter((material) => material.is_active);
-    const inferredItems = inferAnalysisItems(file.originalname, normalizedCategory);
-    const products = inferredItems.map((item) => {
-      const material = resolveAnalysisMaterial(materials, item.materialHint);
 
-      return {
-        item_name: item.itemName,
-        item_type: item.itemType,
-        material_id: material?.id || 'other',
-        custom_material_name: material ? undefined : 'Other Material',
-        condition: normalizedCategory === 'charity' ? 'good' : 'fair',
-        weight_kg: item.weightKg,
-        confidence: 0.62
-      };
-    });
+    // Prefer real Gemini vision via the RAG /extract endpoint; fall back to the
+    // filename heuristic so the camera flow never breaks when the AI service is
+    // unavailable or unconfigured.
+    let products = [];
+    let provider = 'heuristic';
+
+    if (file.buffer && file.buffer.length > 0) {
+      try {
+        const form = new FormData();
+        form.append(
+          'file',
+          new Blob([file.buffer], { type: file.mimetype || 'application/octet-stream' }),
+          file.originalname || 'garment.jpg'
+        );
+        form.append('kind', 'garment');
+        form.append('language', 'vi');
+
+        const result = await chatService.callGlobalRagEndpoint('/extract', {
+          method: 'POST',
+          data: form
+        });
+
+        const items = Array.isArray(result?.fields?.items)
+          ? result.fields.items
+          : Array.isArray(result?.items)
+            ? result.items
+            : [];
+        const mapped = mapRagGarmentItemsToProducts(items, materials, normalizedCategory);
+
+        if (mapped.length > 0) {
+          products = mapped;
+          provider = 'rag-vision';
+        } else {
+          logger.warn(
+            { fileName: file.originalname },
+            '[b2c] RAG vision returned no garment items, falling back to heuristic'
+          );
+        }
+      } catch (error) {
+        logger.warn(
+          { err: error, code: error?.code, fileName: file.originalname },
+          '[b2c] RAG vision analysis failed, falling back to heuristic'
+        );
+      }
+    }
+
+    if (products.length === 0) {
+      const inferredItems = inferAnalysisItems(file.originalname, normalizedCategory);
+      products = inferredItems.map((item) => {
+        const material = resolveAnalysisMaterial(materials, item.materialHint);
+
+        return {
+          item_name: item.itemName,
+          item_type: item.itemType,
+          material_id: material?.id || 'other',
+          custom_material_name: material ? undefined : 'Other Material',
+          condition: normalizedCategory === 'charity' ? 'good' : 'fair',
+          weight_kg: item.weightKg,
+          confidence: 0.62
+        };
+      });
+    }
+
+    const ragProvider = provider === 'rag-vision';
 
     return {
       products,
       total_items_detected: products.length,
-      overall_confidence: products.length > 1 ? 0.66 : 0.62,
+      overall_confidence: ragProvider ? 0.8 : products.length > 1 ? 0.66 : 0.62,
       raw_analysis: {
-        provider: 'heuristic',
+        provider,
         file_name: file.originalname,
         mime_type: file.mimetype,
         size_bytes: file.size,
