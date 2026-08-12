@@ -1,6 +1,9 @@
 const {
     toNumber,
     roundTo,
+    computeDonationCo2Saved,
+    REUSE_DISPLACEMENT_FACTOR,
+    RECYCLE_NET_EF_PER_KG,
     normalizeOptionalString,
     calculateDistanceKm,
     resolveLevel,
@@ -21,6 +24,32 @@ describe('toNumber / roundTo', () => {
 
     it('rounds to the given decimal places', () => {
         expect(roundTo(1.23456, 2)).toBe(1.23);
+    });
+});
+
+describe('computeDonationCo2Saved', () => {
+    it('applies the conservative displacement factor for reuse (charity)', () => {
+        // cotton virgin EF 8.0 → WRAP net reuse ~4.0 kg/kg
+        expect(computeDonationCo2Saved('charity', 8.0, 1)).toBeCloseTo(4.0, 6);
+        expect(computeDonationCo2Saved('charity', 8.0, 2)).toBeCloseTo(8.0, 6);
+        expect(REUSE_DISPLACEMENT_FACTOR).toBe(0.5);
+    });
+
+    it('uses a flat downcycling factor for recycle, independent of material', () => {
+        expect(computeDonationCo2Saved('recycle', 8.0, 1)).toBeCloseTo(RECYCLE_NET_EF_PER_KG, 6);
+        expect(computeDonationCo2Saved('recycle', 17.0, 1)).toBeCloseTo(RECYCLE_NET_EF_PER_KG, 6);
+        expect(computeDonationCo2Saved('recycle', 8.0, 3)).toBeCloseTo(2.1, 6);
+    });
+
+    it('treats unknown categories as recycle (never over-credits)', () => {
+        expect(computeDonationCo2Saved('unknown', 10, 1)).toBeCloseTo(RECYCLE_NET_EF_PER_KG, 6);
+        expect(computeDonationCo2Saved(null, 10, 1)).toBeCloseTo(RECYCLE_NET_EF_PER_KG, 6);
+    });
+
+    it('returns 0 for non-positive or non-finite weight/EF', () => {
+        expect(computeDonationCo2Saved('charity', 8.0, 0)).toBe(0);
+        expect(computeDonationCo2Saved('charity', 8.0, -1)).toBe(0);
+        expect(computeDonationCo2Saved('charity', 'x', 1)).toBe(0);
     });
 });
 

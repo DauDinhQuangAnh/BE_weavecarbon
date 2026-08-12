@@ -29,6 +29,30 @@ const roundTo = (value, decimals = 4) => {
   return Math.round(value * factor) / factor;
 };
 
+// Disposition-adjusted CO₂ savings for donations. The per-material
+// `co2_saved_per_kg` is a virgin cradle-to-gate factor; crediting it 1:1 assumes
+// 100% reuse with perfect displacement, which over-credits and is a greenwashing
+// risk under the EU Green Claims Directive (ECGT). We scale by the realistic
+// end-of-life pathway, grounded in WRAP "Valuing Our Clothes":
+//   - reuse (charity):    virgin EF × conservative displacement rate (cotton → ~4.0 kg/kg)
+//   - recycle (downcycle): flat ~0.7 kg CO₂e/kg, independent of the original fibre
+// Keep in sync with the frontend (`Weavecarbon/lib/b2cCo2.ts`).
+const REUSE_DISPLACEMENT_FACTOR = 0.5;
+const RECYCLE_NET_EF_PER_KG = 0.7;
+const REUSE_CATEGORY = 'charity';
+
+const computeDonationCo2Saved = (category, virginEfPerKg, weightKg) => {
+  const ef = toNumber(virginEfPerKg, 0);
+  const weight = toNumber(weightKg, 0);
+  if (!(weight > 0)) {
+    return 0;
+  }
+  if (category === REUSE_CATEGORY) {
+    return ef * REUSE_DISPLACEMENT_FACTOR * weight;
+  }
+  return RECYCLE_NET_EF_PER_KG * weight;
+};
+
 const normalizeOptionalString = (value) => {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -211,6 +235,9 @@ module.exports = {
   IMAGE_ANALYSIS_ITEM_KEYWORDS,
   toNumber,
   roundTo,
+  REUSE_DISPLACEMENT_FACTOR,
+  RECYCLE_NET_EF_PER_KG,
+  computeDonationCo2Saved,
   normalizeOptionalString,
   calculateDistanceKm,
   resolveLevel,

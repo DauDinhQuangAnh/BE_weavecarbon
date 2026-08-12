@@ -11,6 +11,7 @@ const {
   IMAGE_ANALYSIS_ITEM_KEYWORDS,
   toNumber,
   roundTo,
+  computeDonationCo2Saved,
   normalizeOptionalString,
   calculateDistanceKm,
   resolveLevel,
@@ -797,7 +798,9 @@ class B2CService {
       const computedItems = normalizedItems.map((item) => {
         const material = materialMap.get(item.material_id);
         const basePoints = Math.round(material.points_per_kg * item.weight_kg);
-        const co2Saved = roundTo(material.co2_saved_per_kg * item.weight_kg);
+        const co2Saved = roundTo(
+          computeDonationCo2Saved(category, material.co2_saved_per_kg, item.weight_kg)
+        );
 
         return {
           ...item,
