@@ -12,6 +12,8 @@ const {
   toNumber,
   roundTo,
   computeDonationCo2Saved,
+  ALLOWED_DISPOSITIONS,
+  dispositionCo2Saved,
   normalizeOptionalString,
   calculateDistanceKm,
   resolveLevel,
@@ -70,6 +72,18 @@ class B2CService {
     await client.query(`
       ALTER TABLE public.donations
       ADD COLUMN IF NOT EXISTS source_image_size_bytes INTEGER
+    `);
+    await client.query(`
+      ALTER TABLE public.donations
+      ADD COLUMN IF NOT EXISTS disposition TEXT
+    `);
+    await client.query(`
+      ALTER TABLE public.donations
+      ADD COLUMN IF NOT EXISTS disposition_note TEXT
+    `);
+    await client.query(`
+      ALTER TABLE public.donations
+      ADD COLUMN IF NOT EXISTS disposition_at TIMESTAMPTZ
     `);
   }
 
@@ -143,6 +157,9 @@ class B2CService {
             d.bonus_points,
             d.total_points,
             d.co2_saved,
+            d.disposition,
+            d.disposition_note,
+            d.disposition_at,
             d.shipping_tracking_number,
             d.confirmation_method,
             d.created_at,
@@ -388,6 +405,9 @@ class B2CService {
           d.bonus_points,
           d.total_points,
           d.co2_saved,
+          d.disposition,
+          d.disposition_note,
+          d.disposition_at,
           d.shipping_tracking_number,
           d.confirmation_method,
           d.created_at,
@@ -450,6 +470,9 @@ class B2CService {
           d.bonus_points,
           d.total_points,
           d.co2_saved,
+          d.disposition,
+          d.disposition_note,
+          d.disposition_at,
           d.shipping_tracking_number,
           d.confirmation_method,
           d.created_at,
@@ -523,6 +546,120 @@ class B2CService {
         created_at: row.created_at
       }))
     };
+  }
+
+  // Sorting-centre action: record the actual end-of-life disposition of a
+  // donation, recompute its CO₂ saving from the real pathway, and delta-adjust
+  // the donor's running total. Restricted to operators/admins at the route layer.
+  async recordDonationDisposition(donationId, disposition, note) {
+    await this.ensureSchema();
+
+    const normalizedDisposition = normalizeOptionalString(disposition);
+    if (!normalizedDisposition || !ALLOWED_DISPOSITIONS.has(normalizedDisposition)) {
+      throw createBusinessError(
+        'INVALID_DISPOSITION',
+        'Disposition must be one of: reuse, recycle, waste',
+        422
+      );
+    }
+
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      const donationResult = await client.query(
+        `
+          SELECT id, user_id, co2_saved
+          FROM public.donations
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [donationId]
+      );
+
+      if (donationResult.rows.length === 0) {
+        throw createBusinessError('DONATION_NOT_FOUND', 'Donation not found', 404);
+      }
+
+      const donation = donationResult.rows[0];
+      const previousCo2 = roundTo(toNumber(donation.co2_saved));
+
+      const itemsResult = await client.query(
+        `
+          SELECT
+            di.id,
+            di.weight_kg,
+            di.co2_saved,
+            COALESCE(mr.co2_saved_per_kg, 0) AS co2_saved_per_kg
+          FROM public.donation_items di
+          LEFT JOIN public.material_rewards mr ON mr.id = di.material_id
+          WHERE di.donation_id = $1
+        `,
+        [donationId]
+      );
+
+      let newTotalCo2 = 0;
+      for (const item of itemsResult.rows) {
+        const itemCo2 = roundTo(
+          dispositionCo2Saved(
+            normalizedDisposition,
+            item.co2_saved_per_kg,
+            item.weight_kg
+          )
+        );
+        newTotalCo2 += itemCo2;
+
+        await client.query(
+          `
+            UPDATE public.donation_items
+            SET co2_saved = $1
+            WHERE id = $2
+          `,
+          [itemCo2, item.id]
+        );
+      }
+
+      newTotalCo2 = roundTo(newTotalCo2);
+      const delta = roundTo(newTotalCo2 - previousCo2);
+
+      await client.query(
+        `
+          UPDATE public.donations
+          SET
+            disposition = $1,
+            disposition_note = $2,
+            disposition_at = NOW(),
+            co2_saved = $3,
+            status = 'completed',
+            completed_at = COALESCE(completed_at, NOW()),
+            updated_at = NOW()
+          WHERE id = $4
+        `,
+        [normalizedDisposition, normalizeOptionalString(note), newTotalCo2, donationId]
+      );
+
+      await client.query(
+        `
+          UPDATE public.user_rewards
+          SET
+            total_co2_saved = GREATEST(0, total_co2_saved + $1),
+            updated_at = NOW()
+          WHERE user_id = $2
+        `,
+        [delta, donation.user_id]
+      );
+
+      const detail = await this._getDonationDetail(client, donation.user_id, donationId);
+
+      await client.query('COMMIT');
+      return { ...detail, co2_delta: delta };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async listRewardTransactions(userId, { limit = 30 } = {}) {

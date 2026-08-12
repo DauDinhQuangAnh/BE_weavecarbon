@@ -30,6 +30,7 @@ const chatRoutes = require('./routes/chat');
 const aiConfigRoutes = require('./routes/aiConfig');
 const contactRoutes = require('./routes/contact');
 const b2cRoutes = require('./routes/b2c');
+const b2cAdminRoutes = require('./routes/b2cAdmin');
 const passportRoutes = require('./routes/passport');
 const suppliersRoutes = require('./routes/suppliers');
 const dataGapsRoutes = require('./routes/dataGaps');
@@ -59,6 +60,7 @@ const apiRoutes = [
   ['/api/ai-config', aiConfigRoutes],
   ['/api/contact', contactRoutes],
   ['/api/b2c', b2cRoutes],
+  ['/api/b2c-admin', b2cAdminRoutes],
   ['/api/passport', passportRoutes],
   ['/api/suppliers', suppliersRoutes],
   ['/api/data-gaps', dataGapsRoutes],

@@ -53,6 +53,36 @@ const computeDonationCo2Saved = (category, virginEfPerKg, weightKg) => {
   return RECYCLE_NET_EF_PER_KG * weight;
 };
 
+// Actual end-of-life disposition, recorded at the sorting centre. At donation
+// time CO₂ is credited from `category` as a proxy; once an item is physically
+// sorted the real pathway is known and the saving is recomputed:
+//   - reuse:   virgin EF × conservative displacement (same basis as charity)
+//   - recycle: flat mechanical-downcycling saving
+//   - waste:   incineration — no net saving credited (conservative)
+const DISPOSITION_REUSE = 'reuse';
+const DISPOSITION_RECYCLE = 'recycle';
+const DISPOSITION_WASTE = 'waste';
+const ALLOWED_DISPOSITIONS = new Set([
+  DISPOSITION_REUSE,
+  DISPOSITION_RECYCLE,
+  DISPOSITION_WASTE
+]);
+
+const dispositionCo2Saved = (disposition, virginEfPerKg, weightKg) => {
+  const ef = toNumber(virginEfPerKg, 0);
+  const weight = toNumber(weightKg, 0);
+  if (!(weight > 0)) {
+    return 0;
+  }
+  if (disposition === DISPOSITION_REUSE) {
+    return ef * REUSE_DISPLACEMENT_FACTOR * weight;
+  }
+  if (disposition === DISPOSITION_RECYCLE) {
+    return RECYCLE_NET_EF_PER_KG * weight;
+  }
+  return 0;
+};
+
 const normalizeOptionalString = (value) => {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -204,6 +234,9 @@ const mapDonationSummary = (row) => ({
   category: row.category,
   delivery_method: row.delivery_method,
   status: row.status,
+  disposition: row.disposition || null,
+  disposition_note: row.disposition_note || null,
+  disposition_at: row.disposition_at || null,
   base_points: Math.max(0, Math.trunc(toNumber(row.base_points))),
   bonus_points: Math.max(0, Math.trunc(toNumber(row.bonus_points))),
   total_points: Math.max(0, Math.trunc(toNumber(row.total_points))),
@@ -238,6 +271,8 @@ module.exports = {
   REUSE_DISPLACEMENT_FACTOR,
   RECYCLE_NET_EF_PER_KG,
   computeDonationCo2Saved,
+  ALLOWED_DISPOSITIONS,
+  dispositionCo2Saved,
   normalizeOptionalString,
   calculateDistanceKm,
   resolveLevel,

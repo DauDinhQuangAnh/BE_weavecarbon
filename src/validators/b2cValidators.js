@@ -1,4 +1,4 @@
-const { param, query } = require('express-validator');
+const { body, param, query } = require('express-validator');
 
 const collectionPointCategoryValidation = query('category')
   .optional()
@@ -93,11 +93,28 @@ const listCouponsValidation = [
 
 const donationParamsValidation = [donationIdValidation];
 
+const recordDispositionValidation = [
+  param('donationId')
+    .isUUID()
+    .withMessage('Donation id must be a valid UUID'),
+  body('disposition')
+    .isIn(['reuse', 'recycle', 'waste'])
+    .withMessage('Disposition must be reuse, recycle, or waste'),
+  body('note')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('Note must be a string')
+    .isLength({ max: 500 })
+    .withMessage('Note must be at most 500 characters')
+    .trim()
+];
+
 module.exports = {
   listCollectionPointsValidation,
   listNearbyCollectionPointsValidation,
   listDonationsValidation,
   listRewardTransactionsValidation,
   listCouponsValidation,
-  donationParamsValidation
+  donationParamsValidation,
+  recordDispositionValidation
 };

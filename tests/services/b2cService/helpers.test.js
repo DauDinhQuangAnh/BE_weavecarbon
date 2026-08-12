@@ -2,6 +2,8 @@ const {
     toNumber,
     roundTo,
     computeDonationCo2Saved,
+    dispositionCo2Saved,
+    ALLOWED_DISPOSITIONS,
     REUSE_DISPLACEMENT_FACTOR,
     RECYCLE_NET_EF_PER_KG,
     normalizeOptionalString,
@@ -50,6 +52,31 @@ describe('computeDonationCo2Saved', () => {
         expect(computeDonationCo2Saved('charity', 8.0, 0)).toBe(0);
         expect(computeDonationCo2Saved('charity', 8.0, -1)).toBe(0);
         expect(computeDonationCo2Saved('charity', 'x', 1)).toBe(0);
+    });
+});
+
+describe('dispositionCo2Saved', () => {
+    it('exposes the three allowed dispositions', () => {
+        expect([...ALLOWED_DISPOSITIONS].sort()).toEqual(['recycle', 'reuse', 'waste']);
+    });
+
+    it('credits reuse with the conservative virgin displacement', () => {
+        expect(dispositionCo2Saved('reuse', 8.0, 1)).toBeCloseTo(4.0, 6);
+        expect(dispositionCo2Saved('reuse', 10.1, 2)).toBeCloseTo(10.1, 6);
+    });
+
+    it('credits recycle at the flat downcycling factor', () => {
+        expect(dispositionCo2Saved('recycle', 8.0, 1)).toBeCloseTo(RECYCLE_NET_EF_PER_KG, 6);
+        expect(dispositionCo2Saved('recycle', 17.0, 2)).toBeCloseTo(1.4, 6);
+    });
+
+    it('credits nothing for waste (incineration) or unknown dispositions', () => {
+        expect(dispositionCo2Saved('waste', 8.0, 5)).toBe(0);
+        expect(dispositionCo2Saved('unknown', 8.0, 5)).toBe(0);
+    });
+
+    it('returns 0 for non-positive weight', () => {
+        expect(dispositionCo2Saved('reuse', 8.0, 0)).toBe(0);
     });
 });
 
