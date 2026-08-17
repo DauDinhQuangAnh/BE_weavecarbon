@@ -488,7 +488,7 @@ async function generateCompliancePdf(doc, companyId) {
 
     addPageHeader(doc,
       'Sẵn sàng Tuân thủ',
-      'EU CBAM · EUDR · Kiểm kê KNK VN (TT 38/2023/TT-BCT) · Phân tích khoảng trống dữ liệu',
+      'EU ESPR/DPP · EPR dệt may · Kiểm kê KNK VN (TT 38/2023/TT-BCT) · Phân tích khoảng trống dữ liệu',
       company.name
     );
 
@@ -507,8 +507,8 @@ async function generateCompliancePdf(doc, companyId) {
       { label: 'Khoảng trống nghiêm trọng', value: highGaps, unit: 'mục', },
     ]);
 
-    // Checklist CBAM readiness
-    addSectionTitle(doc, 'Kiểm tra sẵn sàng CBAM / EUDR');
+    // Checklist textile compliance readiness
+    addSectionTitle(doc, 'Kiểm tra sẵn sàng ESPR/DPP · EPR dệt may');
     const checks = [
       { label: 'Có dữ liệu sản phẩm (SKU)', ok: (pStats.total || 0) > 0 },
       { label: 'SKU có hệ số CO₂e', ok: (pStats.with_co2 || 0) > 0 },
@@ -559,7 +559,7 @@ async function generateCompliancePdf(doc, companyId) {
     }
 
     addDisclaimer(doc);
-    addFooter(doc, 'Sẵn sàng Tuân thủ', 'EU CBAM Regulation 2023/956 · EUDR 2023/1115 · NĐ 06/2022/NĐ-CP · TT 38/2023/TT-BCT');
+    addFooter(doc, 'Sẵn sàng Tuân thủ', 'EU ESPR 2024/1781 (DPP) · Textile EPR (WFD) · NĐ 06/2022/NĐ-CP · TT 38/2023/TT-BCT');
     return evidence.length;
   } finally {
     client.release();

@@ -53,11 +53,16 @@ describe('resolveMarketName', () => {
 describe('getRequiredDocumentsForMarket', () => {
     it('returns the market-specific document templates, normalizing codes', () => {
         const docs = getRequiredDocumentsForMarket('EU');
-        expect(docs.map((d) => d.code)).toEqual(['cbam_declaration', 'dpp', 'supply_chain_map']);
+        expect(docs.map((d) => d.code)).toEqual([
+            'dpp',
+            'textile_epr',
+            'reach_compliance',
+            'green_claims_substantiation'
+        ]);
         expect(docs[0]).toMatchObject({
-            name: 'CBAM Declaration Form',
-            document_type: 'declaration',
-            regulation_reference: 'EU Regulation (EU) 2023/956'
+            name: 'Digital Product Passport (DPP)',
+            document_type: 'report',
+            regulation_reference: 'EU Ecodesign for Sustainable Products Regulation (ESPR) 2024/1781'
         });
     });
 

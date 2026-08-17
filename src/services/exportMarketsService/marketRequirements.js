@@ -90,22 +90,28 @@ const MARKET_REQUIREMENTS_BY_CODE = {
         market_name: 'European Union',
         required_documents: [
             {
-                code: 'cbam_declaration',
-                name: 'CBAM Declaration Form',
-                document_type: 'declaration',
-                regulation_reference: 'EU Regulation (EU) 2023/956'
-            },
-            {
                 code: 'dpp',
                 name: 'Digital Product Passport (DPP)',
                 document_type: 'report',
-                regulation_reference: 'EU Ecodesign for Sustainable Products Regulation'
+                regulation_reference: 'EU Ecodesign for Sustainable Products Regulation (ESPR) 2024/1781'
             },
             {
-                code: 'supply_chain_map',
-                name: 'Supply Chain Map',
-                document_type: 'assessment',
-                regulation_reference: 'EU supply chain due diligence'
+                code: 'textile_epr',
+                name: 'Textile EPR Registration',
+                document_type: 'declaration',
+                regulation_reference: 'Waste Framework Directive (revised) — textile EPR'
+            },
+            {
+                code: 'reach_compliance',
+                name: 'REACH Chemical Compliance',
+                document_type: 'certificate',
+                regulation_reference: 'Regulation (EC) 1907/2006 (REACH), Annex XVII'
+            },
+            {
+                code: 'green_claims_substantiation',
+                name: 'Green Claims Substantiation',
+                document_type: 'declaration',
+                regulation_reference: 'Empowering Consumers for the Green Transition (ECGT) 2024/825'
             }
         ]
     },
@@ -113,22 +119,28 @@ const MARKET_REQUIREMENTS_BY_CODE = {
         market_name: 'United States',
         required_documents: [
             {
-                code: 'carbon_report',
-                name: 'Carbon Footprint Report',
-                document_type: 'report',
-                regulation_reference: 'California Climate Disclosure'
+                code: 'uflpa_traceability',
+                name: 'Forced-Labor / Cotton Traceability',
+                document_type: 'declaration',
+                regulation_reference: 'Uyghur Forced Labor Prevention Act (UFLPA)'
+            },
+            {
+                code: 'ftc_textile_label',
+                name: 'FTC Textile Label Compliance',
+                document_type: 'declaration',
+                regulation_reference: 'Textile Fiber Products Identification Act; Care Labeling Rule'
+            },
+            {
+                code: 'cpsia_flammability',
+                name: 'CPSIA / Flammability Compliance',
+                document_type: 'certificate',
+                regulation_reference: '16 CFR 1610; CPSIA (children\'s products)'
             },
             {
                 code: 'ca_prop65',
                 name: 'CA Prop 65 Compliance',
                 document_type: 'certificate',
                 regulation_reference: 'California Proposition 65'
-            },
-            {
-                code: 'product_label_compliance',
-                name: 'Product Label Compliance',
-                document_type: 'declaration',
-                regulation_reference: 'US labeling requirements'
             }
         ]
     },
