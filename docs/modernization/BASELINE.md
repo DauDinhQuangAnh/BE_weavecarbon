@@ -69,7 +69,7 @@ Persistent state includes PostgreSQL data plus files under the configured upload
 - Administration/health/collection/ingest/query operations are proxied under `/api/ai-config/rag/*`.
 - Evidence ingestion uses RAG through `/api/evidence/:id/rag-ingest`.
 - Compatibility error codes include `RAG_PROXY_BASE_URL_NOT_ALLOWED`, `RAG_BACKEND_UNAVAILABLE`, `RAG_BACKEND_TIMEOUT` and `RAG_BACKEND_ERROR`.
-- `RAG_INTERNAL_API_KEY` is used in code but is absent from the backend `.env.example` and the current VPS Compose environment.
+- `RAG_INTERNAL_API_KEY` is used in code and appears only as an optional commented placeholder in the backend `.env.example`; `RAG_REQUIRE_INTERNAL_API_KEY` is absent, and the current VPS Compose environment injects neither value.
 
 ## Environment variables
 
@@ -92,7 +92,7 @@ Non-secret/configuration:
 - RAG routing: `RAG_PROXY_ALLOWED_BASE_URLS`, `RAG_PROXY_INTERNAL_BASE_URL`, `RAG_EVIDENCE_COLLECTION_PREFIX`
 - Other service configuration includes JWT expiry, email host/timeouts, VNPAY URLs/mode, Google redirect/client ID, GA4 measurement ID, analytics flush limit, export concurrency and uploads directory.
 
-The example environment file does not currently enumerate every variable referenced by code, especially RAG internal auth and several runtime/logging controls.
+The example environment file does not currently enumerate every variable referenced by code, especially RAG strict-mode auth and several runtime/logging controls.
 
 ## Docker and deployment
 

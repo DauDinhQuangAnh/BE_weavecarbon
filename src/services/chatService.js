@@ -122,11 +122,35 @@ class ChatService {
     return this.normalizeRagBaseUrl(internalOverride);
   }
 
-  buildRagRequestHeaders(headers = {}) {
-    const nextHeaders = { ...headers };
+  isRagInternalApiKeyRequired() {
+    const rawValue = compactWhitespace(process.env.RAG_REQUIRE_INTERNAL_API_KEY || 'true')
+      .toLowerCase();
+    return !['0', 'false', 'no', 'off'].includes(rawValue);
+  }
+
+  getRagInternalApiKey() {
     const internalApiKey = compactWhitespace(process.env.RAG_INTERNAL_API_KEY || '');
 
+    if (!internalApiKey && this.isRagInternalApiKeyRequired()) {
+      throw createAppError('RAG internal authentication is not configured.', {
+        statusCode: 503,
+        code: 'RAG_INTERNAL_AUTH_NOT_CONFIGURED'
+      });
+    }
+
+    return internalApiKey || null;
+  }
+
+  buildRagRequestHeaders(headers = {}) {
+    const nextHeaders = { ...headers };
+    const internalApiKey = this.getRagInternalApiKey();
+
     if (internalApiKey) {
+      for (const headerName of Object.keys(nextHeaders)) {
+        if (headerName.toLowerCase() === RAG_INTERNAL_API_KEY_HEADER.toLowerCase()) {
+          delete nextHeaders[headerName];
+        }
+      }
       nextHeaders[RAG_INTERNAL_API_KEY_HEADER] = internalApiKey;
     }
 
