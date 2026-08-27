@@ -171,6 +171,11 @@ jobs:
           done
 
           cd /opt/weavecarbon/FE
+          if grep -q '^BE_IMAGE=' .env.vps; then
+            sed -i "s|^BE_IMAGE=.*|BE_IMAGE=${BE_IMAGE}|" .env.vps
+          else
+            printf 'BE_IMAGE=%s\n' "$BE_IMAGE" >> .env.vps
+          fi
           export BE_IMAGE
           bash deploy/redeploy-vps.sh --backend-only
           EOF
