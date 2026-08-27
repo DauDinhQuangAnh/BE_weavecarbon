@@ -9,8 +9,14 @@ const chatService = require('../services/chatService');
 const { logAuditTrail } = require('../services/auditTrailService');
 const pool = require('../config/database');
 const logger = require('../utils/logger');
+const {
+  removeEvidenceFile,
+  storeEvidenceFile,
+} = require('../services/evidenceFileStorage');
 
-// Keep files in memory (no local disk dependency); 20 MB limit
+// Multer buffers the request so the route can hash it and atomically persist the
+// original file before creating its database record. The durable copy lives in
+// UPLOADS_ROOT and is covered by the platform backup bundle.
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 const router = express.Router();
@@ -174,22 +180,37 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
   const kind = req.body.kind || req.body.evidence_type || 'other';
   const documentName = req.body.documentName || file.originalname;
   const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex');
-
-  const result = await evidenceService.createEvidence(companyId, req.userId, {
-    evidence_type: kind,
-    documentName,
-    fileName: file.originalname,
-    mime_type: file.mimetype,
-    file_size_bytes: file.size,
-    checksum_sha256: sha256,
-    reportingPeriodStart: req.body.reportingPeriodStart || null,
-    reportingPeriodEnd: req.body.reportingPeriodEnd || null,
-    sourceVendor: req.body.supplierName || null,
-    storage_provider: 'memory',
-    notes: req.body.notes || null,
+  const storedFile = await storeEvidenceFile({
+    companyId,
+    originalFilename: file.originalname,
+    buffer: file.buffer,
   });
 
+  let result;
+  try {
+    result = await evidenceService.createEvidence(companyId, req.userId, {
+      evidence_type: kind,
+      documentName,
+      fileName: file.originalname,
+      mime_type: file.mimetype,
+      file_size_bytes: file.size,
+      checksum_sha256: sha256,
+      reportingPeriodStart: req.body.reportingPeriodStart || null,
+      reportingPeriodEnd: req.body.reportingPeriodEnd || null,
+      sourceVendor: req.body.supplierName || null,
+      storage_provider: 'local',
+      storage_key: storedFile.storageKey,
+      notes: req.body.notes || null,
+    });
+  } catch (error) {
+    await removeEvidenceFile(storedFile.storageKey).catch((cleanupError) => {
+      logger.warn({ err: cleanupError, storageKey: storedFile.storageKey }, '[evidence] failed to roll back stored file');
+    });
+    throw error;
+  }
+
   if (result.error === 'DOCUMENT_NAME_REQUIRED') {
+    await removeEvidenceFile(storedFile.storageKey);
     return sendError(res, { status: 400, code: 'DOCUMENT_NAME_REQUIRED', message: 'File name is required.' });
   }
   await logAuditTrail({
@@ -420,6 +441,13 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
 
+  const { rows: storedFiles } = await pool.query(
+    `SELECT storage_provider, storage_key
+     FROM evidence_documents
+     WHERE id = $1 AND company_id = $2`,
+    [req.params.id, companyId]
+  );
+
   // Cascade: remove linked invoices that reference this evidence document
   await pool.query(
     `DELETE FROM electricity_invoices WHERE evidence_document_id = $1 AND company_id = $2`,
@@ -437,6 +465,16 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
   if (!rowCount) {
     return sendError(res, { status: 404, code: 'NOT_FOUND', message: 'Evidence document not found.' });
+  }
+
+  const storedFile = storedFiles[0];
+  if (storedFile?.storage_provider === 'local' && storedFile.storage_key) {
+    await removeEvidenceFile(storedFile.storage_key).catch((error) => {
+      logger.warn(
+        { err: error, evidenceId: req.params.id, storageKey: storedFile.storage_key },
+        '[evidence] failed to remove local evidence file after database deletion'
+      );
+    });
   }
 
   return sendSuccess(res, { data: { deleted: true } });

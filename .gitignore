@@ -10,4 +10,5 @@ coverage/
 dist/
 build/
 .release/
+artifacts/
 .npmrc
