@@ -54,6 +54,8 @@ Shell scripts can be parsed locally with Git Bash. The complete database restore
 - Local lint: PASS with 38 pre-existing warnings and zero errors.
 - Local unit tests: PASS, 24 suites and 266 tests.
 - Evidence storage tests: atomic write, guarded deletion, traversal rejection, and extension normalization pass.
-- Isolated PostgreSQL/evidence restore: pending the first CI run for this change.
+- Isolated PostgreSQL/evidence restore: PASS in Backend CI run `33060735049` for commit `6ca0c1d`.
+- Integration evidence: base schema load, all migrations, isolated restore drill, artifact upload, API health, and API integration tests all passed.
+- Artifact: `wp-s1-backup-restore-33060735049` (`9641583770`), retained through 2026-09-10.
 
-WP-S1 remains **PENDING** until that CI restore artifact reports `status=PASS`. No migration covered by this safety gate may start while it is pending or failed.
+WP-S1 is **PASS** for the implemented development safety gate. No production data was read or changed, and no live restore was attempted. Before a real staging or production migration, operators must still create a fresh environment-specific bundle and pass the isolated drill described in the deployment runbook; a failed or missing drill blocks that migration.
