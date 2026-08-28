@@ -13,62 +13,11 @@ const { apiLimiter } = require('./middleware/rateLimiter');
 const { sendSuccess } = require('./utils/http');
 const logger = require('./utils/logger');
 const swaggerSpec = require('./config/swagger');
-
-const authRoutes = require('./routes/auth');
-const dashboardRoutes = require('./routes/dashboard');
-const accountRoutes = require('./routes/account');
-const subscriptionRoutes = require('./routes/subscription');
-const companyMembersRoutes = require('./routes/companyMembers');
-const reportsRoutes = require('./routes/reports');
-const productsRoutes = require('./routes/products');
-const batchesRoutes = require('./routes/batches');
-const logisticsRoutes = require('./routes/logistics');
-const exportMarketsRoutes = require('./routes/exportMarkets');
-const exportV2Routes = require('./routes/exportV2');
-const evidenceRoutes = require('./routes/evidence');
-const chatRoutes = require('./routes/chat');
-const aiConfigRoutes = require('./routes/aiConfig');
-const contactRoutes = require('./routes/contact');
-const b2cRoutes = require('./routes/b2c');
-const b2cAdminRoutes = require('./routes/b2cAdmin');
-const passportRoutes = require('./routes/passport');
-const suppliersRoutes = require('./routes/suppliers');
-const dataGapsRoutes = require('./routes/dataGaps');
-const auditTrailRoutes = require('./routes/auditTrail');
-const electricityInvoicesRoutes = require('./routes/electricityInvoices');
-const fuelInvoicesRoutes = require('./routes/fuelInvoices');
-const carbonCalculationsRoutes = require('./routes/carbonCalculations');
+const apiRoutes = require('./config/apiRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 const allowedOrigins = resolveAllowedFrontendOrigins();
-
-const apiRoutes = [
-  ['/api/auth', authRoutes],
-  ['/api/dashboard', dashboardRoutes],
-  ['/api/account', accountRoutes],
-  ['/api/subscription', subscriptionRoutes],
-  ['/api/company/members', companyMembersRoutes],
-  ['/api/reports', reportsRoutes],
-  ['/api/products', productsRoutes],
-  ['/api/product-batches', batchesRoutes],
-  ['/api/logistics', logisticsRoutes],
-  ['/api/export', exportV2Routes],
-  ['/api/export/markets', exportMarketsRoutes],
-  ['/api/evidence', evidenceRoutes],
-  ['/api/chat', chatRoutes],
-  ['/api/ai-config', aiConfigRoutes],
-  ['/api/contact', contactRoutes],
-  ['/api/b2c', b2cRoutes],
-  ['/api/b2c-admin', b2cAdminRoutes],
-  ['/api/passport', passportRoutes],
-  ['/api/suppliers', suppliersRoutes],
-  ['/api/data-gaps', dataGapsRoutes],
-  ['/api/audit-trail', auditTrailRoutes],
-  ['/api/electricity-invoices', electricityInvoicesRoutes],
-  ['/api/fuel-invoices', fuelInvoicesRoutes],
-  ['/api/carbon-calculations', carbonCalculationsRoutes]
-];
 
 function createCorsOptions(frontendOrigins) {
   return {
@@ -155,8 +104,8 @@ if (apiDocsEnabled) {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 }
 
-apiRoutes.forEach(([basePath, routeHandler]) => {
-  app.use(basePath, routeHandler);
+apiRoutes.forEach(({ basePath, router }) => {
+  app.use(basePath, router);
 });
 
 app.use(notFound);

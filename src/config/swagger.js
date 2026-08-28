@@ -1,6 +1,9 @@
 const swaggerJsdoc = require('swagger-jsdoc');
+const path = require('path');
+const apiRoutes = require('./apiRoutes');
+const { buildOpenApiContract } = require('./openapiContract');
 
-const swaggerSpec = swaggerJsdoc({
+const documentedSpec = swaggerJsdoc({
     definition: {
         openapi: '3.0.3',
         info: {
@@ -25,7 +28,7 @@ const swaggerSpec = swaggerJsdoc({
         },
         security: [{ bearerAuth: [] }]
     },
-    apis: ['./src/routes/*.js']
+    apis: [path.join(__dirname, '../routes/*.js')]
 });
 
-module.exports = swaggerSpec;
+module.exports = buildOpenApiContract(documentedSpec, apiRoutes);

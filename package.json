@@ -12,10 +12,11 @@
     "build:release": "node scripts/build-release.js",
     "clean:local": "node scripts/clean-local.js",
     "check:syntax": "node scripts/check-syntax.js",
+    "openapi:check": "node scripts/check-openapi.js",
     "lint": "eslint .",
     "test": "jest",
-    "verify": "npm run check:syntax && npm run lint",
-    "verify:full": "npm run check:syntax && npm run lint && npm test",
+    "verify": "npm run check:syntax && npm run openapi:check && npm run lint",
+    "verify:full": "npm run verify && npm test",
     "prepare": "git config core.hooksPath .githooks || exit 0"
   },
   "keywords": [
@@ -47,6 +48,7 @@
     "uuid": "^14.0.1"
   },
   "devDependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0",
     "@eslint/js": "^9.39.5",
     "eslint": "^9.39.5",
     "globals": "^17.7.0",
