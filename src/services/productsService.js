@@ -1,7 +1,6 @@
 ﻿const pool = require('../config/database');
 const domesticComplianceService = require('./domesticComplianceService');
 const { ensureShipmentSimulationSchema } = require('./shipmentSimulationService');
-const logger = require('../utils/logger');
 const {
     dbToFeStatus,
     feToDbStatus,
@@ -10,33 +9,15 @@ const {
     buildDomesticComplianceWarning
 } = require('./productsService/mappers');
 const {
-    toNumber,
-    toPositiveInt,
     toPayloadObject,
-    isNonEmptyString,
-    safeArray,
     isDemoUser
 } = require('./productsService/shared');
+const { validateBulkImportRows } = require('./productsService/bulkImportValidation');
 const {
-    BULK_IMPORT_ENUMS,
-    validateBulkImportRows
-} = require('./productsService/bulkImportValidation');
-const {
-    sumPercentage,
-    hasAddressData,
     buildCarbonResultsWithConfidence,
     computeDataConfidenceScore
 } = require('./productsService/carbonScoring');
 const {
-    normalizeTransportMode,
-    toLocationAddressString,
-    toLocationCity,
-    toLocationCountry,
-    toLocationLabel,
-    extractLogisticsFromPayload,
-    resolveShipmentTransportCo2e,
-    normalizeShipmentLegs,
-    toEstimatedArrivalDate,
     syncShipmentFromProduct,
     createShipmentFromProduct
 } = require('./productsService/shipmentSync');
@@ -59,7 +40,6 @@ class ProductsService {
             page_size = 20,
             sort_by = 'updated_at',
             sort_order = 'desc',
-            include,
             view
         } = filters;
 

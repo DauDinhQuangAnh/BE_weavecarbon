@@ -14,7 +14,6 @@ const TEST_PASSWORD = process.argv[4] || process.env.TEST_PASSWORD || 'Test1234!
 
 let token = null;
 let companyId = null;
-let userId = null;
 let results = [];
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -100,7 +99,6 @@ async function runAuth() {
       assert(r.status === 200, `demo signin returned ${r.status}`, r.status);
       token = r.data?.data?.tokens?.access_token;
       assert(token, 'No access_token in demo response', 'NO_TOKEN');
-      userId = r.data?.data?.user?.id;
       companyId = r.data?.data?.company?.id;
       return { status: 200, note: `demo token acquired, companyId=${companyId}` };
     }
@@ -113,7 +111,6 @@ async function runAuth() {
       assert(rd.status === 200, `demo fallback returned ${rd.status}`, rd.status);
       token = rd.data?.data?.tokens?.access_token;
       assert(token, 'No access_token in demo response', 'NO_TOKEN');
-      userId = rd.data?.data?.user?.id;
       companyId = rd.data?.data?.company?.id;
       return { status: 200, note: `demo fallback token, companyId=${companyId}` };
     }
@@ -121,7 +118,6 @@ async function runAuth() {
     // Regular signin: tokens at data.tokens.access_token OR legacy data.token
     token = r.data?.data?.tokens?.access_token || r.data?.data?.token || r.data?.token;
     assert(token, 'No token in signin response', 'NO_TOKEN');
-    userId = r.data?.data?.user?.id;
     companyId = r.data?.data?.company?.id || r.data?.data?.user?.company_id;
     return { status: 200, note: `token acquired, companyId=${companyId || 'null'}` };
   });

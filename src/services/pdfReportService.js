@@ -86,14 +86,6 @@ function addSectionTitle(doc, text) {
   doc.moveDown(0.5);
 }
 
-function addKpi(doc, label, value, unit = '') {
-  const x = doc.x;
-  doc.fillColor(MUTED).fontSize(8).font(FONT).text(label, x, doc.y);
-  doc.fillColor(DARK).fontSize(13).font(FONT_B)
-     .text(`${value} ${unit}`.trim(), x, doc.y);
-  doc.moveDown(0.2);
-}
-
 function addKpiRow(doc, items) {
   const startY = doc.y + 4;
   const colW = (doc.page.width - 80) / items.length;
@@ -483,7 +475,6 @@ async function generateCompliancePdf(doc, companyId) {
     const markets = Array.isArray(company.target_markets) ? company.target_markets.join(', ') : '—';
 
     const verified = evidence.filter(e => ['verified', 'cross_checked', 'source_matched'].includes(e.status)).length;
-    const pending = evidence.filter(e => ['uploaded', 'ocr_parsed', 'pending'].includes(e.status)).length;
     const highGaps = gaps.filter(g => g.severity === 'high').length;
 
     addPageHeader(doc,

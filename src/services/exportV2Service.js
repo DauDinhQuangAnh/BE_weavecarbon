@@ -69,11 +69,6 @@ function asObject(value) {
   return value;
 }
 
-function asText(value, fallback = '') {
-  if (value === null || value === undefined) return fallback;
-  return String(value);
-}
-
 function numberOrBlank(value) {
   const number = asNumber(value, NaN);
   return Number.isFinite(number) ? number : '';

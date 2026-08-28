@@ -509,14 +509,12 @@ class AuthService {
 
       user = userResult.rows[0];
 
-      const profileResult = await client.query(
+      await client.query(
         `INSERT INTO profiles (user_id, email, full_name, avatar_url, created_at, updated_at)
          VALUES ($1, $2, $3, $4, NOW(), NOW())
          RETURNING id, user_id, company_id`,
         [user.id, email, fullName, avatarUrl]
       );
-
-      const profile = profileResult.rows[0];
 
       await client.query(
         `INSERT INTO user_roles (user_id, role, created_at)

@@ -20,8 +20,6 @@ const {
   isObject,
   toPositiveInt,
   compactWhitespace,
-  truncateForLog,
-  pickMetadataText,
   summarizeRagMetadatas,
   pushTransactionalAnalyticsEvent,
   safeTrackAnalyticsEvent,

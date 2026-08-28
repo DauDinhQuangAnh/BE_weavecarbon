@@ -12,11 +12,8 @@ const reportJobQueue = require('./reportJobQueue');
 const TtlCache = require('../utils/ttlCache');
 const logger = require('../utils/logger');
 const {
-    normalizeDocumentToken,
-    normalizeLooseDocumentToken,
     normalizeDocumentCode,
     parseJsonObject,
-    toNullableTrimmedString,
     toNonNegativeNumberOrNull,
     buildProductScopeNotes,
     resolveComplianceDocumentGroup,
@@ -28,8 +25,6 @@ const {
 } = require('./exportMarketsService/normalizers');
 const {
     DEFAULT_MARKET_CODES,
-    DEFAULT_REQUIRED_DOCUMENTS,
-    MATERIAL_CERTIFICATION_DOCUMENTS,
     resolveMarketName,
     getRequiredDocumentsForMarket,
     resolveDocumentTypeForMarket

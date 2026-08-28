@@ -6,7 +6,6 @@ const emailService = require('../services/emailService');
 const googleAuthService = require('../services/googleAuthService');
 const validate = require('../middleware/validator');
 const pool = require('../config/database');
-const { resolveFrontendBaseUrl } = require('../config/urls');
 const logger = require('../utils/logger');
 const {
   clearRefreshTokenCookie,
@@ -36,23 +35,17 @@ const {
   buildFrontendLoginUrl,
   resolveRequestedFrontendOrigin,
   resolvePostAuthNextStep,
-  normalizeRefreshTokenValue,
   resolveRefreshTokenValue,
   extractBearerAccessToken,
   resolveRequestMetadata,
   buildTokenPayload,
   buildAuthResponseData,
   sendSessionExpired,
-  escapeHtml,
   prefersHtmlResponse,
   buildVerificationResultPage
 } = require('./auth/helpers');
 
 const GOOGLE_OAUTH_CODE_CACHE_TTL_MS = 5 * 60 * 1000;
-const SESSION_PERSISTENCE_DISABLED_ERROR = {
-  code: 'SESSION_PERSISTENCE_DISABLED',
-  message: 'Persistent login is disabled. Please sign in again.'
-};
 const processedGoogleAuthCodes = new Map();
 
 
@@ -277,7 +270,7 @@ async function issueAccessBackedSession(req, res, accessToken, {
 // 1. SIGNUP
 router.post('/signup', signupLimiter, signupValidation, validate, async (req, res, next) => {
   try {
-    const { email, password, full_name, role, company_name, business_type, domestic_market, target_markets, phone } = req.body;
+    const { email, password, full_name, role, company_name, business_type, domestic_market, target_markets } = req.body;
 
     // Check if email exists
     const existingUser = await authService.getUserByEmail(email);

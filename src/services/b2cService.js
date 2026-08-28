@@ -6,11 +6,9 @@ const { UPLOADS_ROOT } = require('../config/runtime');
 const b2cDefaultsService = require('./b2cDefaultsService');
 const chatService = require('./chatService');
 const {
-  DONATION_IMAGE_LEVELS,
   ALLOWED_CATEGORIES,
   ALLOWED_DELIVERY_METHODS,
   MAX_GPS_DISTANCE_KM,
-  IMAGE_ANALYSIS_ITEM_KEYWORDS,
   toNumber,
   roundTo,
   computeDonationCo2Saved,
@@ -26,7 +24,6 @@ const {
   inferAnalysisItems,
   mapRagGarmentItemsToProducts,
   mapCoupon,
-  mapCollectionPointSummary,
   mapDonationSummary
 } = require('./b2cService/helpers');
 
