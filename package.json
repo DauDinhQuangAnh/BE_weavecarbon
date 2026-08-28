@@ -15,9 +15,10 @@
     "openapi:check": "node scripts/check-openapi.js",
     "openapi:export": "node scripts/export-openapi.js",
     "openapi:stale": "node scripts/export-openapi.js --check",
+    "architecture:check": "node scripts/check-module-boundaries.js",
     "lint": "eslint .",
     "test": "jest",
-    "verify": "npm run check:syntax && npm run openapi:check && npm run openapi:stale && npm run lint",
+    "verify": "npm run check:syntax && npm run openapi:check && npm run openapi:stale && npm run architecture:check && npm run lint",
     "verify:full": "npm run verify && npm test",
     "prepare": "git config core.hooksPath .githooks || exit 0"
   },

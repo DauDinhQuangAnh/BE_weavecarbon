@@ -64,6 +64,9 @@ jobs:
       - name: OpenAPI artifact staleness check
         run: npm run openapi:stale
 
+      - name: Module dependency boundary check
+        run: npm run architecture:check
+
       - name: Lint
         run: npm run lint
 
