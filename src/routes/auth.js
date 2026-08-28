@@ -5,7 +5,8 @@ const {
   signupService,
   verificationService,
   sessionContextService,
-  googleOAuthFlowService
+  googleOAuthFlowService,
+  demoAccountService
 } = require('../modules/auth');
 const analyticsService = require('../services/analyticsService');
 const emailService = require('../services/emailService');
@@ -512,56 +513,10 @@ router.get('/session', refreshLimiter, async (req, res, next) => {
 router.post('/demo', demoValidation, validate, async (req, res, next) => {
   try {
     const { role, demo_scenario = 'sample_data' } = req.body;
-
-    const { user, profile, company, company_membership } = await authService.createDemoUser(role, demo_scenario);
-
-    // Generate tokens
-    const accessToken = authService.generateAccessToken(
-      user.id,
-      user.email,
-      [role],
-      company?.id,
-      true
-    );
-    const refreshToken = authService.generateRefreshToken(user.id);
-
-    const expiresIn = 900;
-    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-    const analyticsIdentity = analyticsService.getAnalyticsIdentity({
-      userId: user.id,
-      companyId: company?.id || profile?.company_id || null
-    });
-
+    const data = await demoAccountService.createDemoSession(role, demo_scenario);
     res.json({
       success: true,
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          full_name: user.full_name,
-          email_verified: true,
-          is_demo: true,
-          demo_expires_at: user.demo_expires_at
-        },
-        profile: profile || null,
-        roles: [role],
-        company: attachAnalyticsCompany(company),
-        company_membership: company_membership || null,
-        analytics_user_key: analyticsIdentity.analytics_user_key,
-        tokens: {
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          token_type: 'Bearer',
-          expires_in: expiresIn,
-          expires_at: expiresAt
-        },
-        limitations: {
-          max_products: role === 'b2b' ? 20 : 0,
-          max_calculations: role === 'b2b' ? 100000 : 50,
-          export_disabled: role !== 'b2b',
-          session_duration_hours: 24
-        }
-      }
+      data
     });
   } catch (error) {
     next(error);

@@ -10,6 +10,18 @@ describe('auth foundation compatibility entrypoints', () => {
       .toBe(authModule.googleOAuthClient);
   });
 
+  test('keeps the legacy demo provisioning method on the modular implementation', async () => {
+    const authModule = require('../../../src/modules/auth');
+    const authService = require('../../../src/services/authService');
+    const result = { user: { id: 'demo-user' } };
+    const createDemoUser = jest.spyOn(authModule.demoAccountService, 'createDemoUser')
+      .mockResolvedValue(result);
+
+    await expect(authService.createDemoUser('b2b', 'sample_data')).resolves.toBe(result);
+    expect(createDemoUser).toHaveBeenCalledWith('b2b', 'sample_data');
+    createDemoUser.mockRestore();
+  });
+
   test('keeps the legacy auth service token API available', () => {
     const authService = require('../../../src/services/authService');
     const token = authService.generateAccessToken('user-1', 'user@example.com', ['b2b']);
