@@ -1,7 +1,7 @@
 ﻿const express = require('express');
 const router = express.Router();
 const authService = require('../services/authService');
-const { signupService } = require('../modules/auth');
+const { signupService, verificationService } = require('../modules/auth');
 const analyticsService = require('../services/analyticsService');
 const emailService = require('../services/emailService');
 const googleAuthService = require('../services/googleAuthService');
@@ -666,33 +666,15 @@ router.get('/verify-email', async (req, res, next) => {
     const token = Array.isArray(req.query.token) ? req.query.token[0] : req.query.token;
     const email = Array.isArray(req.query.email) ? req.query.email[0] : req.query.email;
 
-    if (!token || !email) {
-      return sendVerificationError(
-        400,
-        'MISSING_PARAMETERS',
-        'Token and email are required'
-      );
-    }
+    const verification = await verificationService.verifyEmail({
+      token,
+      emailAddress: email,
+      normalizeEmail: true,
+      alreadyVerified: 'success'
+    });
+    const { user, companyIdForToken } = verification;
 
-    const normalizedEmail = String(email).trim().toLowerCase();
-    const decoded = authService.verifyEmailToken(token);
-    const tokenEmail = String(decoded?.email || '').toLowerCase();
-
-    if (!decoded || decoded.type !== 'email_verification' || tokenEmail !== normalizedEmail) {
-      return sendVerificationError(
-        400,
-        'INVALID_VERIFICATION_TOKEN',
-        'Invalid or expired verification token'
-      );
-    }
-
-    const user = await authService.getUserByEmail(normalizedEmail);
-
-    if (!user) {
-      return sendVerificationError(404, 'USER_NOT_FOUND', 'User not found');
-    }
-
-    if (user.email_verified) {
+    if (verification.alreadyVerified) {
       if (wantsHtml) {
         return res.status(200).type('html').send(buildVerificationResultPage({
           status: 'success',
@@ -710,10 +692,7 @@ router.get('/verify-email', async (req, res, next) => {
       });
     }
 
-    await authService.markEmailVerified(user.id);
     clearRefreshTokenCookie(res);
-
-    const companyIdForToken = await authService.resolveCompanyIdForToken(user.id, user.company_id);
     await safeTrackAnalyticsEvent({
       event_name: 'wc_email_verification_completed',
       user_id: user.id,
@@ -751,6 +730,9 @@ router.get('/verify-email', async (req, res, next) => {
       }
     });
   } catch (error) {
+    if (error.statusCode && error.statusCode < 500) {
+      return sendVerificationError(error.statusCode, error.code, error.message);
+    }
     if (wantsHtml) {
       logger.error({ err: error }, 'Email verification page error');
       return res.status(500).type('html').send(buildVerificationResultPage({
@@ -772,46 +754,13 @@ router.post('/verify-email', verifyEmailValidation, validate, async (req, res, n
   try {
     const { token, email } = req.body;
 
-    // Verify token
-    const decoded = authService.verifyEmailToken(token);
-
-    if (!decoded || decoded.type !== 'email_verification' || decoded.email !== email) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_VERIFICATION_TOKEN',
-          message: 'Invalid or expired verification token'
-        }
-      });
-    }
-
-    // Get user
-    const user = await authService.getUserByEmail(email);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: 'USER_NOT_FOUND',
-          message: 'User not found'
-        }
-      });
-    }
-
-    if (user.email_verified) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'ALREADY_VERIFIED',
-          message: 'Email already verified'
-        }
-      });
-    }
-
-    // Mark email as verified
-    await authService.markEmailVerified(user.id);
+    const { user, companyIdForToken } = await verificationService.verifyEmail({
+      token,
+      emailAddress: email,
+      normalizeEmail: false,
+      alreadyVerified: 'error'
+    });
     clearRefreshTokenCookie(res);
-    const companyIdForToken = await authService.resolveCompanyIdForToken(user.id, user.company_id);
     await safeTrackAnalyticsEvent({
       event_name: 'wc_email_verification_completed',
       user_id: user.id,
@@ -845,51 +794,16 @@ router.post('/verify-email', verifyEmailValidation, validate, async (req, res, n
 router.post('/verify-email/resend', verifyEmailLimiter, async (req, res, next) => {
   try {
     const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Email is required'
-        }
-      });
-    }
-
-    const user = await authService.getUserByEmail(email);
-
-    if (!user) {
-      // Don't reveal if email exists
-      return res.json({
-        success: true,
-        data: {
-          message: 'If the email exists, a verification link has been sent'
-        }
-      });
-    }
-
-    if (user.email_verified) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'ALREADY_VERIFIED',
-          message: 'Email already verified'
-        }
-      });
-    }
-
-    // Generate new verification token
-    const verificationToken = authService.generateVerificationToken(email);
-
-    // Send verification email
-    await emailService.sendVerificationEmail(email, verificationToken, user.full_name, null, {
+    const result = await verificationService.resendVerification(email, {
       frontendOrigin: resolveRequestedFrontendOrigin(req)
     });
 
     res.json({
       success: true,
       data: {
-        message: 'Verification email sent'
+        message: result.hidden ?
+          'If the email exists, a verification link has been sent' :
+          'Verification email sent'
       }
     });
   } catch (error) {
@@ -927,56 +841,10 @@ router.get('/accept-company-invite', async (req, res, next) => {
 
   try {
     const token = Array.isArray(req.query.token) ? req.query.token[0] : req.query.token;
-    if (!token) {
-      return sendInviteError(400, 'MISSING_PARAMETERS', 'Invite token is required');
-    }
-
-    const decoded = authService.verifyCompanyInviteToken(token);
-    const normalizedEmail = String(decoded?.email || '').trim().toLowerCase();
-    const companyId = String(decoded?.company_id || '').trim();
-
-    if (!decoded || decoded.type !== 'company_invite' || !normalizedEmail || !companyId) {
-      return sendInviteError(
-        400,
-        'INVALID_INVITE_TOKEN',
-        'Invalid or expired invite token'
-      );
-    }
-
-    const user = await authService.getUserByEmail(normalizedEmail);
-    if (!user) {
-      return sendInviteError(404, 'USER_NOT_FOUND', 'User not found');
-    }
-
-    const membership = await authService.getCompanyMembership(companyId, user.id);
-    if (!membership) {
-      return sendInviteError(404, 'INVITE_NOT_FOUND', 'Invite not found');
-    }
-
-    if (membership.status === 'disabled') {
-      return sendInviteError(
-        403,
-        'INVITE_DISABLED',
-        'This invite is no longer active'
-      );
-    }
-
-    if (!user.email_verified) {
-      await authService.markEmailVerified(user.id);
-    }
-    clearRefreshTokenCookie(res);
-
-    await authService.activateCompanyMembership(companyId, user.id);
-    await pool.query(
-      `UPDATE company_members
-       SET last_login = NOW(), updated_at = NOW()
-       WHERE company_id = $1 AND user_id = $2`,
-      [companyId, user.id]
+    const { companyId, user: tokenUser } = await verificationService.acceptCompanyInvite(
+      token,
+      { onBeforeActivation: () => clearRefreshTokenCookie(res) }
     );
-    await authService.markUserLoggedIn(user.id);
-
-    const refreshedUser = await authService.getUserById(user.id);
-    const tokenUser = refreshedUser || user;
 
     await safeTrackAnalyticsEvent({
       event_name: 'login',
@@ -1015,6 +883,9 @@ router.get('/accept-company-invite', async (req, res, next) => {
       }
     });
   } catch (error) {
+    if (error.statusCode && error.statusCode < 500) {
+      return sendInviteError(error.statusCode, error.code, error.message);
+    }
     if (wantsHtml) {
       logger.error({ err: error }, 'Company invite acceptance error');
       return res.status(500).type('html').send(buildVerificationResultPage({

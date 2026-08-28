@@ -8,6 +8,10 @@ const {
   accountProvisioningService
 } = require('./accountProvisioningService');
 const { createSignupService, signupService } = require('./signupService');
+const {
+  createVerificationService,
+  verificationService
+} = require('./verificationService');
 
 module.exports = {
   tokens,
@@ -16,5 +20,7 @@ module.exports = {
   createAccountProvisioningService,
   accountProvisioningService,
   createSignupService,
-  signupService
+  signupService,
+  createVerificationService,
+  verificationService
 };

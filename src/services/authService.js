@@ -8,7 +8,8 @@ const { seedDemoB2BData } = require('./demoB2BSeeder');
 const {
   tokens: authTokens,
   refreshSessionService,
-  accountProvisioningService
+  accountProvisioningService,
+  verificationService
 } = require('../modules/auth');
 const {
   DEFAULT_DOMESTIC_MARKET,
@@ -333,17 +334,11 @@ class AuthService {
   }
 
   async resolveCompanyIdForToken(userId, fallbackCompanyId = null) {
-    const membership = await this.getPrimaryCompanyMembership(userId);
-    return membership?.company_id || fallbackCompanyId || null;
+    return verificationService.resolveCompanyIdForToken(userId, fallbackCompanyId);
   }
 
   async markUserLoggedIn(userId) {
-    await pool.query(
-      `UPDATE users
-       SET last_login_at = NOW(), updated_at = NOW()
-       WHERE id = $1`,
-      [userId]
-    );
+    return verificationService.markUserLoggedIn(userId);
   }
 
   async getUserByEmail(email) {
@@ -355,40 +350,15 @@ class AuthService {
   }
 
   async markEmailVerified(userId) {
-    await pool.query(
-      `UPDATE users 
-       SET email_verified = true, email_verified_at = NOW(), updated_at = NOW()
-       WHERE id = $1`,
-      [userId]
-    );
+    return verificationService.markEmailVerified(userId);
   }
 
   async getCompanyMembership(companyId, userId, client = pool) {
-    const result = await client.query(
-      `SELECT company_id, user_id, role, status, invited_by, created_at, updated_at
-       FROM company_members
-       WHERE company_id = $1 AND user_id = $2
-       LIMIT 1`,
-      [companyId, userId]
-    );
-
-    return result.rows[0] || null;
+    return verificationService.getCompanyMembership(companyId, userId, client);
   }
 
   async activateCompanyMembership(companyId, userId, client = pool) {
-    const result = await client.query(
-      `UPDATE company_members
-       SET status = 'active', updated_at = NOW()
-       WHERE company_id = $1 AND user_id = $2 AND status = 'invited'
-       RETURNING company_id, user_id, role, status, invited_by, created_at, updated_at`,
-      [companyId, userId]
-    );
-
-    if (result.rows.length > 0) {
-      return result.rows[0];
-    }
-
-    return this.getCompanyMembership(companyId, userId, client);
+    return verificationService.activateCompanyMembership(companyId, userId, client);
   }
 
   _getDemoB2CLevel(totalPoints) {
