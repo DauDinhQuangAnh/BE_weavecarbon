@@ -29,6 +29,12 @@ const {
   createDemoAccountService,
   demoAccountService
 } = require('./demoAccountService');
+const http = require('./http');
+const validation = require('./validation');
+const {
+  createAuthSessionService,
+  authSessionService
+} = require('./authSessionService');
 
 module.exports = {
   tokens,
@@ -49,5 +55,9 @@ module.exports = {
   createGoogleOAuthFlowService,
   googleOAuthFlowService,
   createDemoAccountService,
-  demoAccountService
+  demoAccountService,
+  http,
+  validation,
+  createAuthSessionService,
+  authSessionService
 };

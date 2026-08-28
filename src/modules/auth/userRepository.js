@@ -231,6 +231,17 @@ function createUserRepository(pool = database) {
       return result.rows[0] || null;
     },
 
+    async findProfileRoles(userId, client = pool) {
+      const result = await client.query(
+        `SELECT p.company_id, ur.role
+         FROM profiles p
+         LEFT JOIN user_roles ur ON ur.user_id = p.user_id
+         WHERE p.user_id = $1`,
+        [userId]
+      );
+      return result.rows;
+    },
+
     async findPrimaryCompanyMembership(client, userId, includeInactive) {
       const result = await client.query(
         `SELECT

@@ -51,6 +51,8 @@ function createAccountProvisioningService({
   };
 
   return {
+    initializeTrial,
+
     async createInvitedCompanyUser({ client, email, fullName, companyId }) {
       const temporaryPassword = tokenService.generateSystemPassword();
       const passwordHash = await tokenService.hashPassword(temporaryPassword);
@@ -140,6 +142,23 @@ function createAccountProvisioningService({
         await companyMarkets.ensureCompaniesDomesticMarketColumn(connection);
         return repository.findPrimaryCompanyMembership(connection, userId, includeInactive);
       });
+    },
+
+    async getCompanyStatus(userId) {
+      const rows = await repository.findProfileRoles(userId);
+      if (rows.length === 0) return { has_company: false };
+
+      const membership = await repository.withConnection(async (connection) => {
+        await companyMarkets.ensureCompaniesDomesticMarketColumn(connection);
+        return repository.findPrimaryCompanyMembership(connection, userId, false);
+      });
+      const isB2B = rows.some((row) => row.role === 'b2b');
+      const companyId = rows[0].company_id || membership?.company_id || null;
+      return {
+        has_company: isB2B && companyId !== null,
+        is_b2b: isB2B,
+        company_id: companyId
+      };
     }
   };
 }

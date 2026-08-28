@@ -1,5 +1,4 @@
 const pool = require('../config/database');
-const subscriptionService = require('./subscriptionService');
 const {
   tokens: authTokens,
   refreshSessionService,
@@ -8,8 +7,6 @@ const {
   googleAccountService,
   demoAccountService
 } = require('../modules/auth');
-
-const TRIAL_QUERY_TIMEOUT_MS = 8000;
 
 class AuthService {
   async ensureRefreshTokenSchema(client = pool) {
@@ -29,26 +26,7 @@ class AuthService {
   }
 
   async initializeTrial(client, companyId) {
-    await subscriptionService.ensureSchema(client);
-    await client.query(
-      {
-        text: `
-      INSERT INTO public.subscription_cycles (
-        company_id,
-        trial_started_at,
-        trial_ends_at
-      )
-      VALUES ($1, NOW(), NOW() + INTERVAL '14 days')
-      ON CONFLICT (company_id)
-      DO UPDATE SET
-        trial_started_at = COALESCE(public.subscription_cycles.trial_started_at, EXCLUDED.trial_started_at),
-        trial_ends_at = COALESCE(public.subscription_cycles.trial_ends_at, EXCLUDED.trial_ends_at),
-        updated_at = NOW()
-    `,
-        values: [companyId],
-        query_timeout: TRIAL_QUERY_TIMEOUT_MS
-      }
-    );
+    return accountProvisioningService.initializeTrial(client, companyId);
   }
 
   async initializeStandardDemo(client, companyId, standardSkuLimit = 20) {

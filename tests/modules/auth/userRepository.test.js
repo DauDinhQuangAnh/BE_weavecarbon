@@ -115,4 +115,18 @@ describe('auth user repository', () => {
     expect(sql).toContain('FROM companies');
     expect(params).toEqual(['company-1']);
   });
+
+  test('loads profile roles for the check-company use case', async () => {
+    const rows = [
+      { company_id: 'company-1', role: 'b2b' },
+      { company_id: 'company-1', role: 'admin' }
+    ];
+    const client = { query: jest.fn().mockResolvedValue({ rows }) };
+    const repository = createUserRepository();
+
+    await expect(repository.findProfileRoles('user-1', client)).resolves.toBe(rows);
+    const [sql, params] = client.query.mock.calls[0];
+    expect(sql).toContain('LEFT JOIN user_roles');
+    expect(params).toEqual(['user-1']);
+  });
 });

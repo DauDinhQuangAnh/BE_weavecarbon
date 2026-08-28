@@ -7,11 +7,14 @@ describe('auth signup route compatibility', () => {
       statusCode: 409,
       code: 'EMAIL_EXISTS'
     });
-    const register = jest.spyOn(signupService, 'register').mockRejectedValue(failure);
+    const register = jest.spyOn(signupService, 'registerWithSideEffects')
+      .mockRejectedValue(failure);
     const router = require('../../../src/routes/auth');
     const signupLayer = router.stack.find((layer) => layer.route?.path === '/signup');
     const handler = signupLayer.route.stack.at(-1).handle;
     const req = {
+      query: {},
+      get: jest.fn().mockReturnValue(null),
       body: {
         email: 'user@example.com',
         password: 'Password1!',
@@ -27,16 +30,19 @@ describe('auth signup route compatibility', () => {
 
     await handler(req, {}, next);
 
-    expect(register).toHaveBeenCalledWith({
-      email: 'user@example.com',
-      password: 'Password1!',
-      fullName: 'User',
-      role: 'b2b',
-      companyName: 'Example Co',
-      businessType: 'brand',
-      domesticMarket: 'VN',
-      targetMarkets: ['EU']
-    });
+    expect(register).toHaveBeenCalledWith(
+      {
+        email: 'user@example.com',
+        password: 'Password1!',
+        fullName: 'User',
+        role: 'b2b',
+        companyName: 'Example Co',
+        businessType: 'brand',
+        domesticMarket: 'VN',
+        targetMarkets: ['EU']
+      },
+      { frontendOrigin: null }
+    );
     expect(next).toHaveBeenCalledWith(failure);
     register.mockRestore();
   });

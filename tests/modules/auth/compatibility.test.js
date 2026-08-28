@@ -10,6 +10,12 @@ describe('auth foundation compatibility entrypoints', () => {
       .toBe(authModule.googleOAuthClient);
   });
 
+  test('keeps legacy Auth HTTP helpers and validators on the modular implementations', () => {
+    const authModule = require('../../../src/modules/auth');
+    expect(require('../../../src/routes/auth/helpers')).toBe(authModule.http);
+    expect(require('../../../src/validators/authValidators')).toBe(authModule.validation);
+  });
+
   test('keeps the legacy demo provisioning method on the modular implementation', async () => {
     const authModule = require('../../../src/modules/auth');
     const authService = require('../../../src/services/authService');

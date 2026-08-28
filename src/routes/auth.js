@@ -1,29 +1,40 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
-const authService = require('../services/authService');
 const {
   signupService,
   verificationService,
-  sessionContextService,
   googleOAuthFlowService,
-  demoAccountService
+  demoAccountService,
+  authSessionService,
+  http: {
+    GOOGLE_AUTH_ERROR_MESSAGES,
+    resolveEntryAccountType,
+    safeTrackAnalyticsEvent,
+    buildFrontendAuthCallbackUrl,
+    buildFrontendLoginUrl,
+    resolveRequestedFrontendOrigin,
+    resolveRefreshTokenValue,
+    extractBearerAccessToken,
+    resolveRequestMetadata,
+    buildTokenPayload,
+    sendSessionExpired,
+    prefersHtmlResponse,
+    buildVerificationResultPage
+  },
+  validation: {
+    signupValidation,
+    signinValidation,
+    refreshValidation,
+    verifyEmailValidation,
+    demoValidation
+  }
 } = require('../modules/auth');
-const analyticsService = require('../services/analyticsService');
-const emailService = require('../services/emailService');
 const validate = require('../middleware/validator');
-const pool = require('../config/database');
 const logger = require('../utils/logger');
 const {
   clearRefreshTokenCookie,
   setRefreshTokenCookie
 } = require('../utils/authCookies');
-const {
-  signupValidation,
-  signinValidation,
-  refreshValidation,
-  verifyEmailValidation,
-  demoValidation
-} = require('../validators/authValidators');
 const {
   signupLimiter,
   signinLimiter,
@@ -32,144 +43,10 @@ const {
   googleAuthLimiter
 } = require('../middleware/rateLimiter');
 const { authenticate } = require('../middleware/auth');
-const {
-  GOOGLE_AUTH_ERROR_MESSAGES,
-  attachAnalyticsCompany,
-  resolveEntryAccountType,
-  safeTrackAnalyticsEvent,
-  buildFrontendAuthCallbackUrl,
-  buildFrontendLoginUrl,
-  resolveRequestedFrontendOrigin,
-  resolveRefreshTokenValue,
-  extractBearerAccessToken,
-  resolveRequestMetadata,
-  buildTokenPayload,
-  buildAuthResponseData,
-  sendSessionExpired,
-  prefersHtmlResponse,
-  buildVerificationResultPage
-} = require('./auth/helpers');
-
 router.use((_req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();
 });
-
-
-async function resolveAuthSessionContext(user, { updateMembershipLogin = false } = {}) {
-  return sessionContextService.resolve(user, { updateMembershipLogin });
-}
-
-
-async function issueRefreshBackedSession(req, res, refreshToken, {
-  rotate = true,
-  updateMembershipLogin = false
-} = {}) {
-  const decodedRefreshToken = authService.verifyRefreshToken(refreshToken);
-  if (!decodedRefreshToken || decodedRefreshToken.type !== 'refresh') {
-    return sendSessionExpired(res, 'Invalid or expired session.', {
-      code: 'INVALID_REFRESH_TOKEN',
-      clearCookie: true
-    });
-  }
-
-  let activeSession = null;
-  let nextRefreshToken = refreshToken;
-  const rememberMe = decodedRefreshToken.remember_me !== false;
-  const metadata = resolveRequestMetadata(req);
-
-  if (rotate) {
-    nextRefreshToken = authService.generateRefreshToken(decodedRefreshToken.sub, rememberMe);
-    activeSession = await authService.rotateRefreshToken(
-      refreshToken,
-      nextRefreshToken,
-      metadata
-    );
-  } else {
-    activeSession = await authService.isRefreshTokenActive(refreshToken);
-  }
-
-  if (!activeSession) {
-    return sendSessionExpired(res, 'Session is no longer active.', {
-      code: 'SESSION_EXPIRED',
-      clearCookie: rotate
-    });
-  }
-
-  const user = await authService.getUserById(activeSession.user_id || decodedRefreshToken.sub);
-  if (!user) {
-    return sendSessionExpired(res, 'Session user was not found.', {
-      code: 'SESSION_USER_NOT_FOUND',
-      clearCookie: true
-    });
-  }
-
-  const { company, companyMembership, companyIdForToken } = await resolveAuthSessionContext(
-    user,
-    { updateMembershipLogin }
-  );
-
-  const accessToken = authService.generateAccessToken(
-    user.id,
-    user.email,
-    user.roles,
-    companyIdForToken,
-    user.is_demo_user
-  );
-
-  if (rotate) {
-    setRefreshTokenCookie(res, nextRefreshToken, { rememberMe });
-  }
-
-  return res.json({
-    success: true,
-    data: buildAuthResponseData({
-      user,
-      company,
-      companyMembership,
-      companyIdForToken,
-      accessToken
-    })
-  });
-}
-
-async function issueAccessBackedSession(req, res, accessToken, {
-  updateMembershipLogin = false
-} = {}) {
-  const decodedAccessToken = authService.verifyAccessToken(accessToken);
-  // Older access tokens did not include type; accept them until they naturally expire.
-  if (!decodedAccessToken || (decodedAccessToken.type && decodedAccessToken.type !== 'access')) {
-    return sendSessionExpired(res, 'Invalid or expired session.', {
-      code: 'INVALID_TOKEN',
-      clearCookie: false
-    });
-  }
-
-  const user = await authService.getUserById(decodedAccessToken.sub);
-  if (!user) {
-    return sendSessionExpired(res, 'Session user was not found.', {
-      code: 'SESSION_USER_NOT_FOUND',
-      clearCookie: true
-    });
-  }
-
-  const { company, companyMembership, companyIdForToken } = await resolveAuthSessionContext(
-    user,
-    { updateMembershipLogin }
-  );
-
-  return res.json({
-    success: true,
-    data: buildAuthResponseData({
-      user,
-      company,
-      companyMembership,
-      companyIdForToken,
-      accessToken,
-      includeRefreshToken: false
-    })
-  });
-}
 
 
 /**
@@ -205,9 +82,17 @@ async function issueAccessBackedSession(req, res, accessToken, {
 // 1. SIGNUP
 router.post('/signup', signupLimiter, signupValidation, validate, async (req, res, next) => {
   try {
-    const { email, password, full_name, role, company_name, business_type, domestic_market, target_markets } = req.body;
-
-    const { user, profile, company } = await signupService.register({
+    const {
+      email,
+      password,
+      full_name,
+      role,
+      company_name,
+      business_type,
+      domestic_market,
+      target_markets
+    } = req.body;
+    const data = await signupService.registerWithSideEffects({
       email,
       password,
       fullName: full_name,
@@ -216,55 +101,12 @@ router.post('/signup', signupLimiter, signupValidation, validate, async (req, re
       businessType: business_type,
       domesticMarket: domestic_market,
       targetMarkets: target_markets
-    });
-
-    // Generate verification token
-    const verificationToken = authService.generateVerificationToken(email);
-
-    // Send verification email (async, don't wait)
-    emailService.sendVerificationEmail(email, verificationToken, full_name, null, {
+    }, {
       frontendOrigin: resolveRequestedFrontendOrigin(req)
-    })
-      .catch(err => logger.error({ err }, 'Failed to send verification email'));
-
-    await safeTrackAnalyticsEvent({
-      event_name: 'sign_up',
-      user_id: user.id,
-      company_id: company?.id || profile.company_id || null,
-      payload: {
-        method: 'email',
-        intent: 'signup',
-        entry_account_type: resolveEntryAccountType({ role })
-      }
     });
-
-    const analyticsIdentity = analyticsService.getAnalyticsIdentity({
-      userId: user.id,
-      companyId: company?.id || profile.company_id || null
-    });
-
-    res.status(201).json({
-      success: true,
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          full_name: full_name,
-          email_verified: false
-        },
-        profile: {
-          id: profile.id,
-          user_id: user.id,
-          company_id: profile.company_id
-        },
-        role,
-        company: attachAnalyticsCompany(company),
-        analytics_user_key: analyticsIdentity.analytics_user_key,
-        requires_email_verification: true
-      }
-    });
+    return res.status(201).json({ success: true, data });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
@@ -298,91 +140,27 @@ router.post('/signup', signupLimiter, signupValidation, validate, async (req, re
 router.post('/signin', signinLimiter, signinValidation, validate, async (req, res, next) => {
   try {
     const { email, password, remember_me } = req.body;
-    const rememberMe = remember_me !== false;
-
-    // Get user
-    const user = await authService.getUserByEmail(email);
-
-    if (!user || !user.password_hash) {
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: 'INVALID_CREDENTIALS',
-          message: 'Invalid email or password'
-        }
-      });
-    }
-
-    // Verify password
-    const isValidPassword = await authService.verifyPassword(password, user.password_hash);
-
-    if (!isValidPassword) {
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: 'INVALID_CREDENTIALS',
-          message: 'Invalid email or password'
-        }
-      });
-    }
-
-    // Check email verification
-    if (!user.email_verified && !user.is_demo_user) {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: 'EMAIL_NOT_VERIFIED',
-          message: 'Please verify your email before signing in'
-        }
-      });
-    }
-
-    const { company, companyMembership, companyIdForToken } = await resolveAuthSessionContext(
-      user,
-      { updateMembershipLogin: true }
-    );
-
-    // Update user last_login
-    await authService.markUserLoggedIn(user.id);
-
-    // Generate tokens
-    const accessToken = authService.generateAccessToken(
-      user.id,
-      user.email,
-      user.roles,
-      companyIdForToken,
-      user.is_demo_user
-    );
-    const refreshToken = authService.generateRefreshToken(user.id, rememberMe);
-    await authService.storeRefreshToken(refreshToken, user.id, resolveRequestMetadata(req));
-
-    await safeTrackAnalyticsEvent({
-      event_name: 'login',
-      user_id: user.id,
-      company_id: companyIdForToken,
-      payload: {
-        method: 'email',
-        intent: 'signin',
-        entry_account_type: resolveEntryAccountType({
-          roles: user.roles,
-          companyId: companyIdForToken
-        })
-      }
+    const result = await authSessionService.signIn({
+      email,
+      password,
+      rememberMe: remember_me !== false,
+      metadata: resolveRequestMetadata(req)
     });
 
-    setRefreshTokenCookie(res, refreshToken, { rememberMe });
-    res.json({
-      success: true,
-      data: buildAuthResponseData({
-        user,
-        company,
-        companyMembership,
-        companyIdForToken,
-        accessToken
-      })
-    });
+    if (result.kind === 'error') {
+      return res.status(result.statusCode).json({
+        success: false,
+        error: {
+          code: result.code,
+          message: result.message
+        }
+      });
+    }
+
+    setRefreshTokenCookie(res, result.refreshToken, { rememberMe: result.rememberMe });
+    return res.json({ success: true, data: result.data });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
@@ -407,32 +185,15 @@ router.post('/signin', signinLimiter, signinValidation, validate, async (req, re
 // 3. SIGNOUT
 router.post('/signout', async (req, res, next) => {
   try {
-    const { all_devices } = req.body || {};
-    const refreshToken = resolveRefreshTokenValue(req);
-    const accessToken = extractBearerAccessToken(req);
-    const decodedAccessToken = accessToken ? authService.verifyAccessToken(accessToken) : null;
-    const decodedRefreshToken = refreshToken ? authService.verifyRefreshToken(refreshToken) : null;
-    const userId = decodedAccessToken?.sub || decodedRefreshToken?.sub || null;
-
-    let revokedCount = 0;
-
-    if (all_devices && userId) {
-      revokedCount = await authService.revokeAllRefreshTokens(userId);
-    } else if (refreshToken) {
-      revokedCount = await authService.revokeRefreshToken(refreshToken);
-    }
-
-    clearRefreshTokenCookie(res);
-
-    res.json({
-      success: true,
-      data: {
-        sessions_revoked: all_devices ? 'all' : revokedCount,
-        all_devices: Boolean(all_devices)
-      }
+    const data = await authSessionService.signOut({
+      allDevices: Boolean(req.body?.all_devices),
+      refreshToken: resolveRefreshTokenValue(req),
+      accessToken: extractBearerAccessToken(req)
     });
+    clearRefreshTokenCookie(res);
+    return res.json({ success: true, data });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
@@ -461,11 +222,22 @@ router.post('/refresh', refreshLimiter, refreshValidation, validate, async (req,
       });
     }
 
-    return await issueRefreshBackedSession(req, res, refreshToken, {
-      rotate: true
+    const result = await authSessionService.issueRefreshSession({
+      refreshToken,
+      rotate: true,
+      metadata: resolveRequestMetadata(req)
     });
+    if (result.kind === 'expired') {
+      return sendSessionExpired(res, result.message, {
+        code: result.code,
+        clearCookie: result.clearCookie
+      });
+    }
+
+    setRefreshTokenCookie(res, result.refreshToken, { rememberMe: result.rememberMe });
+    return res.json({ success: true, data: result.data });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
@@ -486,26 +258,37 @@ router.post('/refresh', refreshLimiter, refreshValidation, validate, async (req,
 router.get('/session', refreshLimiter, async (req, res, next) => {
   try {
     const refreshToken = resolveRefreshTokenValue(req);
-    if (!refreshToken) {
+    let result;
+    if (refreshToken) {
+      result = await authSessionService.issueRefreshSession({
+        refreshToken,
+        rotate: false,
+        updateMembershipLogin: true,
+        metadata: resolveRequestMetadata(req)
+      });
+    } else {
       const accessToken = extractBearerAccessToken(req);
-      if (accessToken) {
-        return await issueAccessBackedSession(req, res, accessToken, {
-          updateMembershipLogin: true
+      if (!accessToken) {
+        return sendSessionExpired(res, 'No active session was found.', {
+          code: 'NO_ACTIVE_SESSION',
+          clearCookie: false
         });
       }
-
-      return sendSessionExpired(res, 'No active session was found.', {
-        code: 'NO_ACTIVE_SESSION',
-        clearCookie: false
+      result = await authSessionService.issueAccessSession({
+        accessToken,
+        updateMembershipLogin: true
       });
     }
 
-    return await issueRefreshBackedSession(req, res, refreshToken, {
-      rotate: false,
-      updateMembershipLogin: true
-    });
+    if (result.kind === 'expired') {
+      return sendSessionExpired(res, result.message, {
+        code: result.code,
+        clearCookie: result.clearCookie
+      });
+    }
+    return res.json({ success: true, data: result.data });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
@@ -905,47 +688,11 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
 // 10. CHECK COMPANY - Check if B2B user has company
 router.get('/check-company', authenticate, async (req, res, next) => {
   try {
-    const userId = req.user.id;
-
-    // Get user profile with company info
-    const result = await pool.query(
-      `SELECT p.company_id, ur.role
-       FROM profiles p
-       LEFT JOIN user_roles ur ON ur.user_id = p.user_id
-       WHERE p.user_id = $1`,
-      [userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.json({
-        success: true,
-        data: {
-          has_company: false
-        }
-      });
-    }
-
-    const profile = result.rows[0];
-    const isB2B = result.rows.some(row => row.role === 'b2b');
-    const membership = await authService.getPrimaryCompanyMembership(userId);
-    const companyId = profile.company_id || membership?.company_id || null;
-
-    // If B2B and has company_id -> true
-    // Otherwise -> false
-    const hasCompany = isB2B && companyId !== null;
-
-    res.json({
-      success: true,
-      data: {
-        has_company: hasCompany,
-        is_b2b: isB2B,
-        company_id: companyId
-      }
-    });
+    const data = await authSessionService.checkCompany(req.user.id);
+    return res.json({ success: true, data });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
 module.exports = router;
-

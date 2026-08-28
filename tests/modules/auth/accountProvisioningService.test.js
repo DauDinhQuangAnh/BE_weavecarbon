@@ -25,6 +25,7 @@ function createFixture(overrides = {}) {
     deleteUser: jest.fn(),
     findUserByEmail: jest.fn(),
     findUserById: jest.fn(),
+    findProfileRoles: jest.fn().mockResolvedValue([]),
     findPrimaryCompanyMembership: jest.fn(),
     ...overrides
   };
@@ -197,5 +198,36 @@ describe('auth account provisioning service', () => {
       'user-1',
       true
     );
+  });
+
+  test('resolves company status from profile roles and membership fallback', async () => {
+    const fixture = createFixture({
+      findProfileRoles: jest.fn().mockResolvedValue([
+        { company_id: null, role: 'b2b' }
+      ]),
+      findPrimaryCompanyMembership: jest.fn().mockResolvedValue({
+        company_id: 'company-1'
+      })
+    });
+
+    await expect(fixture.service.getCompanyStatus('user-1')).resolves.toEqual({
+      has_company: true,
+      is_b2b: true,
+      company_id: 'company-1'
+    });
+    expect(fixture.repository.findPrimaryCompanyMembership).toHaveBeenCalledWith(
+      fixture.connection,
+      'user-1',
+      false
+    );
+  });
+
+  test('preserves the minimal check-company response when no profile exists', async () => {
+    const fixture = createFixture();
+
+    await expect(fixture.service.getCompanyStatus('missing-user')).resolves.toEqual({
+      has_company: false
+    });
+    expect(fixture.repository.withConnection).not.toHaveBeenCalled();
   });
 });
