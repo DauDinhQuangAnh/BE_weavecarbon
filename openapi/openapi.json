@@ -1941,6 +1941,7 @@
     },
     "/auth/refresh": {
       "post": {
+        "description": "Reads the refresh token from the httpOnly cookie (or request body/header, depending on client).",
         "operationId": "postAuthRefresh",
         "parameters": [],
         "requestBody": {
@@ -1955,8 +1956,14 @@
           "required": false
         },
         "responses": {
+          "200": {
+            "description": "New access token issued; refresh-token cookie rotated."
+          },
           "400": {
             "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "description": "No active session / invalid or expired refresh token."
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -1975,7 +1982,7 @@
           }
         },
         "security": [],
-        "summary": "POST /auth/refresh",
+        "summary": "Rotate the refresh token and issue a new access token",
         "tags": [
           "Auth"
         ]
@@ -1986,8 +1993,14 @@
         "operationId": "getAuthSession",
         "parameters": [],
         "responses": {
+          "200": {
+            "description": "Current user/company/session data."
+          },
           "400": {
             "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "description": "No active session was found."
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -2006,7 +2019,7 @@
           }
         },
         "security": [],
-        "summary": "GET /auth/session",
+        "summary": "Bootstrap the current session from a refresh-token cookie or bearer access token",
         "tags": [
           "Auth"
         ]
@@ -2020,16 +2033,42 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
+                "properties": {
+                  "email": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "password": {
+                    "format": "password",
+                    "type": "string"
+                  },
+                  "remember_me": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ],
                 "type": "object"
               }
             }
           },
-          "required": false
+          "required": true
         },
         "responses": {
+          "200": {
+            "description": "Signed in. Sets a refresh-token cookie and returns an access token."
+          },
           "400": {
             "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "description": "Invalid email or password."
+          },
+          "403": {
+            "description": "Email not verified."
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -2048,7 +2087,7 @@
           }
         },
         "security": [],
-        "summary": "POST /auth/signin",
+        "summary": "Sign in with email and password",
         "tags": [
           "Auth"
         ]
@@ -2062,7 +2101,12 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
+                "properties": {
+                  "all_devices": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
                 "type": "object"
               }
             }
@@ -2070,6 +2114,9 @@
           "required": false
         },
         "responses": {
+          "200": {
+            "description": "Session(s) revoked and refresh-token cookie cleared."
+          },
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
@@ -2090,7 +2137,7 @@
           }
         },
         "security": [],
-        "summary": "POST /auth/signout",
+        "summary": "Sign out (revoke the current refresh token, or all sessions)",
         "tags": [
           "Auth"
         ]
@@ -2104,19 +2151,68 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
+                "properties": {
+                  "business_type": {
+                    "type": "string"
+                  },
+                  "company_name": {
+                    "type": "string"
+                  },
+                  "domestic_market": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "full_name": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "format": "password",
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "enum": [
+                      "b2b",
+                      "b2c"
+                    ],
+                    "type": "string"
+                  },
+                  "target_markets": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "email",
+                  "password",
+                  "full_name",
+                  "role"
+                ],
                 "type": "object"
               }
             }
           },
-          "required": false
+          "required": true
         },
         "responses": {
+          "201": {
+            "description": "Account created; verification email sent."
+          },
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Email already registered (and verified), or a company invite is pending."
           },
           "422": {
             "$ref": "#/components/responses/ValidationError"
@@ -2132,7 +2228,7 @@
           }
         },
         "security": [],
-        "summary": "POST /auth/signup",
+        "summary": "Register a new user (and optionally a B2B company)",
         "tags": [
           "Auth"
         ]
