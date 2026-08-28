@@ -1,1 +1,1 @@
-{"name":"auth","status":"planned","allowedDependencies":["shared"]}
+{"name":"auth","status":"in-progress","allowedDependencies":["shared"]}
