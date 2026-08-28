@@ -16,7 +16,7 @@ Backend CI runs both semantic OpenAPI validation and artifact staleness validati
 
 ## Verification evidence
 
-- Artifact: 254,110 bytes; 130 paths and 166 documented operations.
+- Artifact: 257,389 bytes; 130 paths and 166 documented operations.
 - Runtime parity: 165 mounted operations matched; the additional operation is `/health`.
 - `npm run verify:full`: 25 suites and 270 tests passed; syntax, OpenAPI, staleness, and lint checks passed.
 - `npm run build:release`: passed.
