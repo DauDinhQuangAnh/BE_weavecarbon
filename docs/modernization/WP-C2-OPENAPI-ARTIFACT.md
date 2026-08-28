@@ -4,7 +4,7 @@ Status: PASS
 
 ## Outcome
 
-The runtime-derived OpenAPI contract now has a deterministic, versioned JSON artifact at `openapi/openapi.json`. The artifact is the backend source consumed by frontend transport type generation.
+The runtime-derived OpenAPI contract now has a deterministic, versioned JSON artifact at `openapi/openapi.json`. Object keys are canonicalized before serialization so Windows and Linux produce identical bytes. The artifact is the backend source consumed by frontend transport type generation.
 
 ## Commands
 

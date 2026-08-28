@@ -7,7 +7,23 @@ process.env.JWT_REFRESH_SECRET ||= 'openapi-export-refresh-only';
 const swaggerSpec = require('../src/config/swagger');
 
 const outputPath = path.join(__dirname, '..', 'openapi', 'openapi.json');
-const expected = `${JSON.stringify(swaggerSpec, null, 2)}\n`;
+const sortForSerialization = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(sortForSerialization);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, sortForSerialization(value[key])])
+    );
+  }
+
+  return value;
+};
+
+const expected = `${JSON.stringify(sortForSerialization(swaggerSpec), null, 2)}\n`;
 const checkOnly = process.argv.includes('--check');
 
 if (checkOnly) {
