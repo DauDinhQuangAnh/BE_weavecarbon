@@ -4,6 +4,12 @@ describe('auth foundation compatibility entrypoints', () => {
     expect(require('../../../src/services/authService/tokens')).toBe(authModule.tokens);
   });
 
+  test('keeps the legacy Google OAuth client path on the modular implementation', () => {
+    const authModule = require('../../../src/modules/auth');
+    expect(require('../../../src/services/googleAuthService'))
+      .toBe(authModule.googleOAuthClient);
+  });
+
   test('keeps the legacy auth service token API available', () => {
     const authService = require('../../../src/services/authService');
     const token = authService.generateAccessToken('user-1', 'user@example.com', ['b2b']);

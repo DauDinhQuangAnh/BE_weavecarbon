@@ -9,12 +9,12 @@ const {
   tokens: authTokens,
   refreshSessionService,
   accountProvisioningService,
-  verificationService
+  verificationService,
+  googleAccountService
 } = require('../modules/auth');
 const {
   DEFAULT_DOMESTIC_MARKET,
-  ensureCompaniesDomesticMarketColumn,
-  normalizeCompanyMarkets
+  ensureCompaniesDomesticMarketColumn
 } = require('../utils/companyMarkets');
 const TRIAL_QUERY_TIMEOUT_MS = 8000;
 
@@ -173,113 +173,13 @@ class AuthService {
   }
 
   async createOrUpdateGoogleUser(email, fullName, avatarUrl, role = 'b2c', options = {}) {
-    const { skipCompanyCreation = false, markEmailVerified = false } = options;
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await ensureCompaniesDomesticMarketColumn(client);
-
-      let user = await this.getUserByEmail(email);
-
-      if (user) {
-        await client.query(
-          `UPDATE users
-           SET avatar_url = $1,
-               email_verified = CASE WHEN $2 THEN true ELSE email_verified END,
-               email_verified_at = CASE
-                                     WHEN $2 THEN COALESCE(email_verified_at, NOW())
-                                     ELSE email_verified_at
-                                   END,
-               updated_at = NOW()
-           WHERE id = $3`,
-          [avatarUrl, markEmailVerified, user.id]
-        );
-
-        await client.query(
-          `UPDATE profiles SET avatar_url = $1, updated_at = NOW() WHERE user_id = $2`,
-          [avatarUrl, user.id]
-        );
-
-        await client.query('COMMIT');
-
-        return await this.getUserById(user.id);
-      }
-
-      const userResult = await client.query(
-        `INSERT INTO users (email, password_hash, full_name, avatar_url, email_verified, email_verified_at, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 THEN NOW() ELSE NULL END, NOW(), NOW())
-         RETURNING id, email, full_name, avatar_url, created_at`,
-        [email, '', fullName, avatarUrl, markEmailVerified] // Empty password for OAuth users
-      );
-
-      user = userResult.rows[0];
-
-      await client.query(
-        `INSERT INTO profiles (user_id, email, full_name, avatar_url, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, NOW(), NOW())
-         RETURNING id, user_id, company_id`,
-        [user.id, email, fullName, avatarUrl]
-      );
-
-      await client.query(
-        `INSERT INTO user_roles (user_id, role, created_at)
-         VALUES ($1, $2, NOW())`,
-        [user.id, role]
-      );
-
-      if (role === 'b2b' && !skipCompanyCreation) {
-        const normalizedMarkets = normalizeCompanyMarkets({
-          currentPlan: 'trial',
-          domesticMarket: DEFAULT_DOMESTIC_MARKET,
-          targetMarkets: []
-        });
-        const companyResult = await client.query(
-          `INSERT INTO companies (name, business_type, current_plan, domestic_market, target_markets, created_at, updated_at)
-           VALUES ($1, 'brand', 'trial', $2, $3, NOW(), NOW())
-           RETURNING id, name, business_type, current_plan, domestic_market, target_markets`,
-          [`${fullName}'s Company`, normalizedMarkets.domestic_market, normalizedMarkets.target_markets]
-        );
-
-        const company = companyResult.rows[0];
-
-        await client.query(
-          `UPDATE profiles SET company_id = $1, updated_at = NOW() WHERE user_id = $2`,
-          [company.id, user.id]
-        );
-
-        await client.query(
-          `INSERT INTO company_members (company_id, user_id, role, status, invited_by, created_at, updated_at)
-           VALUES ($1, $2, 'admin', 'active', $2, NOW(), NOW())`,
-          [company.id, user.id]
-        );
-
-        try {
-          await this.initializeTrial(client, company.id);
-        } catch (trialError) {
-          logger.warn(
-            { err: trialError.message },
-            `[authService] Trial init failed for company ${company.id}`
-          );
-        }
-      }
-
-      if (role === 'b2c') {
-        await client.query(
-          `INSERT INTO user_rewards (user_id, total_points, total_donations, created_at, updated_at)
-           VALUES ($1, 0, 0, NOW(), NOW())`,
-          [user.id]
-        );
-      }
-
-      await client.query('COMMIT');
-
-      return await this.getUserById(user.id);
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    return googleAccountService.createOrUpdateGoogleUser(
+      email,
+      fullName,
+      avatarUrl,
+      role,
+      options
+    );
   }
 
   async handleGoogleAuth({
@@ -289,48 +189,7 @@ class AuthService {
     role = 'b2c',
     intent = 'signin'
   }) {
-    const normalizedEmail = (email || '').trim().toLowerCase();
-    const normalizedIntent = intent === 'signup' ? 'signup' : 'signin';
-    const fallbackRole = normalizedIntent === 'signup' ? 'b2b' : 'b2c';
-    const normalizedRole = ['b2b', 'b2c'].includes(role) ? role : fallbackRole;
-    const effectiveRole = normalizedRole;
-
-    if (!normalizedEmail) {
-      const err = new Error('Missing Google email');
-      err.code = 'GOOGLE_EMAIL_MISSING';
-      err.statusCode = 400;
-      throw err;
-    }
-
-    const existingUser = await this.getUserByEmail(normalizedEmail);
-
-    const isNewUser = !existingUser;
-    const shouldSkipCompanyCreation = isNewUser && effectiveRole === 'b2b';
-
-    const user = await this.createOrUpdateGoogleUser(
-      normalizedEmail,
-      fullName,
-      avatarUrl,
-      effectiveRole,
-      {
-        skipCompanyCreation: shouldSkipCompanyCreation,
-        markEmailVerified: true
-      }
-    );
-
-    const isB2B = Array.isArray(user.roles) && user.roles.includes('b2b');
-    const requiresEmailVerification = !user.email_verified;
-    const shouldSendVerificationEmail = requiresEmailVerification;
-    const blockLoginUntilEmailVerified = requiresEmailVerification;
-
-    return {
-      user,
-      isNewUser,
-      requiresCompanySetup: isB2B && !user.company_id,
-      requiresEmailVerification,
-      shouldSendVerificationEmail,
-      blockLoginUntilEmailVerified
-    };
+    return googleAccountService.handleGoogleAuth({ email, fullName, avatarUrl, role, intent });
   }
 
   async resolveCompanyIdForToken(userId, fallbackCompanyId = null) {

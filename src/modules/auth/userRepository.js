@@ -40,6 +40,39 @@ function createUserRepository(pool = database) {
       return result.rows[0];
     },
 
+    async updateGoogleUser(client, { userId, avatarUrl, markEmailVerified }) {
+      await client.query(
+        `UPDATE users
+         SET avatar_url = $1,
+             email_verified = CASE WHEN $2 THEN true ELSE email_verified END,
+             email_verified_at = CASE
+                                   WHEN $2 THEN COALESCE(email_verified_at, NOW())
+                                   ELSE email_verified_at
+                                 END,
+             updated_at = NOW()
+         WHERE id = $3`,
+        [avatarUrl, markEmailVerified, userId]
+      );
+    },
+
+    async insertGoogleUser(client, {
+      email,
+      fullName,
+      avatarUrl,
+      markEmailVerified
+    }) {
+      const result = await client.query(
+        `INSERT INTO users (
+           email, password_hash, full_name, avatar_url,
+           email_verified, email_verified_at, created_at, updated_at
+         )
+         VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 THEN NOW() ELSE NULL END, NOW(), NOW())
+         RETURNING id, email, full_name, avatar_url, created_at`,
+        [email, '', fullName, avatarUrl, markEmailVerified]
+      );
+      return result.rows[0];
+    },
+
     async insertProfile(client, { userId, email, fullName, companyId }) {
       const columns = ['user_id', 'email', 'full_name'];
       const values = [userId, email, fullName];
@@ -55,6 +88,23 @@ function createUserRepository(pool = database) {
         values
       );
       return result.rows[0];
+    },
+
+    async insertGoogleProfile(client, { userId, email, fullName, avatarUrl }) {
+      const result = await client.query(
+        `INSERT INTO profiles (user_id, email, full_name, avatar_url, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, NOW(), NOW())
+         RETURNING id, user_id, company_id`,
+        [userId, email, fullName, avatarUrl]
+      );
+      return result.rows[0];
+    },
+
+    async updateProfileAvatar(client, userId, avatarUrl) {
+      await client.query(
+        'UPDATE profiles SET avatar_url = $1, updated_at = NOW() WHERE user_id = $2',
+        [avatarUrl, userId]
+      );
     },
 
     async addRole(client, userId, role) {
@@ -167,6 +217,16 @@ function createUserRepository(pool = database) {
          WHERE u.id = $1
          GROUP BY u.id, p.id`,
         [userId]
+      );
+      return result.rows[0] || null;
+    },
+
+    async findCompanyById(companyId, client = pool) {
+      const result = await client.query(
+        `SELECT id, name, business_type, current_plan, domestic_market, target_markets
+         FROM companies
+         WHERE id = $1`,
+        [companyId]
       );
       return result.rows[0] || null;
     },

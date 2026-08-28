@@ -1,10 +1,14 @@
 ﻿const express = require('express');
 const router = express.Router();
 const authService = require('../services/authService');
-const { signupService, verificationService } = require('../modules/auth');
+const {
+  signupService,
+  verificationService,
+  sessionContextService,
+  googleOAuthFlowService
+} = require('../modules/auth');
 const analyticsService = require('../services/analyticsService');
 const emailService = require('../services/emailService');
-const googleAuthService = require('../services/googleAuthService');
 const validate = require('../middleware/validator');
 const pool = require('../config/database');
 const logger = require('../utils/logger');
@@ -35,7 +39,6 @@ const {
   buildFrontendAuthCallbackUrl,
   buildFrontendLoginUrl,
   resolveRequestedFrontendOrigin,
-  resolvePostAuthNextStep,
   resolveRefreshTokenValue,
   extractBearerAccessToken,
   resolveRequestMetadata,
@@ -46,84 +49,14 @@ const {
   buildVerificationResultPage
 } = require('./auth/helpers');
 
-const GOOGLE_OAUTH_CODE_CACHE_TTL_MS = 5 * 60 * 1000;
-const processedGoogleAuthCodes = new Map();
-
-
 router.use((_req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();
 });
 
 
-function cleanupProcessedGoogleAuthCodes() {
-  const now = Date.now();
-  for (const [code, cached] of processedGoogleAuthCodes.entries()) {
-    if (now - cached.createdAt > GOOGLE_OAUTH_CODE_CACHE_TTL_MS) {
-      processedGoogleAuthCodes.delete(code);
-    }
-  }
-}
-
-
 async function resolveAuthSessionContext(user, { updateMembershipLogin = false } = {}) {
-  let company = null;
-  let companyMembership = null;
-  let companyIdForToken = user.company_id;
-
-  const membership = await authService.getPrimaryCompanyMembership(user.id);
-  if (membership) {
-    company = {
-      id: membership.company_id,
-      name: membership.company_name,
-      business_type: membership.business_type,
-      current_plan: membership.current_plan,
-      domestic_market: membership.domestic_market,
-      target_markets: membership.target_markets
-    };
-
-    companyMembership = {
-      company_id: membership.company_id,
-      role: membership.company_role,
-      status: membership.member_status,
-      is_root: membership.company_role === 'admin',
-      membership_inferred: false
-    };
-
-    companyIdForToken = membership.company_id;
-
-    if (updateMembershipLogin && membership.member_status === 'active') {
-      await pool.query(
-        `UPDATE company_members
-         SET last_login = NOW(), updated_at = NOW()
-         WHERE company_id = $1 AND user_id = $2`,
-        [membership.company_id, user.id]
-      );
-    }
-  } else if (user.company_id) {
-    const companyResult = await pool.query(
-      'SELECT id, name, business_type, current_plan, domestic_market, target_markets FROM companies WHERE id = $1',
-      [user.company_id]
-    );
-    company = companyResult.rows[0] || null;
-
-    if (company) {
-      companyMembership = {
-        company_id: company.id,
-        role: 'admin',
-        status: 'active',
-        is_root: true,
-        membership_inferred: true
-      };
-      companyIdForToken = company.id;
-    }
-  }
-
-  return {
-    company,
-    companyMembership,
-    companyIdForToken
-  };
+  return sessionContextService.resolve(user, { updateMembershipLogin });
 }
 
 
@@ -903,24 +836,17 @@ router.get('/accept-company-invite', async (req, res, next) => {
 });
 // 8. GOOGLE OAUTH - Initiate
 router.get('/google', googleAuthLimiter, (req, res) => {
-  const selectedIntent = googleAuthService.normalizeIntent(
-    req.query.intent || req.query.flow || req.query.mode || 'signin'
-  );
-  const defaultRole = selectedIntent === 'signup' ? 'b2b' : 'b2c';
-  const selectedRole = googleAuthService.normalizeRole(req.query.role || defaultRole);
-  const rememberMe = googleAuthService.normalizeRememberMe(
-    req.query.remember_me || req.query.rememberMe || true
-  );
-
-  const authUrl = googleAuthService.getGoogleAuthUrl({
-    role: selectedRole,
-    intent: selectedIntent,
-    frontendOrigin: req.query.frontend_origin || req.query.frontendOrigin || null,
-    rememberMe
-  });
-
   res.set('Cache-Control', 'no-store');
-  res.redirect(authUrl);
+  res.redirect(googleOAuthFlowService.buildAuthorizationUrl({
+    intent: req.query.intent,
+    flow: req.query.flow,
+    mode: req.query.mode,
+    role: req.query.role,
+    remember_me: req.query.remember_me,
+    rememberMe: req.query.rememberMe,
+    frontend_origin: req.query.frontend_origin,
+    frontendOrigin: req.query.frontendOrigin
+  }));
 });
 
 // 9. GOOGLE OAUTH - Callback
@@ -937,73 +863,32 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
     return res.redirect(missingCodeRedirect);
   }
 
-  cleanupProcessedGoogleAuthCodes();
-  const cachedEntry = processedGoogleAuthCodes.get(code);
-  if (cachedEntry) {
-    return res.redirect(cachedEntry.redirectUrl);
-  }
+  const cachedRedirect = googleOAuthFlowService.getCachedRedirect(code);
+  if (cachedRedirect) return res.redirect(cachedRedirect);
 
   try {
-    const parsedState = googleAuthService.parseState(state);
-    if (!parsedState.valid) {
-      const err = new Error('Invalid OAuth state');
-      err.code = 'INVALID_OAUTH_STATE';
-      throw err;
-    }
-
-    const { role, intent, frontendOrigin, rememberMe } = parsedState;
-
-    // Exchange code for tokens
-    const googleTokens = await googleAuthService.getGoogleTokens(code);
-
-    // Get user info from Google
-    const googleUser = await googleAuthService.getGoogleUserInfo(googleTokens.access_token);
-
     const {
+      kind,
       user,
       isNewUser,
       requiresCompanySetup,
       requiresEmailVerification,
-      shouldSendVerificationEmail,
-      blockLoginUntilEmailVerified
-    } = await authService.handleGoogleAuth({
-      email: googleUser.email,
-      fullName: googleUser.name,
-      avatarUrl: googleUser.picture,
+      verificationEmailSent,
       role,
-      intent
+      intent,
+      frontendOrigin,
+      rememberMe,
+      accessToken,
+      refreshToken,
+      shouldSetupCompany,
+      nextStep
+    } = await googleOAuthFlowService.authenticate({
+      code,
+      state,
+      requestMetadata: resolveRequestMetadata(req)
     });
 
-    let verificationEmailSent = false;
-    if (shouldSendVerificationEmail) {
-      try {
-        const verificationToken = authService.generateVerificationToken(user.email);
-        verificationEmailSent = await emailService.sendVerificationEmail(
-          user.email,
-          verificationToken,
-          user.full_name,
-          null,
-          { frontendOrigin }
-        );
-      } catch (sendError) {
-        logger.error({ err: sendError }, 'Failed to send Google verification email');
-      }
-    }
-
-    if (isNewUser) {
-      await safeTrackAnalyticsEvent({
-        event_name: 'sign_up',
-        user_id: user.id,
-        company_id: user.company_id || null,
-        payload: {
-          method: 'google',
-          intent: 'signup',
-          entry_account_type: resolveEntryAccountType({ role, companyId: user.company_id || null })
-        }
-      });
-    }
-
-    if (blockLoginUntilEmailVerified) {
+    if (kind === 'verification_required') {
       clearRefreshTokenCookie(res);
       const verificationRequiredRedirect = buildFrontendAuthCallbackUrl({
         provider: 'google',
@@ -1017,55 +902,17 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
         requires_company_setup: requiresCompanySetup ? 1 : 0,
         next_step: 'email_verification'
       }, frontendOrigin);
-
-      processedGoogleAuthCodes.set(code, {
-        redirectUrl: verificationRequiredRedirect,
-        createdAt: Date.now()
-      });
-
+      googleOAuthFlowService.cacheRedirect(code, verificationRequiredRedirect);
       return res.redirect(verificationRequiredRedirect);
     }
 
-    const { companyIdForToken } = await resolveAuthSessionContext(user, {
-      updateMembershipLogin: true
-    });
-    const { requiresCompanySetup: shouldSetupCompany, nextStep } = resolvePostAuthNextStep(user, companyIdForToken);
-
-    await authService.markUserLoggedIn(user.id);
-    await safeTrackAnalyticsEvent({
-      event_name: 'login',
-      user_id: user.id,
-      company_id: companyIdForToken,
-      payload: {
-        method: 'google',
-        intent: 'signin',
-        entry_account_type: resolveEntryAccountType({
-          role,
-          roles: user.roles,
-          companyId: companyIdForToken
-        })
-      }
-    });
-
-    // Generate app tokens
-    const accessToken = authService.generateAccessToken(
-      user.id,
-      user.email,
-      user.roles,
-      companyIdForToken,
-      user.is_demo_user || false
-    );
     const tokenPayload = buildTokenPayload(accessToken, null, { includeRefreshToken: false });
-    const refreshToken = authService.generateRefreshToken(user.id, rememberMe);
-    try {
-      await authService.storeRefreshToken(refreshToken, user.id, resolveRequestMetadata(req));
+    if (refreshToken) {
       setRefreshTokenCookie(res, refreshToken, { rememberMe });
-    } catch (sessionError) {
-      logger.error({ err: sessionError }, '[auth] Failed to issue Google cookie session');
+    } else {
       clearRefreshTokenCookie(res);
     }
 
-    // Redirect to frontend with public callback metadata only. Session is carried by httpOnly cookie.
     const redirectUrl = buildFrontendAuthCallbackUrl({
       access_token: accessToken,
       token_type: tokenPayload.token_type,
@@ -1082,15 +929,10 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
       email_verified: user.email_verified ? 1 : 0,
       next_step: nextStep
     }, frontendOrigin);
-
-    processedGoogleAuthCodes.set(code, {
-      redirectUrl,
-      createdAt: Date.now()
-    });
-
-    res.redirect(redirectUrl);
+    googleOAuthFlowService.cacheRedirect(code, redirectUrl);
+    return res.redirect(redirectUrl);
   } catch (error) {
-    const parsedState = googleAuthService.parseState(state);
+    const parsedState = googleOAuthFlowService.parseState(state);
     const errorCode = error.code || 'GOOGLE_AUTH_FAILED';
     const errorDescription =
       GOOGLE_AUTH_ERROR_MESSAGES[errorCode] || GOOGLE_AUTH_ERROR_MESSAGES.GOOGLE_AUTH_FAILED;
@@ -1100,13 +942,8 @@ router.get('/google/callback', googleAuthLimiter, async (req, res) => {
       role: parsedState.valid ? parsedState.role : undefined,
       type: parsedState.valid ? parsedState.role : undefined
     }, parsedState.frontendOrigin);
-
-    processedGoogleAuthCodes.set(code, {
-      redirectUrl: errorUrl,
-      createdAt: Date.now()
-    });
-
-    res.redirect(errorUrl);
+    googleOAuthFlowService.cacheRedirect(code, errorUrl);
+    return res.redirect(errorUrl);
   }
 });
 

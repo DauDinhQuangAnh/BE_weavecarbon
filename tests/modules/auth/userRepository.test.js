@@ -67,4 +67,52 @@ describe('auth user repository', () => {
     expect(sql).toContain("CASE WHEN cm.status = 'active' THEN 0 ELSE 1 END");
     expect(params).toEqual(['user-1', true]);
   });
+
+  test('creates an OAuth user without a password and preserves verification intent', async () => {
+    const created = { id: 'user-1', email: 'user@example.com' };
+    const client = { query: jest.fn().mockResolvedValue({ rows: [created] }) };
+    const repository = createUserRepository();
+
+    await expect(repository.insertGoogleUser(client, {
+      email: 'user@example.com',
+      fullName: 'User',
+      avatarUrl: 'https://example.com/avatar.png',
+      markEmailVerified: true
+    })).resolves.toBe(created);
+    const [sql, params] = client.query.mock.calls[0];
+    expect(sql).toContain('password_hash');
+    expect(sql).toContain('CASE WHEN $5 THEN NOW() ELSE NULL END');
+    expect(params).toEqual([
+      'user@example.com',
+      '',
+      'User',
+      'https://example.com/avatar.png',
+      true
+    ]);
+  });
+
+  test('updates OAuth identity data without reverting an existing verification', async () => {
+    const client = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+    const repository = createUserRepository();
+
+    await repository.updateGoogleUser(client, {
+      userId: 'user-1',
+      avatarUrl: 'https://example.com/avatar.png',
+      markEmailVerified: false
+    });
+    const [sql, params] = client.query.mock.calls[0];
+    expect(sql).toContain('CASE WHEN $2 THEN true ELSE email_verified END');
+    expect(params).toEqual(['https://example.com/avatar.png', false, 'user-1']);
+  });
+
+  test('loads the legacy profile company through the repository boundary', async () => {
+    const company = { id: 'company-1', name: 'Example Co' };
+    const client = { query: jest.fn().mockResolvedValue({ rows: [company] }) };
+    const repository = createUserRepository();
+
+    await expect(repository.findCompanyById('company-1', client)).resolves.toBe(company);
+    const [sql, params] = client.query.mock.calls[0];
+    expect(sql).toContain('FROM companies');
+    expect(params).toEqual(['company-1']);
+  });
 });

@@ -12,6 +12,19 @@ const {
   createVerificationService,
   verificationService
 } = require('./verificationService');
+const { GoogleOAuthClient, googleOAuthClient } = require('./googleOAuthClient');
+const {
+  createGoogleAccountService,
+  googleAccountService
+} = require('./googleAccountService');
+const {
+  createSessionContextService,
+  sessionContextService
+} = require('./sessionContextService');
+const {
+  createGoogleOAuthFlowService,
+  googleOAuthFlowService
+} = require('./googleOAuthFlowService');
 
 module.exports = {
   tokens,
@@ -22,5 +35,13 @@ module.exports = {
   createSignupService,
   signupService,
   createVerificationService,
-  verificationService
+  verificationService,
+  GoogleOAuthClient,
+  googleOAuthClient,
+  createGoogleAccountService,
+  googleAccountService,
+  createSessionContextService,
+  sessionContextService,
+  createGoogleOAuthFlowService,
+  googleOAuthFlowService
 };
