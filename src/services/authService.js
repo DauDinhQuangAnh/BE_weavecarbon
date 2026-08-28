@@ -5,7 +5,11 @@ const subscriptionService = require('./subscriptionService');
 const b2cDefaultsService = require('./b2cDefaultsService');
 const logger = require('../utils/logger');
 const { seedDemoB2BData } = require('./demoB2BSeeder');
-const { tokens: authTokens, refreshSessionService } = require('../modules/auth');
+const {
+  tokens: authTokens,
+  refreshSessionService,
+  accountProvisioningService
+} = require('../modules/auth');
 const {
   DEFAULT_DOMESTIC_MARKET,
   ensureCompaniesDomesticMarketColumn,
@@ -155,134 +159,16 @@ class AuthService {
   }
 
   async createInvitedCompanyUser({ client, email, fullName, companyId }) {
-    const temporaryPassword = this.generateSystemPassword();
-    const hashedPassword = await this.hashPassword(temporaryPassword);
-    const normalizedEmail = String(email || '').trim().toLowerCase();
-    const normalizedFullName = String(fullName || '').trim();
-
-    const userResult = await client.query(
-      `INSERT INTO users (email, password_hash, full_name, email_verified, created_at, updated_at)
-       VALUES ($1, $2, $3, false, NOW(), NOW())
-       RETURNING id, email, full_name, email_verified, created_at`,
-      [normalizedEmail, hashedPassword, normalizedFullName]
-    );
-    const user = userResult.rows[0];
-
-    const profileResult = await client.query(
-      `INSERT INTO profiles (user_id, email, full_name, company_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, NOW(), NOW())
-       RETURNING id, user_id, email, full_name, company_id`,
-      [user.id, normalizedEmail, normalizedFullName, companyId]
-    );
-
-    await client.query(
-      `INSERT INTO user_roles (user_id, role, created_at)
-       VALUES ($1, 'b2b', NOW())`,
-      [user.id]
-    );
-
-    return {
-      user,
-      profile: profileResult.rows[0],
-      temporaryPassword
-    };
+    return accountProvisioningService.createInvitedCompanyUser({
+      client,
+      email,
+      fullName,
+      companyId
+    });
   }
 
   async createUser(email, password, fullName, role, companyData = null) {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await ensureCompaniesDomesticMarketColumn(client);
-
-      const hashedPassword = await this.hashPassword(password);
-
-      const userResult = await client.query(
-        `INSERT INTO users (email, password_hash, full_name, email_verified, created_at, updated_at)
-         VALUES ($1, $2, $3, false, NOW(), NOW())
-         RETURNING id, email, full_name, email_verified, created_at`,
-        [email, hashedPassword, fullName]
-      );
-
-      const user = userResult.rows[0];
-
-      const profileResult = await client.query(
-        `INSERT INTO profiles (user_id, email, full_name, created_at, updated_at)
-         VALUES ($1, $2, $3, NOW(), NOW())
-         RETURNING id, user_id, email, full_name, company_id`,
-        [user.id, email, fullName]
-      );
-
-      const profile = profileResult.rows[0];
-
-      await client.query(
-        `INSERT INTO user_roles (user_id, role, created_at)
-         VALUES ($1, $2, NOW())`,
-        [user.id, role]
-      );
-
-      let company = null;
-
-      if (role === 'b2b' && companyData) {
-        const normalizedMarkets = normalizeCompanyMarkets({
-          currentPlan: 'trial',
-          domesticMarket: companyData.domestic_market,
-          targetMarkets: companyData.target_markets
-        });
-        const companyResult = await client.query(
-          `INSERT INTO companies (name, business_type, current_plan, domestic_market, target_markets, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-           RETURNING id, name, business_type, current_plan, domestic_market, target_markets`,
-          [
-            companyData.name,
-            companyData.business_type,
-            'trial',
-            normalizedMarkets.domestic_market,
-            normalizedMarkets.target_markets
-          ]
-        );
-
-        company = companyResult.rows[0];
-
-        await client.query(
-          `UPDATE profiles SET company_id = $1, updated_at = NOW() WHERE user_id = $2`,
-          [company.id, user.id]
-        );
-
-        profile.company_id = company.id;
-
-        await client.query(
-          `INSERT INTO company_members (company_id, user_id, role, status, invited_by, created_at, updated_at)
-           VALUES ($1, $2, 'admin', 'active', $2, NOW(), NOW())`,
-          [company.id, user.id]
-        );
-
-        try {
-          await this.initializeTrial(client, company.id);
-        } catch (trialError) {
-          logger.warn(
-            { err: trialError.message },
-            `[authService] Trial init failed for company ${company.id}`
-          );
-        }
-      }
-
-      if (role === 'b2c') {
-        await client.query(
-          `INSERT INTO user_rewards (user_id, total_points, total_donations, created_at, updated_at)
-           VALUES ($1, 0, 0, NOW(), NOW())`,
-          [user.id]
-        );
-      }
-
-      await client.query('COMMIT');
-
-      return { user, profile, company };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    return accountProvisioningService.createUser(email, password, fullName, role, companyData);
   }
 
   async createOrUpdateGoogleUser(email, fullName, avatarUrl, role = 'b2c', options = {}) {
@@ -461,89 +347,11 @@ class AuthService {
   }
 
   async getUserByEmail(email) {
-    const result = await pool.query(
-      `SELECT u.id, u.email, u.password_hash, u.full_name, u.avatar_url, 
-              u.email_verified, u.failed_login_attempts, u.locked_until,
-              u.is_demo_user, u.created_at,
-              p.id as profile_id, p.company_id,
-              array_agg(DISTINCT ur.role) as roles
-       FROM users u
-       LEFT JOIN profiles p ON p.user_id = u.id
-       LEFT JOIN user_roles ur ON ur.user_id = u.id
-       WHERE u.email = $1
-       GROUP BY u.id, p.id`,
-      [email]
-    );
-
-    if (result.rows.length === 0) return null;
-
-    const user = result.rows[0];
-
-    let roles = [];
-    if (user.roles) {
-      if (typeof user.roles === 'string') {
-        // Remove curly braces and split
-        roles = user.roles.replace(/[{}]/g, '').split(',').filter(r => r && r !== 'NULL');
-      } else if (Array.isArray(user.roles)) {
-        roles = user.roles.filter(r => r !== null && r !== undefined);
-      }
-    }
-
-    return {
-      id: user.id,
-      email: user.email,
-      full_name: user.full_name,
-      avatar_url: user.avatar_url,
-      company_id: user.company_id,
-      is_demo_user: user.is_demo_user,
-      password_hash: user.password_hash,
-      failed_login_attempts: user.failed_login_attempts || 0,
-      locked_until: user.locked_until,
-      roles: roles,
-      email_verified: user.email_verified,
-      created_at: user.created_at
-    };
+    return accountProvisioningService.getUserByEmail(email);
   }
 
   async getUserById(userId) {
-    const result = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.avatar_url,
-              u.email_verified, u.is_demo_user, u.created_at,
-              p.id as profile_id, p.company_id,
-              array_agg(DISTINCT ur.role) as roles
-       FROM users u
-       LEFT JOIN profiles p ON p.user_id = u.id
-       LEFT JOIN user_roles ur ON ur.user_id = u.id
-       WHERE u.id = $1
-       GROUP BY u.id, p.id`,
-      [userId]
-    );
-
-    if (result.rows.length === 0) return null;
-
-    const user = result.rows[0];
-
-    let roles = [];
-    if (user.roles) {
-      if (typeof user.roles === 'string') {
-        // Remove curly braces and split
-        roles = user.roles.replace(/[{}]/g, '').split(',').filter(r => r && r !== 'NULL');
-      } else if (Array.isArray(user.roles)) {
-        roles = user.roles.filter(r => r !== null && r !== undefined);
-      }
-    }
-
-    return {
-      id: user.id,
-      email: user.email,
-      full_name: user.full_name,
-      avatar_url: user.avatar_url,
-      company_id: user.company_id,
-      is_demo_user: user.is_demo_user,
-      roles: roles,
-      email_verified: user.email_verified,
-      created_at: user.created_at
-    };
+    return accountProvisioningService.getUserById(userId);
   }
 
   async markEmailVerified(userId) {
@@ -942,40 +750,7 @@ class AuthService {
   }
 
   async getPrimaryCompanyMembership(userId, options = {}) {
-    const { includeInactive = false } = options;
-    const client = await pool.connect();
-    try {
-      await ensureCompaniesDomesticMarketColumn(client);
-      const result = await client.query(
-        `SELECT 
-         cm.company_id,
-         cm.role as company_role,
-         cm.status as member_status,
-         cm.invited_by,
-         cm.last_login,
-         cm.created_at as member_created_at,
-         cm.updated_at as member_updated_at,
-         c.name as company_name,
-         c.business_type,
-         c.current_plan,
-         c.domestic_market,
-         c.target_markets
-       FROM company_members cm
-       JOIN companies c ON c.id = cm.company_id
-       WHERE cm.user_id = $1
-         AND ($2::boolean OR cm.status = 'active')
-       ORDER BY
-         CASE WHEN cm.status = 'active' THEN 0 ELSE 1 END,
-         CASE WHEN cm.role = 'admin' THEN 0 ELSE 1 END,
-         cm.created_at DESC
-       LIMIT 1`,
-        [userId, includeInactive]
-      );
-
-      return result.rows[0] || null;
-    } finally {
-      client.release();
-    }
+    return accountProvisioningService.getPrimaryCompanyMembership(userId, options);
   }
 }
 

@@ -1,6 +1,7 @@
 ﻿const express = require('express');
 const router = express.Router();
 const authService = require('../services/authService');
+const { signupService } = require('../modules/auth');
 const analyticsService = require('../services/analyticsService');
 const emailService = require('../services/emailService');
 const googleAuthService = require('../services/googleAuthService');
@@ -272,66 +273,16 @@ router.post('/signup', signupLimiter, signupValidation, validate, async (req, re
   try {
     const { email, password, full_name, role, company_name, business_type, domestic_market, target_markets } = req.body;
 
-    // Check if email exists
-    const existingUser = await authService.getUserByEmail(email);
-    if (existingUser) {
-      // If email exists but NOT verified, allow re-registration (delete old account)
-      if (!existingUser.email_verified) {
-        const pendingMembership = await authService.getPrimaryCompanyMembership(existingUser.id, {
-          includeInactive: true
-        });
-        if (pendingMembership?.member_status === 'invited') {
-          return res.status(409).json({
-            success: false,
-            error: {
-              code: 'INVITED_ACCOUNT_PENDING_ACTIVATION',
-              message: 'This email already has a pending company invite. Please use the invite email to continue.'
-            }
-          });
-        }
-
-        logger.info({ email }, '[auth] Email exists but is not verified. Deleting old account for re-registration...');
-
-        // Delete old unverified account
-        await pool.query('DELETE FROM users WHERE id = $1', [existingUser.id]);
-
-        logger.info('[auth] Old unverified account deleted. Proceeding with new registration.');
-      } else {
-        // Email verified - cannot re-register
-        return res.status(409).json({
-          success: false,
-          error: {
-            code: 'EMAIL_EXISTS',
-            message: 'Email already registered and verified. Please login instead.'
-          }
-        });
-      }
-    }
-
-    // Create user
-    const hasCompanyInfo =
-      role === 'b2b' &&
-      typeof company_name === 'string' &&
-      company_name.trim().length > 0 &&
-      typeof business_type === 'string' &&
-      business_type.trim().length > 0;
-
-    const companyData = hasCompanyInfo
-      ? {
-          name: company_name.trim(),
-          business_type,
-          domestic_market,
-          target_markets
-        }
-      : null;
-
-    const { user, profile, company } = await authService.createUser(
+    const { user, profile, company } = await signupService.register({
       email,
       password,
-      full_name,
+      fullName: full_name,
       role,
-      companyData
-    );
+      companyName: company_name,
+      businessType: business_type,
+      domesticMarket: domestic_market,
+      targetMarkets: target_markets
+    });
 
     // Generate verification token
     const verificationToken = authService.generateVerificationToken(email);
