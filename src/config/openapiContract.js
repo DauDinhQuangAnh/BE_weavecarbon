@@ -90,7 +90,12 @@ const PRODUCT_MUTATION_SCHEMA = {
     accessories: { type: 'array', items: { type: 'object', additionalProperties: true } },
     productionProcesses: { type: 'array', items: { type: 'object', additionalProperties: true } },
     energySources: { type: 'array', items: { type: 'object', additionalProperties: true } },
-    carbonResults: { type: 'object', additionalProperties: true },
+    carbonResults: {
+      type: 'object',
+      additionalProperties: true,
+      deprecated: true,
+      description: 'Optional client preview only. The server recomputes and replaces this value.'
+    },
     save_mode: { type: 'string', enum: ['draft', 'publish'] }
   },
   additionalProperties: true,
@@ -104,7 +109,57 @@ const PRODUCT_MUTATION_SCHEMA = {
   }
 };
 
+const CARBON_ENGINE_INPUT_SCHEMA = {
+  type: 'object',
+  required: [
+    'unitMassKg',
+    'quantity',
+    'materials',
+    'accessories',
+    'processFactorIds',
+    'energyMix',
+    'transport'
+  ],
+  properties: {
+    unitMassKg: { type: 'number', minimum: 0 },
+    quantity: { type: 'number', minimum: 0 },
+    reportingActorRole: {
+      type: 'string',
+      enum: ['manufacturer', 'brand', 'supplier', 'other']
+    },
+    productCategory: { type: 'string', enum: ['textile'] },
+    materials: { type: 'array', items: { type: 'object', additionalProperties: true } },
+    accessories: { type: 'array', items: { type: 'object', additionalProperties: true } },
+    packaging: { type: 'object', nullable: true, additionalProperties: true },
+    includePackagingFallbackNote: { type: 'boolean' },
+    processFactorIds: { type: 'array', items: { type: 'string' } },
+    energyMix: { type: 'array', items: { type: 'object', additionalProperties: true } },
+    manufacturingGeography: { type: 'string' },
+    originGeography: { type: 'string' },
+    destinationMarket: { type: 'string' },
+    transport: { type: 'array', items: { type: 'object', additionalProperties: true } }
+  },
+  additionalProperties: false
+};
+
 const REQUEST_BODY_OVERRIDES = {
+  'POST /carbon-calculations': {
+    type: 'object',
+    required: ['calculation_type', 'carbon_input'],
+    properties: {
+      calculation_type: {
+        type: 'string',
+        enum: ['product', 'shipment', 'facility', 'annual', 'other']
+      },
+      product_id: { type: 'string', format: 'uuid', nullable: true },
+      shipment_id: { type: 'string', format: 'uuid', nullable: true },
+      period_start: { type: 'string', format: 'date', nullable: true },
+      period_end: { type: 'string', format: 'date', nullable: true },
+      carbon_input: CARBON_ENGINE_INPUT_SCHEMA,
+      notes: { type: 'string', nullable: true }
+    },
+    additionalProperties: false
+  },
   'POST /products': PRODUCT_MUTATION_SCHEMA,
   'PUT /products/{id}': PRODUCT_MUTATION_SCHEMA,
   'PATCH /products/{id}/status': {

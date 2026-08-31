@@ -3,6 +3,7 @@ jest.mock('../../../src/modules/shared/database', () => (
 ));
 
 const { createCarbonService } = require('../../../src/modules/carbon');
+const inputFixtures = require('../../fixtures/carbon/v1/inputs.json');
 
 function createRepository() {
   return {
@@ -63,7 +64,7 @@ describe('carbonService', () => {
     });
   });
 
-  test('normalizes mixed calculation field styles and preserves defaults', async () => {
+  test('recomputes a calculation and ignores tampered client totals before persistence', async () => {
     const repository = createRepository();
     repository.createCalculation.mockImplementation(async (values) => ({
       id: 'calc-1',
@@ -82,7 +83,13 @@ describe('carbonService', () => {
     await service.createCalculation({
       companyId: 'company-1',
       userId: 'user-1',
-      payload: { productId: 'product-1', calculation_type: 'product', totalCo2e: 9 }
+      payload: {
+        productId: 'product-1',
+        calculation_type: 'product',
+        carbon_input: inputFixtures.cases[0].input,
+        totalCo2e: 999999,
+        materialsCo2e: 999999
+      }
     });
 
     expect(repository.createCalculation).toHaveBeenCalledWith(expect.objectContaining({
@@ -91,12 +98,13 @@ describe('carbonService', () => {
       productId: 'product-1',
       shipmentId: null,
       calculationType: 'product',
-      materialsCo2e: 0,
-      productionCo2e: 0,
-      transportCo2e: 0,
-      packagingCo2e: 0,
-      totalCo2e: 9,
-      emissionFactorVersion: '2024'
+      materialsCo2e: 2.864,
+      productionCo2e: 1.591,
+      transportCo2e: 0.106,
+      packagingCo2e: 0.017,
+      totalCo2e: 4.577,
+      methodology: 'WeaveCarbon Attributional Textile PCF v2.1 - climate-only partial CFP',
+      emissionFactorVersion: 'scope-quality-rss-1.0.0'
     }));
   });
 
@@ -111,7 +119,7 @@ describe('carbonService', () => {
     })).rejects.toMatchObject({
       statusCode: 400,
       code: 'VALIDATION_ERROR',
-      message: 'calculation_type and total_co2e are required'
+      message: 'calculation_type and carbon_input are required'
     });
     expect(repository.createCalculation).not.toHaveBeenCalled();
   });

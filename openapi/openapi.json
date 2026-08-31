@@ -3109,7 +3109,136 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
+                "additionalProperties": false,
+                "properties": {
+                  "calculation_type": {
+                    "enum": [
+                      "product",
+                      "shipment",
+                      "facility",
+                      "annual",
+                      "other"
+                    ],
+                    "type": "string"
+                  },
+                  "carbon_input": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "accessories": {
+                        "items": {
+                          "additionalProperties": true,
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "destinationMarket": {
+                        "type": "string"
+                      },
+                      "energyMix": {
+                        "items": {
+                          "additionalProperties": true,
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "includePackagingFallbackNote": {
+                        "type": "boolean"
+                      },
+                      "manufacturingGeography": {
+                        "type": "string"
+                      },
+                      "materials": {
+                        "items": {
+                          "additionalProperties": true,
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "originGeography": {
+                        "type": "string"
+                      },
+                      "packaging": {
+                        "additionalProperties": true,
+                        "nullable": true,
+                        "type": "object"
+                      },
+                      "processFactorIds": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "productCategory": {
+                        "enum": [
+                          "textile"
+                        ],
+                        "type": "string"
+                      },
+                      "quantity": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "reportingActorRole": {
+                        "enum": [
+                          "manufacturer",
+                          "brand",
+                          "supplier",
+                          "other"
+                        ],
+                        "type": "string"
+                      },
+                      "transport": {
+                        "items": {
+                          "additionalProperties": true,
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "unitMassKg": {
+                        "minimum": 0,
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "unitMassKg",
+                      "quantity",
+                      "materials",
+                      "accessories",
+                      "processFactorIds",
+                      "energyMix",
+                      "transport"
+                    ],
+                    "type": "object"
+                  },
+                  "notes": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "period_end": {
+                    "format": "date",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "period_start": {
+                    "format": "date",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "product_id": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "shipment_id": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "calculation_type",
+                  "carbon_input"
+                ],
                 "type": "object"
               }
             }
@@ -7822,6 +7951,8 @@
                   },
                   "carbonResults": {
                     "additionalProperties": true,
+                    "deprecated": true,
+                    "description": "Optional client preview only. The server recomputes and replaces this value.",
                     "type": "object"
                   },
                   "energySources": {
@@ -8326,6 +8457,8 @@
                   },
                   "carbonResults": {
                     "additionalProperties": true,
+                    "deprecated": true,
+                    "description": "Optional client preview only. The server recomputes and replaces this value.",
                     "type": "object"
                   },
                   "energySources": {

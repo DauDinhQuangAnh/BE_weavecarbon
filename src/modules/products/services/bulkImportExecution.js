@@ -2,10 +2,22 @@ const pool = require('../../shared/database');
 const domesticComplianceService = require('../../shared/domesticCompliance');
 const { ensureShipmentSimulationSchema } = require('../../shared/shipmentSimulation');
 const { toNumber, toPayloadObject, isDemoUser } = require('./shared');
-const { computeDataConfidenceScore, buildCarbonResultsWithConfidence } = require('./carbonScoring');
 const { createShipmentFromProduct } = require('./shipmentSync');
+const {
+    calculateAuthoritativeProductCarbon,
+    stripClientCarbonOutputs
+} = require('../../carbon');
 
-async function bulkImport(companyId, userId, rows, saveMode = 'draft') {
+async function bulkImport(
+    companyId,
+    userId,
+    rows,
+    saveMode = 'draft',
+    {
+        calculateProductCarbon = calculateAuthoritativeProductCarbon,
+        sanitizeCarbonPayload = stripClientCarbonOutputs
+    } = {}
+) {
     await ensureShipmentSimulationSchema();
 
     const client = await pool.connect();
@@ -81,22 +93,12 @@ async function bulkImport(companyId, userId, rows, saveMode = 'draft') {
                     Number.isFinite(rawWeightPerUnit) && rawWeightPerUnit > 0 ?
                     rawWeightPerUnit / 1000 :
                     (Number.isFinite(directWeightKg) && directWeightKg > 0 ? directWeightKg : null);
-                const carbonResults = payload.carbonResults ?? payload.carbon_results;
-                const snapshotPayload = {
-                    ...payload
-                };
-                delete snapshotPayload.carbonResults;
-                delete snapshotPayload.carbon_results;
+                const authoritativeCarbon = calculateProductCarbon(payload);
+                const snapshotPayload = sanitizeCarbonPayload(payload);
                 delete snapshotPayload.save_mode;
 
-                const computedConfidenceScore = computeDataConfidenceScore({
-                    ...snapshotPayload,
-                    carbonResults
-                });
-                const normalizedCarbonResults = buildCarbonResultsWithConfidence(
-                    carbonResults,
-                    computedConfidenceScore
-                );
+                const normalizedCarbonResults = authoritativeCarbon.result;
+                const computedConfidenceScore = normalizedCarbonResults.confidenceScore;
                 const totalCo2e = normalizedCarbonResults?.perProduct?.total || 0;
                 const materialsCo2e = normalizedCarbonResults?.perProduct?.materials || 0;
                 const productionCo2e = normalizedCarbonResults?.perProduct?.production || 0;
@@ -128,6 +130,7 @@ async function bulkImport(companyId, userId, rows, saveMode = 'draft') {
 
                 const fullPayload = {
                     ...snapshotPayload,
+                    carbonInput: authoritativeCarbon.input,
                     carbonResults: normalizedCarbonResults
                 };
 

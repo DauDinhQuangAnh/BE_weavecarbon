@@ -1,5 +1,6 @@
 const { carbonRepository } = require('./repository');
 const { createAppError } = require('../shared/errors');
+const { calculateCarbonFootprint } = require('./core');
 
 const FUEL_EMISSION_FACTORS = {
   diesel: 2.6880,
@@ -33,7 +34,10 @@ function validationError(message) {
   return createAppError(message, { statusCode: 400, code: 'VALIDATION_ERROR' });
 }
 
-function createCarbonService({ repository = carbonRepository } = {}) {
+function createCarbonService({
+  repository = carbonRepository,
+  calculateCarbon = calculateCarbonFootprint
+} = {}) {
   return {
     async listCalculations({ companyId, productId, calculationType, page, limit }) {
       const result = await repository.listCalculations({
@@ -51,9 +55,17 @@ function createCarbonService({ repository = carbonRepository } = {}) {
 
     async createCalculation({ companyId, userId, payload }) {
       const calculationType = payload.calculationType ?? payload.calculation_type;
-      const totalCo2e = payload.totalCo2e ?? payload.total_co2e;
-      if (!calculationType || totalCo2e === undefined || totalCo2e === null) {
-        throw validationError('calculation_type and total_co2e are required');
+      const carbonInput = payload.carbonInput ?? payload.carbon_input ?? payload.input;
+      if (!calculationType || !carbonInput) {
+        throw validationError('calculation_type and carbon_input are required');
+      }
+
+      let carbonResult;
+      try {
+        carbonResult = calculateCarbon(carbonInput);
+      } catch (error) {
+        if (!(error instanceof TypeError)) throw error;
+        throw validationError(error.message);
       }
 
       const row = await repository.createCalculation({
@@ -64,17 +76,19 @@ function createCarbonService({ repository = carbonRepository } = {}) {
         calculationType,
         periodStart: payload.periodStart ?? payload.period_start ?? null,
         periodEnd: payload.periodEnd ?? payload.period_end ?? null,
-        materialsCo2e: payload.materialsCo2e ?? payload.materials_co2e ?? 0,
-        productionCo2e: payload.productionCo2e ?? payload.production_co2e ?? 0,
-        transportCo2e: payload.transportCo2e ?? payload.transport_co2e ?? 0,
-        packagingCo2e: payload.packagingCo2e ?? payload.packaging_co2e ?? 0,
-        totalCo2e,
-        methodology: payload.methodology || null,
-        emissionFactorVersion:
-          payload.emissionFactorVersion ?? payload.emission_factor_version ?? '2024',
+        materialsCo2e: carbonResult.perProduct.materials,
+        productionCo2e: carbonResult.perProduct.production,
+        transportCo2e: carbonResult.perProduct.transport,
+        packagingCo2e: carbonResult.perProduct.packaging,
+        totalCo2e: carbonResult.perProduct.total,
+        methodology: carbonResult.methodologyVersion,
+        emissionFactorVersion: carbonResult.trace.ruleEngineVersion,
         notes: payload.notes || null
       });
-      return formatCalculation(row);
+      return {
+        ...formatCalculation(row),
+        carbonResult
+      };
     },
 
     async listElectricityInvoices({ companyId, page, limit }) {

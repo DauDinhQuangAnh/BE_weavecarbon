@@ -14,7 +14,6 @@ const {
 } = require('./services/shared');
 const { validateBulkImportRows } = require('./services/bulkImportValidation');
 const {
-    buildCarbonResultsWithConfidence,
     computeDataConfidenceScore
 } = require('./services/carbonScoring');
 const {
@@ -26,18 +25,26 @@ const {
     extractV2MetadataFromPayload
 } = require('./services/payloadExtraction');
 const { bulkImport: executeBulkImport } = require('./services/bulkImportExecution');
+const {
+    calculateAuthoritativeProductCarbon,
+    stripClientCarbonOutputs
+} = require('../carbon');
 
 class ProductsService {
     constructor({
         database = pool,
         complianceService = domesticComplianceService,
         ensureSimulationSchema = ensureShipmentSimulationSchema,
-        bulkImportProducts = executeBulkImport
+        bulkImportProducts = executeBulkImport,
+        calculateProductCarbon = calculateAuthoritativeProductCarbon,
+        sanitizeCarbonPayload = stripClientCarbonOutputs
     } = {}) {
         this.database = database;
         this.complianceService = complianceService;
         this.ensureSimulationSchema = ensureSimulationSchema;
         this.bulkImportProducts = bulkImportProducts;
+        this.calculateProductCarbon = calculateProductCarbon;
+        this.sanitizeCarbonPayload = sanitizeCarbonPayload;
     }
 
     /**
@@ -432,13 +439,13 @@ class ProductsService {
      */
     async createProduct(companyId, userId, productData) {
         await this.ensureSimulationSchema();
+        const authoritativeCarbon = this.calculateProductCarbon(productData);
         const {
             productCode,
             productName,
             productType,
             weightPerUnit,
             quantity,
-            carbonResults,
             save_mode = 'draft',
             ...snapshotPayload
         } = productData;
@@ -482,18 +489,12 @@ class ProductsService {
             `;
 
             const weightKg = weightPerUnit ? weightPerUnit / 1000 : null;
-            const payloadWithoutCarbonResults = {
+            const payloadWithoutCarbonResults = this.sanitizeCarbonPayload({
                 quantity,
                 ...snapshotPayload
-            };
-            const computedConfidenceScore = computeDataConfidenceScore({
-                ...payloadWithoutCarbonResults,
-                carbonResults
             });
-            const normalizedCarbonResults = buildCarbonResultsWithConfidence(
-                carbonResults,
-                computedConfidenceScore
-            );
+            const normalizedCarbonResults = authoritativeCarbon.result;
+            const computedConfidenceScore = normalizedCarbonResults.confidenceScore;
             const totalCo2e = normalizedCarbonResults?.perProduct?.total || 0;
             const materialsCo2e = normalizedCarbonResults?.perProduct?.materials || 0;
             const productionCo2e = normalizedCarbonResults?.perProduct?.production || 0;
@@ -528,6 +529,7 @@ class ProductsService {
 
             const fullPayload = {
                 ...payloadWithoutCarbonResults,
+                carbonInput: authoritativeCarbon.input,
                 carbonResults: normalizedCarbonResults
             };
 
@@ -583,7 +585,8 @@ class ProductsService {
                 shipmentReferenceNumber: shipmentMeta.shipmentReferenceNumber,
                 shipmentCreationSkipped: shipmentMeta.shipmentCreationSkipped,
                 skipReason: shipmentMeta.skipReason,
-                domesticComplianceWarning
+                domesticComplianceWarning,
+                carbonResults: normalizedCarbonResults
             };
         } catch (error) {
             await client.query('ROLLBACK');
@@ -604,7 +607,6 @@ class ProductsService {
             productType,
             weightPerUnit,
             quantity,
-            carbonResults,
             ...snapshotPayload
         } = productData;
 
@@ -623,6 +625,8 @@ class ProductsService {
             if (checkResult.rows.length === 0) {
                 return { success: false, error: 'PRODUCT_NOT_FOUND' };
             }
+
+            const authoritativeCarbon = this.calculateProductCarbon(productData);
 
             // Update product
             const updateQuery = `
@@ -644,18 +648,12 @@ class ProductsService {
             `;
 
             const weightKg = weightPerUnit ? weightPerUnit / 1000 : null;
-            const payloadWithoutCarbonResults = {
+            const payloadWithoutCarbonResults = this.sanitizeCarbonPayload({
                 quantity,
                 ...snapshotPayload
-            };
-            const computedConfidenceScore = computeDataConfidenceScore({
-                ...payloadWithoutCarbonResults,
-                carbonResults
             });
-            const normalizedCarbonResults = buildCarbonResultsWithConfidence(
-                carbonResults,
-                computedConfidenceScore
-            );
+            const normalizedCarbonResults = authoritativeCarbon.result;
+            const computedConfidenceScore = normalizedCarbonResults.confidenceScore;
             const totalCo2e = normalizedCarbonResults?.perProduct?.total || 0;
             const materialsCo2e = normalizedCarbonResults?.perProduct?.materials || 0;
             const productionCo2e = normalizedCarbonResults?.perProduct?.production || 0;
@@ -689,6 +687,7 @@ class ProductsService {
 
             const fullPayload = {
                 ...payloadWithoutCarbonResults,
+                carbonInput: authoritativeCarbon.input,
                 carbonResults: normalizedCarbonResults
             };
 
@@ -734,7 +733,8 @@ class ProductsService {
                     shipmentId: shipmentMeta.shipmentId,
                     shipmentReferenceNumber: shipmentMeta.shipmentReferenceNumber,
                     shipmentCreationSkipped: shipmentMeta.shipmentCreationSkipped,
-                    skipReason: shipmentMeta.skipReason
+                    skipReason: shipmentMeta.skipReason,
+                    carbonResults: normalizedCarbonResults
                 }
             };
         } catch (error) {
@@ -778,6 +778,7 @@ class ProductsService {
             const product = selectResult.rows[0];
             const currentStatus = dbToFeStatus(product.status);
             let domesticComplianceWarning = null;
+            let authoritativeCarbonResults;
 
             // Validate transitions
             const validTransitions = {
@@ -795,6 +796,18 @@ class ProductsService {
             }
 
             if (currentStatus === 'draft' && newStatus === 'published') {
+                const snapshotPayload = toPayloadObject(product.payload);
+                const authoritativeCarbon = this.calculateProductCarbon({
+                    ...snapshotPayload,
+                    weightPerUnit: Number(product.weight_kg || 0) * 1000
+                });
+                authoritativeCarbonResults = authoritativeCarbon.result;
+                const authoritativeSnapshot = {
+                    ...this.sanitizeCarbonPayload(snapshotPayload),
+                    carbonInput: authoritativeCarbon.input,
+                    carbonResults: authoritativeCarbonResults
+                };
+
                 const domesticComplianceValidation =
                     await this.complianceService.validateProductsForDomesticPublish(
                         client,
@@ -805,6 +818,41 @@ class ProductsService {
                 if (!domesticComplianceValidation.success) {
                     domesticComplianceWarning = buildDomesticComplianceWarning(domesticComplianceValidation);
                 }
+
+                await client.query(
+                    `
+                    UPDATE products
+                    SET total_co2e = $1,
+                        materials_co2e = $2,
+                        production_co2e = $3,
+                        transport_co2e = $4,
+                        packaging_co2e = $5,
+                        data_confidence_score = $6,
+                        updated_at = NOW()
+                    WHERE id = $7 AND company_id = $8
+                    `,
+                    [
+                        authoritativeCarbonResults.perProduct.total,
+                        authoritativeCarbonResults.perProduct.materials,
+                        authoritativeCarbonResults.perProduct.production,
+                        authoritativeCarbonResults.perProduct.transport,
+                        authoritativeCarbonResults.perProduct.packaging,
+                        authoritativeCarbonResults.confidenceScore,
+                        productId,
+                        companyId
+                    ]
+                );
+                await client.query(
+                    `
+                    UPDATE product_assessment_snapshots
+                    SET payload = $1, updated_at = NOW()
+                    WHERE product_id = $2
+                    `,
+                    [JSON.stringify(authoritativeSnapshot), productId]
+                );
+                product.total_co2e = authoritativeCarbonResults.perProduct.total;
+                product.transport_co2e = authoritativeCarbonResults.perProduct.transport;
+                product.payload = authoritativeSnapshot;
             }
 
             // Update status
@@ -848,7 +896,10 @@ class ProductsService {
                     shipmentReferenceNumber: shipmentMeta.shipmentReferenceNumber,
                     shipmentCreationSkipped: shipmentMeta.shipmentCreationSkipped,
                     skipReason: shipmentMeta.skipReason,
-                    domesticComplianceWarning
+                    domesticComplianceWarning,
+                    ...(authoritativeCarbonResults
+                        ? { carbonResults: authoritativeCarbonResults }
+                        : {})
                 }
             };
         } catch (error) {

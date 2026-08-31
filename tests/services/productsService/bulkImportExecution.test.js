@@ -68,6 +68,56 @@ describe('bulkImport', () => {
         expect(client.query).toHaveBeenCalledWith('COMMIT');
     });
 
+    it('ignores tampered client totals and stores the authoritative bulk result', async () => {
+        client.query.mockImplementation((sql) => {
+            const text = String(sql);
+            if (text.includes('SELECT is_demo_user')) return Promise.resolve({ rows: [] });
+            if (text.includes('SELECT id FROM products WHERE company_id')) return Promise.resolve({ rows: [] });
+            if (text.includes('INSERT INTO products')) return Promise.resolve({ rows: [{ id: 'product-auth' }] });
+            return Promise.resolve({ rows: [] });
+        });
+        const serverResult = {
+            perProduct: {
+                materials: 1,
+                production: 2,
+                transport: 3,
+                packaging: 4,
+                total: 10
+            },
+            confidenceScore: 63
+        };
+
+        await bulkImport(
+            'company-1',
+            'user-1',
+            [{
+                sku: 'SKU-AUTH',
+                productName: 'Tee',
+                carbonResults: { perProduct: { total: 999999 } },
+                total_co2e: 999999
+            }],
+            'draft',
+            {
+                calculateProductCarbon: jest.fn().mockReturnValue({
+                    input: { unitMassKg: 0.2, quantity: 1 },
+                    result: serverResult
+                })
+            }
+        );
+
+        const productInsert = client.query.mock.calls.find(([sql]) =>
+            String(sql).includes('INSERT INTO products')
+        );
+        expect(productInsert[1].slice(6, 12)).toEqual([10, 1, 2, 3, 4, 63]);
+
+        const snapshotInsert = client.query.mock.calls.find(([sql]) =>
+            String(sql).includes('INSERT INTO product_assessment_snapshots')
+        );
+        const snapshot = JSON.parse(snapshotInsert[1][1]);
+        expect(snapshot.carbonResults).toEqual(serverResult);
+        expect(snapshot).not.toHaveProperty('total_co2e');
+    });
+
     it('rolls back the whole transaction when the outer BEGIN/COMMIT machinery throws', async () => {
         client.query.mockImplementation((sql) => {
             const text = String(sql);

@@ -1,1 +1,1 @@
-{"name":"products","status":"migrated","allowedDependencies":["shared"]}
+{"name":"products","status":"migrated","allowedDependencies":["shared","carbon"]}

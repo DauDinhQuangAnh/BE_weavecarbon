@@ -1,4 +1,10 @@
 module.exports = {
+  get calculateAuthoritativeProductCarbon() {
+    return require('./authoritativeCalculation').calculateAuthoritativeProductCarbon;
+  },
+  get stripClientCarbonOutputs() {
+    return require('./authoritativeCalculation').stripClientCarbonOutputs;
+  },
   get carbonRepository() {
     return require('./repository').carbonRepository;
   },
