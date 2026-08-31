@@ -1,0 +1,136 @@
+{
+  "fixtureVersion": "carbon-golden-v1",
+  "engineVersion": "scope-quality-rss-1.0.0",
+  "methodologyVersion": "WeaveCarbon Attributional Textile PCF v2.1 - climate-only partial CFP",
+  "cases": [
+    {
+      "id": "documented-multistage-manufacturer",
+      "description": "Representative textile with explicit material, accessory, packaging, energy and multimodal logistics data.",
+      "covers": ["materials", "energy", "logistics", "packaging", "scope2", "scope3", "batch-rounding"],
+      "input": {
+        "unitMassKg": 0.5,
+        "quantity": 1200,
+        "productCategory": "textile",
+        "materials": [
+          { "id": "cotton", "type": "cotton", "factorId": "cat-cotton-100", "percentage": 60, "source": "domestic", "name": "Cotton", "isPrimaryData": true },
+          { "id": "recycled-polyester", "type": "recycled-polyester", "factorId": "cat-polyester-recycled", "percentage": 40, "source": "imported", "name": "Recycled polyester" }
+        ],
+        "accessories": [
+          { "id": "zipper", "type": "zipper", "factorId": "cat-zipper-plastic", "name": "Plastic zipper", "weightKg": 0.02, "isPrimaryData": true }
+        ],
+        "packaging": { "factorId": "packaging-recycled-proxy", "weightKg": 0.03, "yieldToProduct": 0.9, "isPrimaryData": true },
+        "processFactorIds": ["process-cutting-sewing", "process-dyeing"],
+        "energyMix": [
+          { "factorId": "energy-grid-vn-2023", "percentage": 70, "geography": "Vietnam" },
+          { "factorId": "energy-solar-generic", "percentage": 30, "geography": "Vietnam" }
+        ],
+        "manufacturingGeography": "Vietnam",
+        "originGeography": "Vietnam",
+        "destinationMarket": "eu",
+        "reportingActorRole": "manufacturer",
+        "transport": [
+          { "mode": "road", "factorId": "transport-road-defra-2025", "distanceKm": 300, "boundaryType": "inbound", "isPrimaryData": true },
+          { "mode": "sea", "factorId": "transport-sea-defra-2025", "distanceKm": 10000, "boundaryType": "gate_to_market", "isPrimaryData": true }
+        ]
+      }
+    },
+    {
+      "id": "direct-fuel-scope1",
+      "description": "Manufacturer energy from gas and coal freezes direct Scope 1 aggregation.",
+      "covers": ["materials", "energy", "packaging", "logistics", "scope1", "scope3"],
+      "input": {
+        "unitMassKg": 1,
+        "quantity": 10,
+        "materials": [
+          { "id": "polyester", "type": "polyester", "factorId": "cat-polyester-100", "percentage": 100, "source": "domestic", "name": "Polyester" }
+        ],
+        "accessories": [],
+        "packaging": { "factorId": "packaging-minimal-proxy", "weightKg": 0.02 },
+        "processFactorIds": ["process-weaving"],
+        "energyMix": [
+          { "factorId": "energy-gas-generic", "percentage": 50 },
+          { "factorId": "energy-coal-generic", "percentage": 50 }
+        ],
+        "manufacturingGeography": "Vietnam",
+        "originGeography": "Vietnam",
+        "destinationMarket": "vietnam",
+        "reportingActorRole": "manufacturer",
+        "transport": [
+          { "mode": "rail", "factorId": "transport-rail-defra-2025", "distanceKm": 750 }
+        ]
+      }
+    },
+    {
+      "id": "brand-proxy-defaults",
+      "description": "Outsourced brand calculation freezes generic factors, default distance, BOM warning and Scope 3 aggregation.",
+      "covers": ["proxy-factors", "default-factors", "default-distance", "bom-undercoverage", "scope3", "low-confidence", "uncertainty"],
+      "input": {
+        "unitMassKg": 0.25,
+        "quantity": 50,
+        "materials": [
+          { "id": "mystery", "type": "mystery-fabric", "percentage": 80, "source": "unknown", "name": "Mystery fabric" }
+        ],
+        "accessories": [
+          { "id": "trim", "type": "unknown-trim", "name": "Unknown trim" }
+        ],
+        "packaging": null,
+        "processFactorIds": [],
+        "energyMix": [],
+        "destinationMarket": "usa",
+        "reportingActorRole": "brand",
+        "transport": [
+          { "mode": "multimodal", "factorId": "transport-multimodal-proxy", "defaultDistanceKey": "usa" }
+        ]
+      }
+    },
+    {
+      "id": "coverage-yield-normalization-edge",
+      "description": "Partial BOM, process yields, incomplete energy mix, missing accessory weight and one invalid transport leg.",
+      "covers": ["bom-undercoverage", "material-yield", "packaging-yield", "energy-normalization", "default-distance", "data-quality", "uncertainty"],
+      "input": {
+        "unitMassKg": 0.8,
+        "quantity": 0,
+        "materials": [
+          { "id": "cotton", "type": "cotton", "factorId": "cat-cotton-100", "percentage": 70, "yieldToProduct": 0.8, "source": "imported", "name": "Cotton" },
+          { "id": "wool", "type": "wool", "factorId": "cat-wool-100", "percentage": 20, "yieldToProduct": 0.9, "source": "domestic", "name": "Wool" }
+        ],
+        "accessories": [
+          { "id": "button", "type": "button", "name": "Button", "weightKg": 0.01 },
+          { "id": "label", "type": "label", "name": "Label" }
+        ],
+        "packaging": { "factorId": "packaging-biodegradable-proxy", "weightKg": 0.04, "yieldToProduct": 0.8 },
+        "processFactorIds": ["process-cutting", "process-finishing"],
+        "energyMix": [
+          { "factorId": "energy-grid-vn-2023", "percentage": 40, "geography": "Vietnam" },
+          { "factorId": "energy-wind-generic", "percentage": 20, "geography": "Vietnam" }
+        ],
+        "manufacturingGeography": "Vietnam",
+        "originGeography": "Vietnam",
+        "destinationMarket": "domestic",
+        "reportingActorRole": "manufacturer",
+        "transport": [
+          { "mode": "road", "factorId": "transport-road-defra-2025", "defaultDistanceKey": "domestic" },
+          { "geography": "Vietnam" }
+        ]
+      }
+    },
+    {
+      "id": "zero-invalid-input-edge",
+      "description": "Invalid mass and quantity with no lifecycle data freezes zero clamping and fallback quality behavior.",
+      "covers": ["zero-clamping", "empty-input", "fallback-factors", "zero-rounding", "low-confidence"],
+      "input": {
+        "unitMassKg": -1,
+        "quantity": -5,
+        "materials": [],
+        "accessories": [],
+        "packaging": null,
+        "includePackagingFallbackNote": true,
+        "processFactorIds": [],
+        "energyMix": [],
+        "destinationMarket": "other",
+        "reportingActorRole": "supplier",
+        "transport": []
+      }
+    }
+  ]
+}

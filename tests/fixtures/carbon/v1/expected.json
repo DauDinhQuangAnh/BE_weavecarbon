@@ -1,0 +1,1063 @@
+{
+  "fixtureVersion": "carbon-golden-v1",
+  "cases": [
+    {
+      "id": "documented-multistage-manufacturer",
+      "expected": {
+        "perProduct": {
+          "materials": 2.864,
+          "production": 1.591,
+          "energy": 0,
+          "transport": 0.106,
+          "packaging": 0.017,
+          "total": 4.577
+        },
+        "totalBatch": {
+          "materials": 3436.8,
+          "production": 1909.2,
+          "energy": 0,
+          "transport": 127.2,
+          "packaging": 20.4,
+          "total": 5492.4
+        },
+        "boundaryTotals": {
+          "cradleToGateCoreKgCO2e": 4.472,
+          "gateToMarketExtensionKgCO2e": 0.106,
+          "reportedTotalKgCO2e": 4.577
+        },
+        "scopes": {
+          "scope1": 0,
+          "scope2": 1.591,
+          "scope3": 2.986
+        },
+        "co2eRange": {
+          "min": 3.146,
+          "max": 6.008
+        },
+        "confidence": {
+          "level": "medium",
+          "score": 77,
+          "proxyUsed": true
+        },
+        "quality": {
+          "dataQualityRating1To5": 2.59,
+          "dataQualityPercent": 60.25,
+          "confidenceLevel": "medium",
+          "primaryDataEmissionsShare": 0,
+          "supplierSpecificEmissionsShare": 0,
+          "secondaryEmissionsShare": 0.631,
+          "proxyEmissionsShare": 0.369
+        },
+        "uncertainty": {
+          "method": "rss_fallback",
+          "p5KgCO2e": 3.146,
+          "p95KgCO2e": 6.008,
+          "halfWidth95Percent": 31.257
+        },
+        "dataQualityBreakdown": {
+          "completeness": {
+            "score": 30,
+            "maxScore": 30
+          },
+          "specificity": {
+            "score": 25,
+            "maxScore": 25
+          },
+          "geographicRelevance": {
+            "score": 15,
+            "maxScore": 15
+          },
+          "transportSpecificity": {
+            "score": 15,
+            "maxScore": 15
+          },
+          "proxyShare": {
+            "score": 9,
+            "maxScore": 15
+          }
+        },
+        "energyBreakdown": [
+          {
+            "factorId": "energy-grid-vn-2023",
+            "amount": 1.546,
+            "scope": "scope2"
+          },
+          {
+            "factorId": "energy-solar-generic",
+            "amount": 0.045,
+            "scope": "scope2"
+          }
+        ],
+        "stages": [
+          {
+            "stage": "materials",
+            "amount": 2.864,
+            "range": {
+              "min": 1.862,
+              "max": 3.866
+            },
+            "quality": "internal_proxy",
+            "isEstimated": true,
+            "factorIds": [
+              "cat-cotton-100",
+              "cat-polyester-recycled",
+              "cat-zipper-plastic"
+            ]
+          },
+          {
+            "stage": "finished_goods_manufacturing",
+            "amount": 1.591,
+            "range": {
+              "min": 1.034,
+              "max": 2.148
+            },
+            "quality": "internal_proxy",
+            "isEstimated": true,
+            "factorIds": [
+              "process-cutting-sewing",
+              "process-dyeing",
+              "energy-grid-vn-2023",
+              "energy-solar-generic"
+            ]
+          },
+          {
+            "stage": "packaging",
+            "amount": 0.017,
+            "range": {
+              "min": 0.011,
+              "max": 0.023
+            },
+            "quality": "internal_proxy",
+            "isEstimated": true,
+            "factorIds": [
+              "packaging-recycled-proxy"
+            ]
+          },
+          {
+            "stage": "logistics_and_storage",
+            "amount": 0.106,
+            "range": {
+              "min": 0.084,
+              "max": 0.127
+            },
+            "quality": "documented_secondary",
+            "isEstimated": false,
+            "factorIds": [
+              "transport-road-defra-2025",
+              "transport-sea-defra-2025"
+            ]
+          }
+        ],
+        "factors": [
+          {
+            "factorId": "cat-cotton-100",
+            "factorVersionId": "cat-cotton-100:v1",
+            "value": 8,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          },
+          {
+            "factorId": "cat-polyester-recycled",
+            "factorVersionId": "cat-polyester-recycled:v1",
+            "value": 2.5,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          },
+          {
+            "factorId": "cat-zipper-plastic",
+            "factorVersionId": "cat-zipper-plastic:v1",
+            "value": 4,
+            "uncertaintyCv": 0.35,
+            "quality": "internal_proxy",
+            "isProxy": true
+          },
+          {
+            "factorId": "process-cutting-sewing",
+            "factorVersionId": "process-cutting-sewing:v1",
+            "value": 1.2,
+            "uncertaintyCv": 0.35,
+            "quality": "internal_proxy",
+            "isProxy": true
+          },
+          {
+            "factorId": "process-dyeing",
+            "factorVersionId": "process-dyeing:v1",
+            "value": 5.5,
+            "uncertaintyCv": 0.35,
+            "quality": "internal_proxy",
+            "isProxy": true
+          },
+          {
+            "factorId": "energy-grid-vn-2023",
+            "factorVersionId": "energy-grid-vn-2023:v1",
+            "value": 0.6592,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          },
+          {
+            "factorId": "energy-solar-generic",
+            "factorVersionId": "energy-solar-generic:v1",
+            "value": 0.045,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          },
+          {
+            "factorId": "packaging-recycled-proxy",
+            "factorVersionId": "packaging-recycled-proxy:v1",
+            "value": 0.5,
+            "uncertaintyCv": 0.35,
+            "quality": "internal_proxy",
+            "isProxy": true
+          },
+          {
+            "factorId": "transport-road-defra-2025",
+            "factorVersionId": "transport-road-defra-2025:v1",
+            "value": 0.12226,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          },
+          {
+            "factorId": "transport-sea-defra-2025",
+            "factorVersionId": "transport-sea-defra-2025:v1",
+            "value": 0.01612,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          }
+        ],
+        "trace": {
+          "factorManifest": [
+            "cat-cotton-100:v1",
+            "cat-polyester-recycled:v1",
+            "cat-zipper-plastic:v1",
+            "process-cutting-sewing:v1",
+            "process-dyeing:v1",
+            "energy-grid-vn-2023:v1",
+            "energy-solar-generic:v1",
+            "packaging-recycled-proxy:v1",
+            "transport-road-defra-2025:v1",
+            "transport-sea-defra-2025:v1"
+          ],
+          "calculationGraphVersion": "textile-pcf-2.1.0",
+          "ruleEngineVersion": "scope-quality-rss-1.0.0"
+        },
+        "proxyNotes": []
+      }
+    },
+    {
+      "id": "direct-fuel-scope1",
+      "expected": {
+        "perProduct": {
+          "materials": 5.5,
+          "production": 1.342,
+          "energy": 0,
+          "transport": 0.021,
+          "packaging": 0.006,
+          "total": 6.869
+        },
+        "totalBatch": {
+          "materials": 55,
+          "production": 13.42,
+          "energy": 0,
+          "transport": 0.21,
+          "packaging": 0.06,
+          "total": 68.69
+        },
+        "boundaryTotals": {
+          "cradleToGateCoreKgCO2e": 6.848,
+          "gateToMarketExtensionKgCO2e": 0.021,
+          "reportedTotalKgCO2e": 6.869
+        },
+        "scopes": {
+          "scope1": 1.342,
+          "scope2": 0,
+          "scope3": 5.527
+        },
+        "co2eRange": {
+          "min": 4.525,
+          "max": 9.213
+        },
+        "confidence": {
+          "level": "medium",
+          "score": 80,
+          "proxyUsed": true
+        },
+        "quality": {
+          "dataQualityRating1To5": 2.314,
+          "dataQualityPercent": 67.15,
+          "confidenceLevel": "medium",
+          "primaryDataEmissionsShare": 0,
+          "supplierSpecificEmissionsShare": 0,
+          "secondaryEmissionsShare": 0.804,
+          "proxyEmissionsShare": 0.196
+        },
+        "uncertainty": {
+          "method": "rss_fallback",
+          "p5KgCO2e": 4.525,
+          "p95KgCO2e": 9.213,
+          "halfWidth95Percent": 34.129
+        },
+        "dataQualityBreakdown": {
+          "completeness": {
+            "score": 30,
+            "maxScore": 30
+          },
+          "specificity": {
+            "score": 25,
+            "maxScore": 25
+          },
+          "geographicRelevance": {
+            "score": 10,
+            "maxScore": 15
+          },
+          "transportSpecificity": {
+            "score": 15,
+            "maxScore": 15
+          },
+          "proxyShare": {
+            "score": 12,
+            "maxScore": 15
+          }
+        },
+        "energyBreakdown": [
+          {
+            "factorId": "energy-gas-generic",
+            "amount": 0.44,
+            "scope": "scope1"
+          },
+          {
+            "factorId": "energy-coal-generic",
+            "amount": 0.902,
+            "scope": "scope1"
+          }
+        ],
+        "stages": [
+          {
+            "stage": "materials",
+            "amount": 5.5,
+            "range": {
+              "min": 4.4,
+              "max": 6.6
+            },
+            "quality": "documented_secondary",
+            "isEstimated": false,
+            "factorIds": [
+              "cat-polyester-100"
+            ]
+          },
+          {
+            "stage": "finished_goods_manufacturing",
+            "amount": 1.342,
+            "range": {
+              "min": 0.872,
+              "max": 1.812
+            },
+            "quality": "internal_proxy",
+            "isEstimated": true,
+            "factorIds": [
+              "process-weaving",
+              "energy-gas-generic",
+              "energy-coal-generic"
+            ]
+          },
+          {
+            "stage": "packaging",
+            "amount": 0.006,
+            "range": {
+              "min": 0.004,
+              "max": 0.008
+            },
+            "quality": "internal_proxy",
+            "isEstimated": true,
+            "factorIds": [
+              "packaging-minimal-proxy"
+            ]
+          },
+          {
+            "stage": "logistics_and_storage",
+            "amount": 0.021,
+            "range": {
+              "min": 0.017,
+              "max": 0.026
+            },
+            "quality": "documented_secondary",
+            "isEstimated": false,
+            "factorIds": [
+              "transport-rail-defra-2025"
+            ]
+          }
+        ],
+        "factors": [
+          {
+            "factorId": "cat-polyester-100",
+            "factorVersionId": "cat-polyester-100:v1",
+            "value": 5.5,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          },
+          {
+            "factorId": "process-weaving",
+            "factorVersionId": "process-weaving:v1",
+            "value": 2.2,
+            "uncertaintyCv": 0.35,
+            "quality": "internal_proxy",
+            "isProxy": true
+          },
+          {
+            "factorId": "energy-gas-generic",
+            "factorVersionId": "energy-gas-generic:v1",
+            "value": 0.4,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          },
+          {
+            "factorId": "energy-coal-generic",
+            "factorVersionId": "energy-coal-generic:v1",
+            "value": 0.82,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          },
+          {
+            "factorId": "packaging-minimal-proxy",
+            "factorVersionId": "packaging-minimal-proxy:v1",
+            "value": 0.3,
+            "uncertaintyCv": 0.35,
+            "quality": "internal_proxy",
+            "isProxy": true
+          },
+          {
+            "factorId": "transport-rail-defra-2025",
+            "factorVersionId": "transport-rail-defra-2025:v1",
+            "value": 0.02779,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          }
+        ],
+        "trace": {
+          "factorManifest": [
+            "cat-polyester-100:v1",
+            "process-weaving:v1",
+            "energy-gas-generic:v1",
+            "energy-coal-generic:v1",
+            "packaging-minimal-proxy:v1",
+            "transport-rail-defra-2025:v1"
+          ],
+          "calculationGraphVersion": "textile-pcf-2.1.0",
+          "ruleEngineVersion": "scope-quality-rss-1.0.0"
+        },
+        "proxyNotes": []
+      }
+    },
+    {
+      "id": "brand-proxy-defaults",
+      "expected": {
+        "perProduct": {
+          "materials": 1.2,
+          "production": 0.263,
+          "energy": 0,
+          "transport": 0.28,
+          "packaging": 0,
+          "total": 1.743
+        },
+        "totalBatch": {
+          "materials": 60,
+          "production": 13.15,
+          "energy": 0,
+          "transport": 14,
+          "packaging": 0,
+          "total": 87.15
+        },
+        "boundaryTotals": {
+          "cradleToGateCoreKgCO2e": 1.463,
+          "gateToMarketExtensionKgCO2e": 0.28,
+          "reportedTotalKgCO2e": 1.743
+        },
+        "scopes": {
+          "scope1": 0,
+          "scope2": 0,
+          "scope3": 1.743
+        },
+        "co2eRange": {
+          "min": 0.859,
+          "max": 2.627
+        },
+        "confidence": {
+          "level": "low",
+          "score": 32,
+          "proxyUsed": true
+        },
+        "quality": {
+          "dataQualityRating1To5": 3.781,
+          "dataQualityPercent": 30.475,
+          "confidenceLevel": "low",
+          "primaryDataEmissionsShare": 0,
+          "supplierSpecificEmissionsShare": 0,
+          "secondaryEmissionsShare": 0,
+          "proxyEmissionsShare": 1
+        },
+        "uncertainty": {
+          "method": "rss_fallback",
+          "p5KgCO2e": 0.859,
+          "p95KgCO2e": 2.627,
+          "halfWidth95Percent": 50.694
+        },
+        "dataQualityBreakdown": {
+          "completeness": {
+            "score": 25,
+            "maxScore": 30
+          },
+          "specificity": {
+            "score": 4,
+            "maxScore": 25
+          },
+          "geographicRelevance": {
+            "score": 0,
+            "maxScore": 15
+          },
+          "transportSpecificity": {
+            "score": 5,
+            "maxScore": 15
+          },
+          "proxyShare": {
+            "score": 0,
+            "maxScore": 15
+          }
+        },
+        "energyBreakdown": [
+          {
+            "factorId": "energy-grid-generic",
+            "amount": 0.263,
+            "scope": "scope3"
+          }
+        ],
+        "stages": [
+          {
+            "stage": "materials",
+            "amount": 1.2,
+            "range": {
+              "min": 0.6,
+              "max": 1.8
+            },
+            "quality": "market_default_or_missing",
+            "isEstimated": true,
+            "factorIds": [
+              "cat-other-generic"
+            ]
+          },
+          {
+            "stage": "finished_goods_manufacturing",
+            "amount": 0.263,
+            "range": {
+              "min": 0.131,
+              "max": 0.394
+            },
+            "quality": "market_default_or_missing",
+            "isEstimated": true,
+            "factorIds": [
+              "process-generic-garment",
+              "energy-grid-generic"
+            ]
+          },
+          {
+            "stage": "packaging",
+            "amount": 0,
+            "range": {
+              "min": 0,
+              "max": 0
+            },
+            "quality": "market_default_or_missing",
+            "isEstimated": false,
+            "factorIds": []
+          },
+          {
+            "stage": "logistics_and_storage",
+            "amount": 0.28,
+            "range": {
+              "min": 0.14,
+              "max": 0.42
+            },
+            "quality": "market_default_or_missing",
+            "isEstimated": true,
+            "factorIds": [
+              "transport-multimodal-proxy"
+            ]
+          }
+        ],
+        "factors": [
+          {
+            "factorId": "cat-other-generic",
+            "factorVersionId": "cat-other-generic:v1",
+            "value": 6,
+            "uncertaintyCv": 0.35,
+            "quality": "internal_proxy",
+            "isProxy": true
+          },
+          {
+            "factorId": "process-generic-garment",
+            "factorVersionId": "process-generic-garment:v1",
+            "value": 1.5,
+            "uncertaintyCv": 0.5,
+            "quality": "market_default_or_missing",
+            "isProxy": true
+          },
+          {
+            "factorId": "energy-grid-generic",
+            "factorVersionId": "energy-grid-generic:v1",
+            "value": 0.7,
+            "uncertaintyCv": 0.5,
+            "quality": "market_default_or_missing",
+            "isProxy": true
+          },
+          {
+            "factorId": "transport-multimodal-proxy",
+            "factorVersionId": "transport-multimodal-proxy:v1",
+            "value": 0.08,
+            "uncertaintyCv": 0.35,
+            "quality": "internal_proxy",
+            "isProxy": true
+          }
+        ],
+        "trace": {
+          "factorManifest": [
+            "cat-other-generic:v1",
+            "process-generic-garment:v1",
+            "energy-grid-generic:v1",
+            "transport-multimodal-proxy:v1"
+          ],
+          "calculationGraphVersion": "textile-pcf-2.1.0",
+          "ruleEngineVersion": "scope-quality-rss-1.0.0"
+        },
+        "proxyNotes": [
+          "BOM coverage is 80%; results rely on partial material allocation.",
+          "Material \"Mystery fabric\" has unknown origin; uncertainty is widened.",
+          "Material \"Mystery fabric\" is mapped to a generic internal proxy factor.",
+          "Accessory \"Unknown trim\" has no explicit weight and is excluded from CO2e.",
+          "Packaging is excluded because packaging weight/type was not provided.",
+          "Manufacturing processes are missing; a generic garment process proxy was used.",
+          "No energy mix was provided; a generic grid electricity fallback was used.",
+          "Transport distance for multimodal used market default 14000 km."
+        ]
+      }
+    },
+    {
+      "id": "coverage-yield-normalization-edge",
+      "expected": {
+        "perProduct": {
+          "materials": 10.305,
+          "production": 0.709,
+          "energy": 0,
+          "transport": 0.052,
+          "packaging": 0.04,
+          "total": 11.106
+        },
+        "totalBatch": {
+          "materials": 10.31,
+          "production": 0.71,
+          "energy": 0,
+          "transport": 0.05,
+          "packaging": 0.04,
+          "total": 11.11
+        },
+        "boundaryTotals": {
+          "cradleToGateCoreKgCO2e": 11.054,
+          "gateToMarketExtensionKgCO2e": 0.052,
+          "reportedTotalKgCO2e": 11.106
+        },
+        "scopes": {
+          "scope1": 0,
+          "scope2": 0.709,
+          "scope3": 10.397
+        },
+        "co2eRange": {
+          "min": 8.209,
+          "max": 14.003
+        },
+        "confidence": {
+          "level": "medium",
+          "score": 76,
+          "proxyUsed": true
+        },
+        "quality": {
+          "dataQualityRating1To5": 2.113,
+          "dataQualityPercent": 72.175,
+          "confidenceLevel": "medium",
+          "primaryDataEmissionsShare": 0,
+          "supplierSpecificEmissionsShare": 0,
+          "secondaryEmissionsShare": 0.929,
+          "proxyEmissionsShare": 0.071
+        },
+        "uncertainty": {
+          "method": "rss_fallback",
+          "p5KgCO2e": 8.209,
+          "p95KgCO2e": 14.003,
+          "halfWidth95Percent": 26.081
+        },
+        "dataQualityBreakdown": {
+          "completeness": {
+            "score": 25,
+            "maxScore": 30
+          },
+          "specificity": {
+            "score": 23,
+            "maxScore": 25
+          },
+          "geographicRelevance": {
+            "score": 15,
+            "maxScore": 15
+          },
+          "transportSpecificity": {
+            "score": 2,
+            "maxScore": 15
+          },
+          "proxyShare": {
+            "score": 14,
+            "maxScore": 15
+          }
+        },
+        "energyBreakdown": [
+          {
+            "factorId": "energy-grid-vn-2023",
+            "amount": 0.703,
+            "scope": "scope2"
+          },
+          {
+            "factorId": "energy-wind-generic",
+            "amount": 0.006,
+            "scope": "scope2"
+          }
+        ],
+        "stages": [
+          {
+            "stage": "materials",
+            "amount": 10.305,
+            "range": {
+              "min": 5.153,
+              "max": 15.458
+            },
+            "quality": "market_default_or_missing",
+            "isEstimated": true,
+            "factorIds": [
+              "cat-cotton-100",
+              "cat-wool-100",
+              "cat-button-plastic"
+            ]
+          },
+          {
+            "stage": "finished_goods_manufacturing",
+            "amount": 0.709,
+            "range": {
+              "min": 0.355,
+              "max": 1.064
+            },
+            "quality": "market_default_or_missing",
+            "isEstimated": true,
+            "factorIds": [
+              "process-cutting",
+              "process-finishing",
+              "energy-grid-vn-2023",
+              "energy-wind-generic"
+            ]
+          },
+          {
+            "stage": "packaging",
+            "amount": 0.04,
+            "range": {
+              "min": 0.026,
+              "max": 0.054
+            },
+            "quality": "internal_proxy",
+            "isEstimated": true,
+            "factorIds": [
+              "packaging-biodegradable-proxy"
+            ]
+          },
+          {
+            "stage": "logistics_and_storage",
+            "amount": 0.052,
+            "range": {
+              "min": 0.026,
+              "max": 0.078
+            },
+            "quality": "market_default_or_missing",
+            "isEstimated": false,
+            "factorIds": [
+              "transport-road-defra-2025"
+            ]
+          }
+        ],
+        "factors": [
+          {
+            "factorId": "cat-cotton-100",
+            "factorVersionId": "cat-cotton-100:v1",
+            "value": 8,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          },
+          {
+            "factorId": "cat-wool-100",
+            "factorVersionId": "cat-wool-100:v1",
+            "value": 27,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          },
+          {
+            "factorId": "cat-button-plastic",
+            "factorVersionId": "cat-button-plastic:v1",
+            "value": 3.5,
+            "uncertaintyCv": 0.35,
+            "quality": "internal_proxy",
+            "isProxy": true
+          },
+          {
+            "factorId": "process-cutting",
+            "factorVersionId": "process-cutting:v1",
+            "value": 0.5,
+            "uncertaintyCv": 0.35,
+            "quality": "internal_proxy",
+            "isProxy": true
+          },
+          {
+            "factorId": "process-finishing",
+            "factorVersionId": "process-finishing:v1",
+            "value": 1.5,
+            "uncertaintyCv": 0.35,
+            "quality": "internal_proxy",
+            "isProxy": true
+          },
+          {
+            "factorId": "energy-grid-vn-2023",
+            "factorVersionId": "energy-grid-vn-2023:v1",
+            "value": 0.6592,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          },
+          {
+            "factorId": "energy-wind-generic",
+            "factorVersionId": "energy-wind-generic:v1",
+            "value": 0.011,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          },
+          {
+            "factorId": "packaging-biodegradable-proxy",
+            "factorVersionId": "packaging-biodegradable-proxy:v1",
+            "value": 0.8,
+            "uncertaintyCv": 0.35,
+            "quality": "internal_proxy",
+            "isProxy": true
+          },
+          {
+            "factorId": "transport-road-defra-2025",
+            "factorVersionId": "transport-road-defra-2025:v1",
+            "value": 0.12226,
+            "uncertaintyCv": 0.2,
+            "quality": "documented_secondary",
+            "isProxy": false
+          }
+        ],
+        "trace": {
+          "factorManifest": [
+            "cat-cotton-100:v1",
+            "cat-wool-100:v1",
+            "cat-button-plastic:v1",
+            "process-cutting:v1",
+            "process-finishing:v1",
+            "energy-grid-vn-2023:v1",
+            "energy-wind-generic:v1",
+            "packaging-biodegradable-proxy:v1",
+            "transport-road-defra-2025:v1"
+          ],
+          "calculationGraphVersion": "textile-pcf-2.1.0",
+          "ruleEngineVersion": "scope-quality-rss-1.0.0"
+        },
+        "proxyNotes": [
+          "BOM coverage is 90%; results rely on partial material allocation.",
+          "Accessory \"Label\" has no explicit weight and is excluded from CO2e.",
+          "Energy mix coverage is 60%; shares were normalized before calculation.",
+          "Transport distance for road used market default 500 km.",
+          "A transport leg is missing mode/factor and was excluded from the estimate."
+        ]
+      }
+    },
+    {
+      "id": "zero-invalid-input-edge",
+      "expected": {
+        "perProduct": {
+          "materials": 0,
+          "production": 0,
+          "energy": 0,
+          "transport": 0,
+          "packaging": 0,
+          "total": 0
+        },
+        "totalBatch": {
+          "materials": 0,
+          "production": 0,
+          "energy": 0,
+          "transport": 0,
+          "packaging": 0,
+          "total": 0
+        },
+        "boundaryTotals": {
+          "cradleToGateCoreKgCO2e": 0,
+          "gateToMarketExtensionKgCO2e": 0,
+          "reportedTotalKgCO2e": 0
+        },
+        "scopes": {
+          "scope1": 0,
+          "scope2": 0,
+          "scope3": 0
+        },
+        "co2eRange": {
+          "min": 0,
+          "max": 0
+        },
+        "confidence": {
+          "level": "low",
+          "score": 11,
+          "proxyUsed": true
+        },
+        "quality": {
+          "dataQualityRating1To5": 5,
+          "dataQualityPercent": 0,
+          "confidenceLevel": "low",
+          "primaryDataEmissionsShare": 0,
+          "supplierSpecificEmissionsShare": 0,
+          "secondaryEmissionsShare": 0,
+          "proxyEmissionsShare": 1
+        },
+        "uncertainty": {
+          "method": "rss_fallback",
+          "p5KgCO2e": 0,
+          "p95KgCO2e": 0,
+          "halfWidth95Percent": 0
+        },
+        "dataQualityBreakdown": {
+          "completeness": {
+            "score": 7,
+            "maxScore": 30
+          },
+          "specificity": {
+            "score": 9,
+            "maxScore": 25
+          },
+          "geographicRelevance": {
+            "score": 5,
+            "maxScore": 15
+          },
+          "transportSpecificity": {
+            "score": 0,
+            "maxScore": 15
+          },
+          "proxyShare": {
+            "score": 0,
+            "maxScore": 15
+          }
+        },
+        "energyBreakdown": [
+          {
+            "factorId": "energy-grid-generic",
+            "amount": 0,
+            "scope": "scope2"
+          }
+        ],
+        "stages": [
+          {
+            "stage": "materials",
+            "amount": 0,
+            "range": {
+              "min": 0,
+              "max": 0
+            },
+            "quality": "market_default_or_missing",
+            "isEstimated": false,
+            "factorIds": []
+          },
+          {
+            "stage": "finished_goods_manufacturing",
+            "amount": 0,
+            "range": {
+              "min": 0,
+              "max": 0
+            },
+            "quality": "market_default_or_missing",
+            "isEstimated": true,
+            "factorIds": [
+              "process-generic-garment",
+              "energy-grid-generic"
+            ]
+          },
+          {
+            "stage": "packaging",
+            "amount": 0,
+            "range": {
+              "min": 0,
+              "max": 0
+            },
+            "quality": "market_default_or_missing",
+            "isEstimated": false,
+            "factorIds": []
+          },
+          {
+            "stage": "logistics_and_storage",
+            "amount": 0,
+            "range": {
+              "min": 0,
+              "max": 0
+            },
+            "quality": "market_default_or_missing",
+            "isEstimated": false,
+            "factorIds": []
+          }
+        ],
+        "factors": [
+          {
+            "factorId": "process-generic-garment",
+            "factorVersionId": "process-generic-garment:v1",
+            "value": 1.5,
+            "uncertaintyCv": 0.5,
+            "quality": "market_default_or_missing",
+            "isProxy": true
+          },
+          {
+            "factorId": "energy-grid-generic",
+            "factorVersionId": "energy-grid-generic:v1",
+            "value": 0.7,
+            "uncertaintyCv": 0.5,
+            "quality": "market_default_or_missing",
+            "isProxy": true
+          }
+        ],
+        "trace": {
+          "factorManifest": [
+            "process-generic-garment:v1",
+            "energy-grid-generic:v1"
+          ],
+          "calculationGraphVersion": "textile-pcf-2.1.0",
+          "ruleEngineVersion": "scope-quality-rss-1.0.0"
+        },
+        "proxyNotes": [
+          "BOM coverage is 0%; results rely on partial material allocation.",
+          "Material inputs are missing; material stage is excluded from the estimate.",
+          "Packaging is excluded because packaging weight/type was not provided.",
+          "Manufacturing processes are missing; a generic garment process proxy was used.",
+          "No energy mix was provided; a generic grid electricity fallback was used.",
+          "Transport is excluded because no transport legs were provided."
+        ]
+      }
+    }
+  ]
+}

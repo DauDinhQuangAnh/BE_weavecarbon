@@ -19,5 +19,8 @@ module.exports = {
   },
   get fuelInvoicesRouter() {
     return require('./fuelInvoicesRoutes');
+  },
+  get core() {
+    return require('./core');
   }
 };
