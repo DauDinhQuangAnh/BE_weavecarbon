@@ -2,6 +2,9 @@ jest.mock('../../../src/services/analyticsService', () => ({
     enqueueEvent: jest.fn(),
     trackEvent: jest.fn()
 }));
+jest.mock('../../../src/modules/shared/logger', () => ({
+    error: jest.fn()
+}));
 
 const analyticsService = require('../../../src/services/analyticsService');
 const {
