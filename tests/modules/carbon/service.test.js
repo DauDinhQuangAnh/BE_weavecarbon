@@ -104,7 +104,20 @@ describe('carbonService', () => {
       packagingCo2e: 0.017,
       totalCo2e: 4.577,
       methodology: 'WeaveCarbon Attributional Textile PCF v2.1 - climate-only partial CFP',
-      emissionFactorVersion: 'scope-quality-rss-1.0.0'
+      emissionFactorVersion: 'scope-quality-rss-1.0.0',
+      engineVersion: 'scope-quality-rss-1.0.0',
+      methodologyVersion: 'WeaveCarbon Attributional Textile PCF v2.1 - climate-only partial CFP',
+      factorRegistryVersion: expect.stringMatching(/^factors-v1:[a-f0-9]{64}$/),
+      gwpBasis: 'IPCC_AR5_100y',
+      calculatedAt: expect.stringMatching(/^2026-|^20/),
+      canonicalInputHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      inputSnapshot: inputFixtures.cases[0].input,
+      factorSnapshot: expect.arrayContaining([
+        expect.objectContaining({ factorId: 'cat-cotton-100', value: 8 })
+      ]),
+      assumptions: expect.arrayContaining([
+        expect.stringContaining('Boundary: climate-only partial CFP')
+      ])
     }));
   });
 

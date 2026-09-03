@@ -1,6 +1,7 @@
 const { carbonRepository } = require('./repository');
 const { createAppError } = require('../shared/errors');
 const { calculateCarbonFootprint } = require('./core');
+const { buildCalculationMetadata } = require('./calculationSnapshot');
 
 const FUEL_EMISSION_FACTORS = {
   diesel: 2.6880,
@@ -26,6 +27,15 @@ const formatCalculation = (row) => ({
   totalCo2e: row.total_co2e,
   methodology: row.methodology,
   emissionFactorVersion: row.emission_factor_version,
+  engineVersion: row.engine_version,
+  methodologyVersion: row.methodology_version,
+  factorRegistryVersion: row.factor_registry_version,
+  gwpBasis: row.gwp_basis,
+  calculatedAt: row.calculated_at,
+  canonicalInputHash: row.canonical_input_hash,
+  factorSnapshot: row.factor_snapshot,
+  assumptions: row.assumptions,
+  legacy: Boolean(row.is_legacy),
   notes: row.notes,
   createdAt: row.created_at
 });
@@ -68,6 +78,11 @@ function createCarbonService({
         throw validationError(error.message);
       }
 
+      const calculationMetadata = buildCalculationMetadata({
+        input: carbonInput,
+        result: carbonResult
+      });
+
       const row = await repository.createCalculation({
         companyId,
         userId: userId || null,
@@ -83,6 +98,15 @@ function createCarbonService({
         totalCo2e: carbonResult.perProduct.total,
         methodology: carbonResult.methodologyVersion,
         emissionFactorVersion: carbonResult.trace.ruleEngineVersion,
+        engineVersion: calculationMetadata.engineVersion,
+        methodologyVersion: calculationMetadata.methodologyVersion,
+        factorRegistryVersion: calculationMetadata.factorRegistryVersion,
+        gwpBasis: calculationMetadata.gwpBasis,
+        calculatedAt: calculationMetadata.calculatedAt,
+        canonicalInputHash: calculationMetadata.canonicalInputHash,
+        inputSnapshot: carbonInput,
+        factorSnapshot: calculationMetadata.factors,
+        assumptions: calculationMetadata.assumptions,
         notes: payload.notes || null
       });
       return {

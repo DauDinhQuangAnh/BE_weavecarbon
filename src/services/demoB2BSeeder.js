@@ -220,10 +220,20 @@ async function upsertProducts(client, companyId) {
 
     await client.query(
       `
-        INSERT INTO product_assessment_snapshots (product_id, version, payload, created_at, updated_at)
-        VALUES ($1, 1, $2::jsonb, $3, $4)
-        ON CONFLICT (product_id)
-        DO UPDATE SET payload = EXCLUDED.payload, version = 1, updated_at = EXCLUDED.updated_at
+        INSERT INTO product_assessment_snapshots (
+          product_id, version, payload,
+          engine_version, methodology_version, factor_registry_version, gwp_basis,
+          calculated_at, canonical_input_hash, factor_snapshot, assumptions,
+          is_legacy, finalized_at, created_at, updated_at
+        )
+        SELECT
+          $1, 1, $2::jsonb,
+          'demo-seed-legacy', 'demo-seed-legacy', 'demo-seed-legacy',
+          'demo-seed-legacy', $4, 'legacy:' || $1::text, '[]'::jsonb, '[]'::jsonb,
+          true, $4, $3, $4
+        WHERE NOT EXISTS (
+          SELECT 1 FROM product_assessment_snapshots WHERE product_id = $1
+        )
       `,
       [result.rows[0].id, toJson(buildProductSnapshot(product)), createdAt, updatedAt]
     );
@@ -384,14 +394,6 @@ async function upsertShipment(client, companyId, shipment, productsBySku) {
       ]
     );
 
-    await client.query(
-      `
-        UPDATE product_assessment_snapshots
-        SET payload = $2::jsonb, updated_at = now()
-        WHERE product_id = $1
-      `,
-      [productsBySku.get(product.sku), toJson(buildProductSnapshot(product, shipmentId))]
-    );
   }
 
   return shipmentId;

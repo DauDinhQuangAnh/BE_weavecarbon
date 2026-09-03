@@ -182,8 +182,16 @@ jobs:
       - name: Load base database schema
         run: PGPASSWORD=postgres psql -h localhost -U postgres -d weavecarbon -v ON_ERROR_STOP=1 -f DATABASE_SCHEMA.sql
 
+      - name: Seed pre-WP-CARB5 legacy snapshot fixture
+        env:
+          ALLOW_MIGRATION_TEST_FIXTURE: "1"
+        run: node scripts/seed-wp-carb5-legacy-fixture.js
+
       - name: Run migrations
         run: npm run migrate
+
+      - name: Verify immutable calculation snapshot migration
+        run: npm run test:migration-snapshots
 
       - name: Run isolated PostgreSQL and evidence restore drill
         run: bash scripts/backup-restore-drill.sh

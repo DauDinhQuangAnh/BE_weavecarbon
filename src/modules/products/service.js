@@ -28,7 +28,8 @@ const { bulkImport: executeBulkImport } = require('./services/bulkImportExecutio
 const {
     calculateAuthoritativeProductCarbon,
     stripClientCarbonOutputs,
-    buildCarbonAuthorityReference
+    buildCarbonAuthorityReference,
+    insertFinalizedProductSnapshot
 } = require('../carbon');
 
 class ProductsService {
@@ -38,7 +39,8 @@ class ProductsService {
         ensureSimulationSchema = ensureShipmentSimulationSchema,
         bulkImportProducts = executeBulkImport,
         calculateProductCarbon = calculateAuthoritativeProductCarbon,
-        sanitizeCarbonPayload = stripClientCarbonOutputs
+        sanitizeCarbonPayload = stripClientCarbonOutputs,
+        insertProductSnapshot = insertFinalizedProductSnapshot
     } = {}) {
         this.database = database;
         this.complianceService = complianceService;
@@ -46,6 +48,7 @@ class ProductsService {
         this.bulkImportProducts = bulkImportProducts;
         this.calculateProductCarbon = calculateProductCarbon;
         this.sanitizeCarbonPayload = sanitizeCarbonPayload;
+        this.insertProductSnapshot = insertProductSnapshot;
     }
 
     /**
@@ -151,8 +154,14 @@ class ProductsService {
                         product_id,
                         version AS snapshot_version,
                         payload,
-                        updated_at AS snapshot_updated_at
-                    FROM product_assessment_snapshots
+                        calculated_at AS snapshot_calculated_at,
+                        engine_version AS snapshot_engine_version,
+                        methodology_version AS snapshot_methodology_version,
+                        factor_registry_version AS snapshot_factor_registry_version,
+                        gwp_basis AS snapshot_gwp_basis,
+                        canonical_input_hash AS snapshot_canonical_input_hash,
+                        is_legacy AS snapshot_is_legacy
+                    FROM latest_product_assessment_snapshots
                     WHERE product_id = ANY($1)
                 `;
                 const snapshotsResult = await client.query(snapshotsQuery, [productIds]);
@@ -383,8 +392,14 @@ class ProductsService {
                     id AS snapshot_id,
                     version AS snapshot_version,
                     payload,
-                    updated_at AS snapshot_updated_at
-                FROM product_assessment_snapshots
+                    calculated_at AS snapshot_calculated_at,
+                    engine_version AS snapshot_engine_version,
+                    methodology_version AS snapshot_methodology_version,
+                    factor_registry_version AS snapshot_factor_registry_version,
+                    gwp_basis AS snapshot_gwp_basis,
+                    canonical_input_hash AS snapshot_canonical_input_hash,
+                    is_legacy AS snapshot_is_legacy
+                FROM latest_product_assessment_snapshots
                 WHERE product_id = $1
                 ORDER BY version DESC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC
                 LIMIT 1
@@ -535,30 +550,13 @@ class ProductsService {
 
             const product = insertResult.rows[0];
 
-            // Insert snapshot
-            const snapshotInsertQuery = `
-                INSERT INTO product_assessment_snapshots (
-                    product_id,
-                    version,
-                    payload
-                ) VALUES ($1, $2, $3)
-                RETURNING
-                    id AS snapshot_id,
-                    version AS snapshot_version,
-                    updated_at AS snapshot_updated_at
-            `;
-
-            const fullPayload = {
-                ...payloadWithoutCarbonResults,
-                carbonInput: authoritativeCarbon.input,
-                carbonResults: normalizedCarbonResults
-            };
-
-            const snapshotResult = await client.query(snapshotInsertQuery, [
-                product.id,
-                1,
-                JSON.stringify(fullPayload)
-            ]);
+            const calculationSnapshot = await this.insertProductSnapshot(client, {
+                productId: product.id,
+                assessmentPayload: payloadWithoutCarbonResults,
+                input: authoritativeCarbon.input,
+                result: normalizedCarbonResults
+            });
+            const fullPayload = calculationSnapshot.payload;
 
             // Auto-create shipment if publishing directly
             let shipmentMeta = {
@@ -608,7 +606,7 @@ class ProductsService {
                 skipReason: shipmentMeta.skipReason,
                 domesticComplianceWarning,
                 carbonResults: normalizedCarbonResults,
-                carbonAuthority: buildCarbonAuthorityReference(snapshotResult.rows[0])
+                carbonAuthority: buildCarbonAuthorityReference(calculationSnapshot.row)
             };
         } catch (error) {
             await client.query('ROLLBACK');
@@ -641,6 +639,7 @@ class ProductsService {
             const checkQuery = `
                 SELECT id, status FROM products
                 WHERE id = $1 AND company_id = $2
+                FOR UPDATE
             `;
             const checkResult = await client.query(checkQuery, [productId, companyId]);
 
@@ -696,30 +695,13 @@ class ProductsService {
                 productId
             ]);
 
-            // Update snapshot (increment version)
-            const snapshotUpdateQuery = `
-                UPDATE product_assessment_snapshots
-                SET
-                    version = version + 1,
-                    payload = $1,
-                    updated_at = NOW()
-                WHERE product_id = $2
-                RETURNING
-                    id AS snapshot_id,
-                    version AS snapshot_version,
-                    updated_at AS snapshot_updated_at
-            `;
-
-            const fullPayload = {
-                ...payloadWithoutCarbonResults,
-                carbonInput: authoritativeCarbon.input,
-                carbonResults: normalizedCarbonResults
-            };
-
-            const snapshotResult = await client.query(snapshotUpdateQuery, [
-                JSON.stringify(fullPayload),
-                productId
-            ]);
+            const calculationSnapshot = await this.insertProductSnapshot(client, {
+                productId,
+                assessmentPayload: payloadWithoutCarbonResults,
+                input: authoritativeCarbon.input,
+                result: normalizedCarbonResults
+            });
+            const fullPayload = calculationSnapshot.payload;
 
             let shipmentMeta = {
                 shipmentId: null,
@@ -746,9 +728,7 @@ class ProductsService {
 
             await client.query('COMMIT');
 
-            const version = snapshotResult.rows.length > 0
-                ? snapshotResult.rows[0].snapshot_version ?? snapshotResult.rows[0].version
-                : 1;
+            const version = calculationSnapshot.row.snapshot_version;
 
             return {
                 success: true,
@@ -762,7 +742,7 @@ class ProductsService {
                     shipmentCreationSkipped: shipmentMeta.shipmentCreationSkipped,
                     skipReason: shipmentMeta.skipReason,
                     carbonResults: normalizedCarbonResults,
-                    carbonAuthority: buildCarbonAuthorityReference(snapshotResult.rows[0])
+                    carbonAuthority: buildCarbonAuthorityReference(calculationSnapshot.row)
                 }
             };
         } catch (error) {
@@ -792,21 +772,32 @@ class ProductsService {
                     p.transport_co2e,
                     s.snapshot_id,
                     s.snapshot_version,
-                    s.snapshot_updated_at,
+                    s.snapshot_calculated_at,
+                    s.snapshot_engine_version,
+                    s.snapshot_methodology_version,
+                    s.snapshot_factor_registry_version,
+                    s.snapshot_gwp_basis,
+                    s.snapshot_canonical_input_hash,
+                    s.snapshot_is_legacy,
                     s.payload
                 FROM products p
                 LEFT JOIN LATERAL (
                     SELECT
                         id AS snapshot_id,
                         version AS snapshot_version,
-                        updated_at AS snapshot_updated_at,
+                        calculated_at AS snapshot_calculated_at,
+                        engine_version AS snapshot_engine_version,
+                        methodology_version AS snapshot_methodology_version,
+                        factor_registry_version AS snapshot_factor_registry_version,
+                        gwp_basis AS snapshot_gwp_basis,
+                        canonical_input_hash AS snapshot_canonical_input_hash,
+                        is_legacy AS snapshot_is_legacy,
                         payload
-                    FROM product_assessment_snapshots ps
+                    FROM latest_product_assessment_snapshots ps
                     WHERE ps.product_id = p.id
-                    ORDER BY ps.version DESC NULLS LAST, ps.updated_at DESC NULLS LAST, ps.created_at DESC
-                    LIMIT 1
                 ) s ON true
                 WHERE p.id = $1 AND p.company_id = $2
+                FOR UPDATE OF p
             `;
             const selectResult = await client.query(selectQuery, [productId, companyId]);
 
@@ -842,11 +833,7 @@ class ProductsService {
                     weightPerUnit: Number(product.weight_kg || 0) * 1000
                 });
                 authoritativeCarbonResults = authoritativeCarbon.result;
-                const authoritativeSnapshot = {
-                    ...this.sanitizeCarbonPayload(snapshotPayload),
-                    carbonInput: authoritativeCarbon.input,
-                    carbonResults: authoritativeCarbonResults
-                };
+                const sanitizedSnapshot = this.sanitizeCarbonPayload(snapshotPayload);
 
                 const domesticComplianceValidation =
                     await this.complianceService.validateProductsForDomesticPublish(
@@ -882,21 +869,14 @@ class ProductsService {
                         companyId
                     ]
                 );
-                const authoritativeSnapshotResult = await client.query(
-                    `
-                    UPDATE product_assessment_snapshots
-                    SET version = version + 1, payload = $1, updated_at = NOW()
-                    WHERE product_id = $2
-                    RETURNING
-                        id AS snapshot_id,
-                        version AS snapshot_version,
-                        updated_at AS snapshot_updated_at
-                    `,
-                    [JSON.stringify(authoritativeSnapshot), productId]
-                );
-                carbonAuthority = buildCarbonAuthorityReference(
-                    authoritativeSnapshotResult.rows[0]
-                );
+                const calculationSnapshot = await this.insertProductSnapshot(client, {
+                    productId,
+                    assessmentPayload: sanitizedSnapshot,
+                    input: authoritativeCarbon.input,
+                    result: authoritativeCarbonResults
+                });
+                const authoritativeSnapshot = calculationSnapshot.payload;
+                carbonAuthority = buildCarbonAuthorityReference(calculationSnapshot.row);
                 product.total_co2e = authoritativeCarbonResults.perProduct.total;
                 product.transport_co2e = authoritativeCarbonResults.perProduct.transport;
                 product.payload = authoritativeSnapshot;

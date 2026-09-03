@@ -537,9 +537,15 @@ class ExportV2Service {
           s.id AS snapshot_id,
           s.version AS snapshot_version,
           s.payload,
-          s.updated_at AS snapshot_updated_at
+          s.calculated_at AS snapshot_calculated_at,
+          s.engine_version AS snapshot_engine_version,
+          s.methodology_version AS snapshot_methodology_version,
+          s.factor_registry_version AS snapshot_factor_registry_version,
+          s.gwp_basis AS snapshot_gwp_basis,
+          s.canonical_input_hash AS snapshot_canonical_input_hash,
+          s.is_legacy AS snapshot_is_legacy
         FROM products p
-        INNER JOIN product_assessment_snapshots s ON s.product_id = p.id
+        INNER JOIN latest_product_assessment_snapshots s ON s.product_id = p.id
         WHERE p.company_id = $1 AND p.status <> 'archived'
         ORDER BY p.created_at ASC
         LIMIT 200

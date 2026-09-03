@@ -26,7 +26,19 @@ const buildCarbonAuthorityReference = (row = {}) => {
       1
     ))),
     calculatedAt:
-      row.snapshot_updated_at || row.calculated_at || row.updated_at || row.created_at || null
+      row.snapshot_calculated_at || row.calculated_at ||
+      row.snapshot_updated_at || row.updated_at || row.created_at || null,
+    engineVersion: row.snapshot_engine_version || row.engine_version || 'legacy-unversioned',
+    methodologyVersion:
+      row.snapshot_methodology_version || row.methodology_version || 'legacy-unversioned',
+    factorRegistryVersion:
+      row.snapshot_factor_registry_version || row.factor_registry_version ||
+      'legacy-unversioned',
+    gwpBasis: row.snapshot_gwp_basis || row.gwp_basis || 'legacy-unversioned',
+    canonicalInputHash:
+      row.snapshot_canonical_input_hash || row.canonical_input_hash ||
+      `legacy:${calculationId}`,
+    legacy: Boolean(row.snapshot_is_legacy ?? row.is_legacy ?? true)
   };
 };
 
@@ -68,9 +80,15 @@ const loadAuthoritativeProductCarbon = async (database, productId, companyId) =>
         s.id AS snapshot_id,
         s.version AS snapshot_version,
         s.payload,
-        s.updated_at AS snapshot_updated_at
+        s.calculated_at AS snapshot_calculated_at,
+        s.engine_version AS snapshot_engine_version,
+        s.methodology_version AS snapshot_methodology_version,
+        s.factor_registry_version AS snapshot_factor_registry_version,
+        s.gwp_basis AS snapshot_gwp_basis,
+        s.canonical_input_hash AS snapshot_canonical_input_hash,
+        s.is_legacy AS snapshot_is_legacy
       FROM products p
-      INNER JOIN product_assessment_snapshots s ON s.product_id = p.id
+      INNER JOIN latest_product_assessment_snapshots s ON s.product_id = p.id
       WHERE p.id = $1 AND p.company_id = $2
       LIMIT 1
     `,

@@ -48,14 +48,28 @@ describe('carbonRepository', () => {
       totalCo2e: 10,
       methodology: 'GHG',
       emissionFactorVersion: '2024',
+      engineVersion: 'engine-v1',
+      methodologyVersion: 'method-v1',
+      factorRegistryVersion: 'factors-v1:test',
+      gwpBasis: 'IPCC_AR5_100y',
+      calculatedAt: '2026-09-03T00:00:00.000Z',
+      canonicalInputHash: 'a'.repeat(64),
+      inputSnapshot: { quantity: 1 },
+      factorSnapshot: [{ factorId: 'factor-1', value: 10 }],
+      assumptions: ['Assumption A'],
       notes: null,
       userId: 'user-1'
     };
 
     await expect(repository.createCalculation(values)).resolves.toEqual({ id: 'calc-1' });
-    expect(database.query.mock.calls[0][1]).toEqual([
+    expect(database.query.mock.calls[0][1]).toStrictEqual([
       'company-1', 'product-1', null, 'product', null, null,
-      1, 2, 3, 4, 10, 'GHG', '2024', null, 'user-1'
+      1, 2, 3, 4, 10, 'GHG', '2024', null, 'user-1',
+      'engine-v1', 'method-v1', 'factors-v1:test', 'IPCC_AR5_100y',
+      '2026-09-03T00:00:00.000Z', 'a'.repeat(64),
+      JSON.stringify({ quantity: 1 }),
+      JSON.stringify([{ factorId: 'factor-1', value: 10 }]),
+      JSON.stringify(['Assumption A'])
     ]);
   });
 

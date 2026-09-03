@@ -5,6 +5,15 @@ module.exports = {
   get stripClientCarbonOutputs() {
     return require('./authoritativeCalculation').stripClientCarbonOutputs;
   },
+  get buildCalculationMetadata() {
+    return require('./calculationSnapshot').buildCalculationMetadata;
+  },
+  get buildFinalizedCalculationSnapshot() {
+    return require('./calculationSnapshot').buildFinalizedCalculationSnapshot;
+  },
+  get insertFinalizedProductSnapshot() {
+    return require('./calculationSnapshot').insertFinalizedProductSnapshot;
+  },
   get buildCarbonAuthorityReference() {
     return require('./authorityReference').buildCarbonAuthorityReference;
   },

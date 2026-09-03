@@ -5,7 +5,8 @@ const { toNumber, toPayloadObject, isDemoUser } = require('./shared');
 const { createShipmentFromProduct } = require('./shipmentSync');
 const {
     calculateAuthoritativeProductCarbon,
-    stripClientCarbonOutputs
+    stripClientCarbonOutputs,
+    insertFinalizedProductSnapshot
 } = require('../../carbon');
 
 async function bulkImport(
@@ -15,7 +16,8 @@ async function bulkImport(
     saveMode = 'draft',
     {
         calculateProductCarbon = calculateAuthoritativeProductCarbon,
-        sanitizeCarbonPayload = stripClientCarbonOutputs
+        sanitizeCarbonPayload = stripClientCarbonOutputs,
+        insertProductSnapshot = insertFinalizedProductSnapshot
     } = {}
 ) {
     await ensureShipmentSimulationSchema();
@@ -122,19 +124,13 @@ async function bulkImport(
 
                 const productId = insertResult.rows[0].id;
 
-                // Create snapshot
-                const snapshotQuery = `
-                    INSERT INTO product_assessment_snapshots (product_id, version, payload)
-                    VALUES ($1, 1, $2)
-                `;
-
-                const fullPayload = {
-                    ...snapshotPayload,
-                    carbonInput: authoritativeCarbon.input,
-                    carbonResults: normalizedCarbonResults
-                };
-
-                await client.query(snapshotQuery, [productId, JSON.stringify(fullPayload)]);
+                const calculationSnapshot = await insertProductSnapshot(client, {
+                    productId,
+                    assessmentPayload: snapshotPayload,
+                    input: authoritativeCarbon.input,
+                    result: normalizedCarbonResults
+                });
+                const fullPayload = calculationSnapshot.payload;
 
                 if (dbStatus === 'active') {
                     const domesticComplianceValidation =

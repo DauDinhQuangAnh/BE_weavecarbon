@@ -115,10 +115,16 @@ class ExportMarketsService {
                     p.name as product_name, p.sku, p.total_co2e,
                     ps.id AS calculation_id,
                     ps.version AS calculation_version,
-                    ps.updated_at AS calculated_at
+                    ps.calculated_at,
+                    ps.engine_version,
+                    ps.methodology_version,
+                    ps.factor_registry_version,
+                    ps.gwp_basis,
+                    ps.canonical_input_hash,
+                    ps.is_legacy
                 FROM market_product_scope mps
                 JOIN products p ON p.id = mps.product_id
-                INNER JOIN product_assessment_snapshots ps ON ps.product_id = p.id
+                INNER JOIN latest_product_assessment_snapshots ps ON ps.product_id = p.id
                 WHERE mps.market_id = ANY($1)
                 ORDER BY p.name ASC
             `;
@@ -336,7 +342,13 @@ class ExportMarketsService {
                                 source: 'product_assessment_snapshot',
                                 calculationId: s.calculation_id,
                                 calculationVersion: s.calculation_version,
-                                calculatedAt: s.calculated_at
+                                calculatedAt: s.calculated_at,
+                                engineVersion: s.engine_version,
+                                methodologyVersion: s.methodology_version,
+                                factorRegistryVersion: s.factor_registry_version,
+                                gwpBasis: s.gwp_basis,
+                                canonicalInputHash: s.canonical_input_hash,
+                                legacy: Boolean(s.is_legacy)
                             },
                             hs_code: s.hs_code,
                             production_site: scopeNotes.production_site || '',
@@ -1142,10 +1154,16 @@ class ExportMarketsService {
                     SELECT p.sku,
                            ps.id AS calculation_id,
                            ps.version AS calculation_version,
-                           ps.updated_at AS calculated_at
+                           ps.calculated_at,
+                           ps.engine_version,
+                           ps.methodology_version,
+                           ps.factor_registry_version,
+                           ps.gwp_basis,
+                           ps.canonical_input_hash,
+                           ps.is_legacy
                     FROM market_product_scope mps
                     INNER JOIN products p ON p.id = mps.product_id
-                    INNER JOIN product_assessment_snapshots ps ON ps.product_id = p.id
+                    INNER JOIN latest_product_assessment_snapshots ps ON ps.product_id = p.id
                     WHERE mps.market_id = $1 AND p.company_id = $2
                     ORDER BY p.sku
                 `,
@@ -1182,7 +1200,13 @@ class ExportMarketsService {
                     source: 'product_assessment_snapshot',
                     calculationId: row.calculation_id,
                     calculationVersion: row.calculation_version,
-                    calculatedAt: row.calculated_at
+                    calculatedAt: row.calculated_at,
+                    engineVersion: row.engine_version,
+                    methodologyVersion: row.methodology_version,
+                    factorRegistryVersion: row.factor_registry_version,
+                    gwpBasis: row.gwp_basis,
+                    canonicalInputHash: row.canonical_input_hash,
+                    legacy: Boolean(row.is_legacy)
                 }))
             };
 

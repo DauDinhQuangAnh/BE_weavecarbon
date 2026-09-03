@@ -14,7 +14,13 @@ const productRow = {
   packaging_co2e: '0.016',
   snapshot_id: '22222222-2222-4222-8222-222222222222',
   snapshot_version: 7,
-  snapshot_updated_at: '2026-08-31T00:00:00.000Z',
+  snapshot_calculated_at: '2026-08-31T00:00:00.000Z',
+  snapshot_engine_version: 'scope-quality-rss-1.0.0',
+  snapshot_methodology_version: 'textile-pcf-2.1.0',
+  snapshot_factor_registry_version: 'factors-v1:test',
+  snapshot_gwp_basis: 'IPCC_AR5_100y',
+  snapshot_canonical_input_hash: 'a'.repeat(64),
+  snapshot_is_legacy: false,
   payload: {
     quantity: 10,
     carbonResults: {
@@ -43,7 +49,7 @@ describe('official carbon output identity', () => {
         if (text.includes('FROM report_templates')) {
           return Promise.resolve({ rows: [{ id: 'template-1', version: '2.0' }] });
         }
-        if (text.includes('INNER JOIN product_assessment_snapshots')) {
+        if (text.includes('INNER JOIN latest_product_assessment_snapshots')) {
           return Promise.resolve({ rows: [productRow] });
         }
         if (text.includes('INSERT INTO report_snapshots')) {
@@ -111,7 +117,13 @@ describe('official carbon output identity', () => {
       source: 'product_assessment_snapshot',
       calculationId: productRow.snapshot_id,
       calculationVersion: 7,
-      calculatedAt: productRow.snapshot_updated_at
+      calculatedAt: productRow.snapshot_calculated_at,
+      engineVersion: productRow.snapshot_engine_version,
+      methodologyVersion: productRow.snapshot_methodology_version,
+      factorRegistryVersion: productRow.snapshot_factor_registry_version,
+      gwpBasis: productRow.snapshot_gwp_basis,
+      canonicalInputHash: productRow.snapshot_canonical_input_hash,
+      legacy: false
     });
   });
 });

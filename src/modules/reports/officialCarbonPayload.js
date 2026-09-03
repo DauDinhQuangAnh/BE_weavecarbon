@@ -66,6 +66,12 @@ const buildOfficialReportPayload = (clientPayload = {}, authorityRecord) => {
     cbamRows: [
       { field: 'Calculation identity', value: carbonAuthority.calculationId },
       { field: 'Calculation version', value: carbonAuthority.calculationVersion },
+      { field: 'Engine version', value: carbonAuthority.engineVersion },
+      { field: 'Methodology version', value: carbonAuthority.methodologyVersion },
+      { field: 'Factor registry version', value: carbonAuthority.factorRegistryVersion },
+      { field: 'GWP basis', value: carbonAuthority.gwpBasis },
+      { field: 'Canonical input hash', value: carbonAuthority.canonicalInputHash },
+      { field: 'Legacy calculation', value: carbonAuthority.legacy ? 'yes' : 'no' },
       { field: 'Total embedded emissions', value: batchTonnes, unit: 'tCO2e' }
     ],
     officialCbamRows: {

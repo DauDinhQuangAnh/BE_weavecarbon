@@ -809,10 +809,16 @@ class ReportsService {
                            p.data_confidence_score,
                            ps.id AS calculation_id,
                            ps.version AS calculation_version,
-                           ps.updated_at AS calculated_at,
+                           ps.calculated_at,
+                           ps.engine_version,
+                           ps.methodology_version,
+                           ps.factor_registry_version,
+                           ps.gwp_basis,
+                           ps.canonical_input_hash,
+                           ps.is_legacy,
                            p.created_at
                     FROM products p
-                    INNER JOIN product_assessment_snapshots ps ON ps.product_id = p.id
+                    INNER JOIN latest_product_assessment_snapshots ps ON ps.product_id = p.id
                     WHERE p.company_id = $1
                       AND p.status <> 'archived'
                     ORDER BY p.created_at DESC
@@ -822,7 +828,9 @@ class ReportsService {
                           'total_co2e', 'materials_co2e', 'production_co2e',
                           'transport_co2e', 'packaging_co2e',
                           'data_confidence_score', 'calculation_id',
-                          'calculation_version', 'calculated_at', 'created_at']
+                          'calculation_version', 'calculated_at', 'engine_version',
+                          'methodology_version', 'factor_registry_version', 'gwp_basis',
+                          'canonical_input_hash', 'is_legacy', 'created_at']
             },
             'activity': {
                 query: `
@@ -830,7 +838,10 @@ class ReportsService {
                            cc.calculation_type, cc.period_start, cc.period_end,
                            cc.materials_co2e, cc.production_co2e, cc.transport_co2e,
                            cc.packaging_co2e, cc.total_co2e, cc.methodology,
-                           cc.emission_factor_version, cc.notes, cc.created_at,
+                           cc.emission_factor_version, cc.engine_version,
+                           cc.methodology_version, cc.factor_registry_version,
+                           cc.gwp_basis, cc.calculated_at, cc.canonical_input_hash,
+                           cc.is_legacy, cc.notes, cc.created_at,
                            p.name AS product_name, p.sku AS product_sku
                     FROM carbon_calculations cc
                     LEFT JOIN products p ON p.id = cc.product_id
@@ -841,7 +852,10 @@ class ReportsService {
                 columns: ['calculation_id', 'calculation_type', 'period_start', 'period_end',
                           'materials_co2e', 'production_co2e', 'transport_co2e',
                           'packaging_co2e', 'total_co2e', 'methodology',
-                          'emission_factor_version', 'notes', 'created_at',
+                          'emission_factor_version', 'engine_version',
+                          'methodology_version', 'factor_registry_version', 'gwp_basis',
+                          'calculated_at', 'canonical_input_hash', 'is_legacy',
+                          'notes', 'created_at',
                           'product_name', 'product_sku']
             },
             'audit': {
@@ -850,7 +864,10 @@ class ReportsService {
                            cc.calculation_type, cc.period_start, cc.period_end,
                            cc.materials_co2e, cc.production_co2e, cc.transport_co2e,
                            cc.packaging_co2e, cc.total_co2e, cc.methodology,
-                           cc.emission_factor_version, cc.notes, cc.created_at,
+                           cc.emission_factor_version, cc.engine_version,
+                           cc.methodology_version, cc.factor_registry_version,
+                           cc.gwp_basis, cc.calculated_at, cc.canonical_input_hash,
+                           cc.is_legacy, cc.notes, cc.created_at,
                            p.name AS product_name, p.sku AS product_sku
                     FROM carbon_calculations cc
                     LEFT JOIN products p ON p.id = cc.product_id
@@ -861,7 +878,10 @@ class ReportsService {
                 columns: ['calculation_id', 'calculation_type', 'period_start', 'period_end',
                           'materials_co2e', 'production_co2e', 'transport_co2e',
                           'packaging_co2e', 'total_co2e', 'methodology',
-                          'emission_factor_version', 'notes', 'created_at',
+                          'emission_factor_version', 'engine_version',
+                          'methodology_version', 'factor_registry_version', 'gwp_basis',
+                          'calculated_at', 'canonical_input_hash', 'is_legacy',
+                          'notes', 'created_at',
                           'product_name', 'product_sku']
             },
             'users': {
@@ -1132,17 +1152,25 @@ class ReportsService {
                                p.transport_co2e, p.packaging_co2e,
                                ps.id AS calculation_id,
                                ps.version AS calculation_version,
-                               ps.updated_at AS calculated_at,
+                               ps.calculated_at,
+                               ps.engine_version,
+                               ps.methodology_version,
+                               ps.factor_registry_version,
+                               ps.gwp_basis,
+                               ps.canonical_input_hash,
+                               ps.is_legacy,
                                p.created_at
                         FROM products p
-                        INNER JOIN product_assessment_snapshots ps ON ps.product_id = p.id
+                        INNER JOIN latest_product_assessment_snapshots ps ON ps.product_id = p.id
                         WHERE p.company_id = $1 AND p.status <> 'archived'
                         ORDER BY p.total_co2e DESC NULLS LAST
                     `, [companyId]);
                     columns = ['sku', 'name', 'category', 'status', 'weight_kg',
                                'total_co2e', 'materials_co2e', 'production_co2e',
                                'transport_co2e', 'packaging_co2e', 'calculation_id',
-                               'calculation_version', 'calculated_at', 'created_at'];
+                               'calculation_version', 'calculated_at', 'engine_version',
+                               'methodology_version', 'factor_registry_version', 'gwp_basis',
+                               'canonical_input_hash', 'is_legacy', 'created_at'];
                     rows = dataRes.rows;
                 } else if (report.report_type === 'export_declaration') {
                     const dataRes = await client.query(`
@@ -1160,16 +1188,24 @@ class ReportsService {
                         SELECT p.sku, p.name, p.category, p.total_co2e,
                                ps.id AS calculation_id,
                                ps.version AS calculation_version,
-                               ps.updated_at AS calculated_at,
+                               ps.calculated_at,
+                               ps.engine_version,
+                               ps.methodology_version,
+                               ps.factor_registry_version,
+                               ps.gwp_basis,
+                               ps.canonical_input_hash,
+                               ps.is_legacy,
                                p.created_at
                         FROM products p
-                        INNER JOIN product_assessment_snapshots ps ON ps.product_id = p.id
+                        INNER JOIN latest_product_assessment_snapshots ps ON ps.product_id = p.id
                         WHERE p.company_id = $1 AND p.status <> 'archived'
                         ORDER BY p.created_at DESC
                     `, [companyId]);
                     columns = ['sku', 'name', 'category', 'total_co2e',
                                'calculation_id', 'calculation_version', 'calculated_at',
-                               'created_at'];
+                               'engine_version', 'methodology_version',
+                               'factor_registry_version', 'gwp_basis',
+                               'canonical_input_hash', 'is_legacy', 'created_at'];
                     rows = dataRes.rows;
                 }
 

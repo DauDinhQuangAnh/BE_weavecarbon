@@ -22,7 +22,11 @@ function createCarbonRepository({ database = pool } = {}) {
                 period_start, period_end,
                 materials_co2e, production_co2e, transport_co2e,
                 packaging_co2e, total_co2e,
-                methodology, emission_factor_version, notes, created_at
+                methodology, emission_factor_version,
+                engine_version, methodology_version, factor_registry_version,
+                gwp_basis, calculated_at, canonical_input_hash,
+                factor_snapshot, assumptions, is_legacy,
+                notes, created_at
          FROM carbon_calculations
          WHERE ${where}
          ORDER BY created_at DESC
@@ -43,11 +47,19 @@ function createCarbonRepository({ database = pool } = {}) {
            (company_id, product_id, shipment_id, calculation_type,
             period_start, period_end,
             materials_co2e, production_co2e, transport_co2e, packaging_co2e,
-            total_co2e, methodology, emission_factor_version, notes, calculated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            total_co2e, methodology, emission_factor_version, notes, calculated_by,
+            engine_version, methodology_version, factor_registry_version, gwp_basis,
+            calculated_at, canonical_input_hash, input_snapshot, factor_snapshot,
+            assumptions, is_legacy, finalized_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+                 $16, $17, $18, $19, $20, $21, $22::jsonb, $23::jsonb, $24::jsonb,
+                 false, $20)
          RETURNING id, product_id, shipment_id, calculation_type, total_co2e,
                    materials_co2e, production_co2e, transport_co2e, packaging_co2e,
-                   period_start, period_end, methodology, emission_factor_version, notes, created_at`,
+                   period_start, period_end, methodology, emission_factor_version,
+                   engine_version, methodology_version, factor_registry_version,
+                   gwp_basis, calculated_at, canonical_input_hash,
+                   factor_snapshot, assumptions, is_legacy, notes, created_at`,
         [
           values.companyId,
           values.productId,
@@ -63,7 +75,16 @@ function createCarbonRepository({ database = pool } = {}) {
           values.methodology,
           values.emissionFactorVersion,
           values.notes,
-          values.userId
+          values.userId,
+          values.engineVersion,
+          values.methodologyVersion,
+          values.factorRegistryVersion,
+          values.gwpBasis,
+          values.calculatedAt,
+          values.canonicalInputHash,
+          JSON.stringify(values.inputSnapshot),
+          JSON.stringify(values.factorSnapshot),
+          JSON.stringify(values.assumptions)
         ]
       );
       return rows[0];

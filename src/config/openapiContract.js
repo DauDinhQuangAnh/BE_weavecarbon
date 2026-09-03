@@ -542,14 +542,26 @@ function contractComponents() {
           'source',
           'calculationId',
           'calculationVersion',
-          'calculatedAt'
+          'calculatedAt',
+          'engineVersion',
+          'methodologyVersion',
+          'factorRegistryVersion',
+          'gwpBasis',
+          'canonicalInputHash',
+          'legacy'
         ],
         properties: {
           authoritative: { type: 'boolean', enum: [true] },
           source: { type: 'string', enum: ['product_assessment_snapshot'] },
           calculationId: { type: 'string', format: 'uuid' },
           calculationVersion: { type: 'integer', minimum: 1 },
-          calculatedAt: { type: 'string', format: 'date-time', nullable: true }
+          calculatedAt: { type: 'string', format: 'date-time', nullable: true },
+          engineVersion: { type: 'string', minLength: 1 },
+          methodologyVersion: { type: 'string', minLength: 1 },
+          factorRegistryVersion: { type: 'string', minLength: 1 },
+          gwpBasis: { type: 'string', minLength: 1 },
+          canonicalInputHash: { type: 'string', minLength: 1 },
+          legacy: { type: 'boolean' }
         },
         additionalProperties: false
       },

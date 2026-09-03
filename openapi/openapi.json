@@ -272,6 +272,29 @@
             "minimum": 1,
             "type": "integer"
           },
+          "canonicalInputHash": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "engineVersion": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "factorRegistryVersion": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "gwpBasis": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "legacy": {
+            "type": "boolean"
+          },
+          "methodologyVersion": {
+            "minLength": 1,
+            "type": "string"
+          },
           "source": {
             "enum": [
               "product_assessment_snapshot"
@@ -284,7 +307,13 @@
           "source",
           "calculationId",
           "calculationVersion",
-          "calculatedAt"
+          "calculatedAt",
+          "engineVersion",
+          "methodologyVersion",
+          "factorRegistryVersion",
+          "gwpBasis",
+          "canonicalInputHash",
+          "legacy"
         ],
         "type": "object"
       },

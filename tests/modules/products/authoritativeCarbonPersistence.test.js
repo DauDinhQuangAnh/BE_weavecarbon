@@ -17,6 +17,18 @@ const authoritativeResult = {
   }
 };
 
+const snapshotRow = (version) => ({
+  snapshot_id: `snapshot-${version}`,
+  snapshot_version: version,
+  snapshot_calculated_at: '2026-09-03T00:00:00.000Z',
+  snapshot_engine_version: 'scope-quality-rss-1.0.0',
+  snapshot_methodology_version: 'textile-pcf-2.1.0',
+  snapshot_factor_registry_version: 'factors-v1:test',
+  snapshot_gwp_basis: 'IPCC_AR5_100y',
+  snapshot_canonical_input_hash: 'a'.repeat(64),
+  snapshot_is_legacy: false
+});
+
 describe('product assessment authoritative carbon persistence', () => {
   test('create persists and returns the server result instead of client totals', async () => {
     const client = {
@@ -30,6 +42,9 @@ describe('product assessment authoritative carbon persistence', () => {
           return Promise.resolve({
             rows: [{ id: 'product-1', status: 'draft', created_at: 'created' }]
           });
+        }
+        if (text.includes('INSERT INTO product_assessment_snapshots')) {
+          return Promise.resolve({ rows: [snapshotRow(1)] });
         }
         return Promise.resolve({ rows: [] });
       }),
@@ -73,7 +88,7 @@ describe('product assessment authoritative carbon persistence', () => {
     const snapshotInsert = client.query.mock.calls.find(([sql]) =>
       String(sql).includes('INSERT INTO product_assessment_snapshots')
     );
-    const snapshot = JSON.parse(snapshotInsert[1][2]);
+    const snapshot = JSON.parse(snapshotInsert[1][1]);
     expect(snapshot.carbonResults).toMatchObject({
       perProduct: { total: 0.21 },
       confidenceScore: 15,
@@ -87,6 +102,12 @@ describe('product assessment authoritative carbon persistence', () => {
     expect(snapshot).not.toHaveProperty('total_co2e');
     expect(snapshot).not.toHaveProperty('scope3');
     expect(response.carbonResults.perProduct.total).toBe(0.21);
+    expect(response.carbonAuthority).toMatchObject({
+      calculationId: 'snapshot-1',
+      calculationVersion: 1,
+      engineVersion: 'scope-quality-rss-1.0.0',
+      legacy: false
+    });
     expect(client.query).toHaveBeenCalledWith('COMMIT');
   });
 
@@ -118,6 +139,9 @@ describe('product assessment authoritative carbon persistence', () => {
         }
         if (text.includes('SET status = $1')) {
           return Promise.resolve({ rows: [{ status: 'active', updated_at: 'updated' }] });
+        }
+        if (text.includes('INSERT INTO product_assessment_snapshots')) {
+          return Promise.resolve({ rows: [snapshotRow(2)] });
         }
         return Promise.resolve({ rows: [] });
       }),
@@ -167,8 +191,8 @@ describe('product assessment authoritative carbon persistence', () => {
         if (text.includes('UPDATE products') && text.includes('sku = $1')) {
           return Promise.resolve({ rows: [{ status: 'draft', updated_at: 'updated' }] });
         }
-        if (text.includes('UPDATE product_assessment_snapshots')) {
-          return Promise.resolve({ rows: [{ version: 2 }] });
+        if (text.includes('INSERT INTO product_assessment_snapshots')) {
+          return Promise.resolve({ rows: [snapshotRow(2)] });
         }
         return Promise.resolve({ rows: [] });
       }),
@@ -209,9 +233,9 @@ describe('product assessment authoritative carbon persistence', () => {
     );
     expect(productUpdate[1].slice(4, 10)).toEqual([4.577, 2.864, 1.591, 0.106, 0.017, 77]);
     const snapshotUpdate = client.query.mock.calls.find(([sql]) =>
-      String(sql).includes('UPDATE product_assessment_snapshots')
+      String(sql).includes('INSERT INTO product_assessment_snapshots')
     );
-    const snapshot = JSON.parse(snapshotUpdate[1][0]);
+    const snapshot = JSON.parse(snapshotUpdate[1][1]);
     expect(snapshot.carbonResults).toEqual(authoritativeResult);
     expect(snapshot).not.toHaveProperty('total_co2e');
     expect(response.data.carbonResults).toEqual(authoritativeResult);

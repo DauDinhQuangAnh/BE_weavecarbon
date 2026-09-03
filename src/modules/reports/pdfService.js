@@ -253,7 +253,7 @@ async function generateProductCarbonPdf(doc, companyId, database = pool) {
                p.data_confidence_score, p.status, p.created_at,
                ps.id::text || ':v' || ps.version::text AS calculation_ref
         FROM products p
-        INNER JOIN product_assessment_snapshots ps ON ps.product_id = p.id
+        INNER JOIN latest_product_assessment_snapshots ps ON ps.product_id = p.id
         WHERE p.company_id = $1 AND p.status <> 'archived'
         ORDER BY p.total_co2e DESC NULLS LAST
       `, [companyId])
@@ -318,7 +318,7 @@ async function generateBatchExportPdf(doc, companyId, database = pool) {
                ) AS calculation_refs
         FROM shipments s
         LEFT JOIN shipment_products sp ON sp.shipment_id = s.id
-        LEFT JOIN product_assessment_snapshots ps ON ps.product_id = sp.product_id
+        LEFT JOIN latest_product_assessment_snapshots ps ON ps.product_id = sp.product_id
         WHERE s.company_id = $1 AND s.status <> 'cancelled'
         GROUP BY s.id
         ORDER BY s.created_at DESC
