@@ -3,6 +3,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendError, sendNoCompany, sendSuccess } = require('../utils/http');
 const exportV2Service = require('../services/exportV2Service');
+const { logAuditTrail } = require('../services/auditTrailService');
 
 const router = express.Router();
 
@@ -67,6 +68,19 @@ router.post('/dpp-locks', asyncHandler(async (req, res) => {
       message: 'Product not found for this company.'
     });
   }
+
+  await logAuditTrail({
+    companyId,
+    userId: req.userId,
+    dataGroup: 'exports',
+    changedField: 'dpp.locked',
+    newValue: lock.id,
+    reason: 'export.dpp_lock',
+    notes: JSON.stringify({
+      sku: lock.sku,
+      carbonAuthority: lock.carbonAuthority
+    })
+  });
 
   return sendSuccess(res, { status: 201, data: lock });
 }));

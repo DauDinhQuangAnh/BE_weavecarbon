@@ -250,6 +250,44 @@
       }
     },
     "schemas": {
+      "CarbonAuthorityReference": {
+        "additionalProperties": false,
+        "properties": {
+          "authoritative": {
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          },
+          "calculatedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "calculationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "calculationVersion": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "source": {
+            "enum": [
+              "product_assessment_snapshot"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "authoritative",
+          "source",
+          "calculationId",
+          "calculationVersion",
+          "calculatedAt"
+        ],
+        "type": "object"
+      },
       "CompanyMember": {
         "additionalProperties": false,
         "properties": {
@@ -439,6 +477,9 @@
           "weightPerUnit": 250
         },
         "properties": {
+          "carbonAuthority": {
+            "$ref": "#/components/schemas/CarbonAuthorityReference"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -5626,7 +5667,28 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
+                "additionalProperties": false,
+                "description": "Product carbon values are always loaded from the authoritative server snapshot.",
+                "properties": {
+                  "decentralizedUrl": {
+                    "format": "uri",
+                    "type": "string"
+                  },
+                  "gtin": {
+                    "type": "string"
+                  },
+                  "productId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "product_id": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "sku": {
+                    "type": "string"
+                  }
+                },
                 "type": "object"
               }
             }
@@ -9057,6 +9119,21 @@
             "application/json": {
               "schema": {
                 "additionalProperties": true,
+                "properties": {
+                  "payload": {
+                    "additionalProperties": true,
+                    "description": "Presentation payload. Carbon totals are replaced by the authoritative server snapshot.",
+                    "type": "object"
+                  },
+                  "productId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "productId",
+                  "payload"
+                ],
                 "type": "object"
               }
             }

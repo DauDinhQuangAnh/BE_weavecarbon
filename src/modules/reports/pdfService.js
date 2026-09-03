@@ -247,13 +247,15 @@ async function generateProductCarbonPdf(doc, companyId, database = pool) {
     const [companyRes, productsRes] = await Promise.all([
       client.query('SELECT name, business_type FROM companies WHERE id = $1', [companyId]),
       client.query(`
-        SELECT sku, name, category, weight_kg,
-               total_co2e, materials_co2e, production_co2e,
-               transport_co2e, packaging_co2e,
-               data_confidence_score, status, created_at
-        FROM products
-        WHERE company_id = $1 AND status <> 'archived'
-        ORDER BY total_co2e DESC NULLS LAST
+        SELECT p.sku, p.name, p.category, p.weight_kg,
+               p.total_co2e, p.materials_co2e, p.production_co2e,
+               p.transport_co2e, p.packaging_co2e,
+               p.data_confidence_score, p.status, p.created_at,
+               ps.id::text || ':v' || ps.version::text AS calculation_ref
+        FROM products p
+        INNER JOIN product_assessment_snapshots ps ON ps.product_id = p.id
+        WHERE p.company_id = $1 AND p.status <> 'archived'
+        ORDER BY p.total_co2e DESC NULLS LAST
       `, [companyId])
     ]);
 
@@ -281,6 +283,7 @@ async function generateProductCarbonPdf(doc, companyId, database = pool) {
 
     drawTable(doc, [
       { label: 'SKU', key: 'sku', width: 80 },
+      { label: 'Calc ref', key: 'calculation_ref', width: 90 },
       { label: 'Tên sản phẩm', key: 'name', width: 120 },
       { label: 'KL (kg)', key: 'weight_kg', format: v => fmtNum(v, 3), width: 56 },
       { label: 'Vật liệu', key: 'materials_co2e', format: v => fmtNum(v), width: 62 },
@@ -308,9 +311,14 @@ async function generateBatchExportPdf(doc, companyId, database = pool) {
         SELECT s.id, s.reference_number, s.status, s.origin_country,
                s.destination_country, s.transport_mode, s.total_co2e,
                s.total_distance_km, s.created_at,
-               COUNT(sp.product_id)::int AS product_count
+               COUNT(sp.product_id)::int AS product_count,
+               STRING_AGG(
+                 DISTINCT ps.id::text || ':v' || ps.version::text,
+                 ', '
+               ) AS calculation_refs
         FROM shipments s
         LEFT JOIN shipment_products sp ON sp.shipment_id = s.id
+        LEFT JOIN product_assessment_snapshots ps ON ps.product_id = sp.product_id
         WHERE s.company_id = $1 AND s.status <> 'cancelled'
         GROUP BY s.id
         ORDER BY s.created_at DESC
@@ -339,6 +347,7 @@ async function generateBatchExportPdf(doc, companyId, database = pool) {
 
     drawTable(doc, [
       { label: 'Mã tham chiếu', key: 'reference_number', width: 100 },
+      { label: 'Calc refs', key: 'calculation_refs', width: 90 },
       { label: 'Trạng thái', key: 'status', width: 70 },
       { label: 'Xuất phát', key: 'origin_country', width: 70 },
       { label: 'Đích đến', key: 'destination_country', width: 70 },

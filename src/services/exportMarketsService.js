@@ -112,9 +112,13 @@ class ExportMarketsService {
             const scopeQuery = `
                 SELECT 
                     mps.id, mps.market_id, mps.product_id, mps.hs_code, mps.notes,
-                    p.name as product_name, p.sku, p.total_co2e
+                    p.name as product_name, p.sku, p.total_co2e,
+                    ps.id AS calculation_id,
+                    ps.version AS calculation_version,
+                    ps.updated_at AS calculated_at
                 FROM market_product_scope mps
                 JOIN products p ON p.id = mps.product_id
+                INNER JOIN product_assessment_snapshots ps ON ps.product_id = p.id
                 WHERE mps.market_id = ANY($1)
                 ORDER BY p.name ASC
             `;
@@ -327,6 +331,13 @@ class ExportMarketsService {
                             product_name: s.product_name,
                             sku: s.sku,
                             total_co2e: s.total_co2e,
+                            carbon_authority: {
+                                authoritative: true,
+                                source: 'product_assessment_snapshot',
+                                calculationId: s.calculation_id,
+                                calculationVersion: s.calculation_version,
+                                calculatedAt: s.calculated_at
+                            },
                             hs_code: s.hs_code,
                             production_site: scopeNotes.production_site || '',
                             export_volume: toNonNegativeNumberOrNull(scopeNotes.export_volume) || 0,
@@ -1126,6 +1137,21 @@ class ExportMarketsService {
             const marketAfterRecalculate = await this._getMarketByCode(client, companyId, marketCode);
             const effectiveMarket = marketAfterRecalculate || market;
 
+            const calculationResult = await client.query(
+                `
+                    SELECT p.sku,
+                           ps.id AS calculation_id,
+                           ps.version AS calculation_version,
+                           ps.updated_at AS calculated_at
+                    FROM market_product_scope mps
+                    INNER JOIN products p ON p.id = mps.product_id
+                    INNER JOIN product_assessment_snapshots ps ON ps.product_id = p.id
+                    WHERE mps.market_id = $1 AND p.company_id = $2
+                    ORDER BY p.sku
+                `,
+                [effectiveMarket.id, companyId]
+            );
+
             // Validate market status (must be ready or verified)
             if (!['ready', 'verified'].includes(effectiveMarket.status)) {
                 return {
@@ -1149,7 +1175,15 @@ class ExportMarketsService {
                 market_code: marketCode,
                 market_name: effectiveMarket.market_name,
                 market_score: effectiveMarket.score,
-                generated_for: 'export_compliance'
+                generated_for: 'export_compliance',
+                calculation_manifest: calculationResult.rows.map((row) => ({
+                    sku: row.sku,
+                    authoritative: true,
+                    source: 'product_assessment_snapshot',
+                    calculationId: row.calculation_id,
+                    calculationVersion: row.calculation_version,
+                    calculatedAt: row.calculated_at
+                }))
             };
 
             const insertResult = await client.query(insertQuery, [

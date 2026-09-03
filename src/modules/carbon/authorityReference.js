@@ -1,0 +1,107 @@
+const { createAppError } = require('../shared/errors');
+
+const AUTHORITY_SOURCE = 'product_assessment_snapshot';
+
+const asObject = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value;
+};
+
+const asNumber = (value, fallback = 0) => {
+  if (value === null || value === undefined || value === '') return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const buildCarbonAuthorityReference = (row = {}) => {
+  const calculationId = row.snapshot_id || row.calculation_id;
+  if (!calculationId) return null;
+
+  return {
+    authoritative: true,
+    source: AUTHORITY_SOURCE,
+    calculationId,
+    calculationVersion: Math.max(1, Math.trunc(asNumber(
+      row.snapshot_version ?? row.calculation_version ?? row.version,
+      1
+    ))),
+    calculatedAt:
+      row.snapshot_updated_at || row.calculated_at || row.updated_at || row.created_at || null
+  };
+};
+
+const buildAuthoritativeCarbonResult = (row = {}) => {
+  const snapshot = asObject(row.payload);
+  const snapshotResult = asObject(snapshot.carbonResults || snapshot.carbon_results);
+  const snapshotPerProduct = asObject(
+    snapshotResult.perProduct || snapshotResult.per_product
+  );
+
+  return {
+    ...snapshotResult,
+    perProduct: {
+      ...snapshotPerProduct,
+      materials: asNumber(row.materials_co2e, asNumber(snapshotPerProduct.materials)),
+      production: asNumber(row.production_co2e, asNumber(snapshotPerProduct.production)),
+      energy: asNumber(snapshotPerProduct.energy),
+      transport: asNumber(row.transport_co2e, asNumber(snapshotPerProduct.transport)),
+      packaging: asNumber(row.packaging_co2e, asNumber(snapshotPerProduct.packaging)),
+      total: asNumber(row.total_co2e, asNumber(snapshotPerProduct.total))
+    }
+  };
+};
+
+const loadAuthoritativeProductCarbon = async (database, productId, companyId) => {
+  const result = await database.query(
+    `
+      SELECT
+        p.id,
+        p.sku,
+        p.name,
+        p.category,
+        p.weight_kg,
+        p.total_co2e,
+        p.materials_co2e,
+        p.production_co2e,
+        p.transport_co2e,
+        p.packaging_co2e,
+        s.id AS snapshot_id,
+        s.version AS snapshot_version,
+        s.payload,
+        s.updated_at AS snapshot_updated_at
+      FROM products p
+      INNER JOIN product_assessment_snapshots s ON s.product_id = p.id
+      WHERE p.id = $1 AND p.company_id = $2
+      LIMIT 1
+    `,
+    [productId, companyId]
+  );
+
+  const row = result.rows[0];
+  if (!row) return null;
+
+  return {
+    product: row,
+    snapshot: asObject(row.payload),
+    carbonResults: buildAuthoritativeCarbonResult(row),
+    carbonAuthority: buildCarbonAuthorityReference(row)
+  };
+};
+
+const requireAuthoritativeProductCarbon = async (database, productId, companyId) => {
+  const record = await loadAuthoritativeProductCarbon(database, productId, companyId);
+  if (record?.carbonAuthority) return record;
+
+  throw createAppError('A server-authoritative product calculation is required.', {
+    statusCode: 409,
+    code: 'AUTHORITATIVE_CARBON_REQUIRED'
+  });
+};
+
+module.exports = {
+  AUTHORITY_SOURCE,
+  buildAuthoritativeCarbonResult,
+  buildCarbonAuthorityReference,
+  loadAuthoritativeProductCarbon,
+  requireAuthoritativeProductCarbon
+};

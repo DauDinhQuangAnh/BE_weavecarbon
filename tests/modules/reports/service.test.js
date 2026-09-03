@@ -74,4 +74,17 @@ describe('ReportsService', () => {
     await expect(service.getReportById('report-id', 'company-id')).rejects.toBe(queryError);
     expect(client.release).toHaveBeenCalledTimes(1);
   });
+
+  test('includes the authoritative calculation identity in product exports', () => {
+    const service = createReportsService();
+    const dataset = service._getDatasetQuery('company-id', 'product');
+
+    expect(dataset.query).toContain('INNER JOIN product_assessment_snapshots');
+    expect(dataset.query).toContain('ps.id AS calculation_id');
+    expect(dataset.columns).toEqual(expect.arrayContaining([
+      'calculation_id',
+      'calculation_version',
+      'calculated_at'
+    ]));
+  });
 });

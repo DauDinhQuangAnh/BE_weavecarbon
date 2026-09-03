@@ -3,6 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const JSZip = require('jszip');
 const pool = require('../config/database');
+const {
+  buildAuthoritativeCarbonResult,
+  buildCarbonAuthorityReference
+} = require('../modules/carbon');
 
 const EXPORT_TEMPLATE_PATH = path.resolve(
   __dirname,
@@ -292,7 +296,7 @@ function fillCommonMetadataXml(sheetXml, cfg, ctx, options = {}) {
   xml = setXmlCell(xml, 'I11', cfg.customsDeclarationNo);
   xml = setXmlCell(xml, 'L11', cfg.billOfLadingNo);
   xml = setXmlCell(xml, 'B12', cfg.containerNo);
-  xml = setXmlCell(xml, 'B14', ctx.payloadSha256);
+  xml = setXmlCell(xml, 'B14', ctx.auditReference);
   xml = setXmlCell(xml, 'I14', ctx.defaultDppUrl);
   return xml;
 }
@@ -424,6 +428,8 @@ function normalizeProduct(row) {
     HS_CODE_BY_CATEGORY[String(category).toLowerCase()] ||
     HS_CODE_BY_CATEGORY.other;
   const kgPerUnit = asNumber(row.total_co2e, asNumber(perProduct.total, 0));
+  const authoritativeCarbonResults = buildAuthoritativeCarbonResult(row);
+  const carbonAuthority = buildCarbonAuthorityReference(row);
 
   return {
     id: row.id,
@@ -439,13 +445,19 @@ function normalizeProduct(row) {
     energySources: Array.isArray(payload.energySources) ? payload.energySources : [],
     transportLegs: Array.isArray(payload.transportLegs) ? payload.transportLegs : [],
     evidenceLookupCode: payload.evidenceLookupCode || payload.evidence_lookup_code || null,
-    rawPayload: payload
+    rawPayload: payload,
+    carbonResults: authoritativeCarbonResults,
+    carbonAuthority
   };
 }
 
 class ExportV2Service {
+  constructor({ database = pool } = {}) {
+    this.database = database;
+  }
+
   async getConfiguration(companyId) {
-    const result = await pool.query(
+    const result = await this.database.query(
       `
         SELECT *
         FROM export_configurations
@@ -463,7 +475,7 @@ class ExportV2Service {
       ...input
     };
 
-    const result = await pool.query(
+    const result = await this.database.query(
       `
         INSERT INTO export_configurations (
           company_id,
@@ -509,11 +521,25 @@ class ExportV2Service {
   }
 
   async listProductsForExport(companyId) {
-    const result = await pool.query(
+    const result = await this.database.query(
       `
-        SELECT p.id, p.sku, p.name, p.category, p.weight_kg, p.total_co2e, s.payload
+        SELECT
+          p.id,
+          p.sku,
+          p.name,
+          p.category,
+          p.weight_kg,
+          p.total_co2e,
+          p.materials_co2e,
+          p.production_co2e,
+          p.transport_co2e,
+          p.packaging_co2e,
+          s.id AS snapshot_id,
+          s.version AS snapshot_version,
+          s.payload,
+          s.updated_at AS snapshot_updated_at
         FROM products p
-        LEFT JOIN product_assessment_snapshots s ON s.product_id = p.id
+        INNER JOIN product_assessment_snapshots s ON s.product_id = p.id
         WHERE p.company_id = $1 AND p.status <> 'archived'
         ORDER BY p.created_at ASC
         LIMIT 200
@@ -524,7 +550,7 @@ class ExportV2Service {
   }
 
   async listLatestDppLocks(companyId) {
-    const result = await pool.query(
+    const result = await this.database.query(
       `
         SELECT DISTINCT ON (sku) *
         FROM dpp_locks
@@ -553,9 +579,21 @@ class ExportV2Service {
           sku: product.sku,
           hsCode: product.hsCode,
           quantity: product.quantity,
-          kgPerUnit: product.kgPerUnit
+          kgPerUnit: product.kgPerUnit,
+          carbonAuthority: product.carbonAuthority
         }))
       });
+    const calculationReferences = products.map((product) => ({
+      sku: product.sku,
+      ...product.carbonAuthority
+    }));
+    const visibleReferences = calculationReferences
+      .slice(0, 5)
+      .map((item) => `${item.calculationId}:v${item.calculationVersion}`)
+      .join(',');
+    const auditReference = `${visibleReferences}${
+      calculationReferences.length > 5 ? `,+${calculationReferences.length - 5}` : ''
+    } | bundle:${payloadSha256}`;
 
     return {
       cfg,
@@ -563,7 +601,9 @@ class ExportV2Service {
       dppLocks,
       dppLocksBySku,
       defaultDppUrl,
-      payloadSha256
+      payloadSha256,
+      calculationReferences,
+      auditReference
     };
   }
 
@@ -599,6 +639,12 @@ class ExportV2Service {
     if (!product) {
       return null;
     }
+    if (!product.carbonAuthority) {
+      const error = new Error('A server-authoritative product calculation is required.');
+      error.code = 'AUTHORITATIVE_CARBON_REQUIRED';
+      error.statusCode = 409;
+      throw error;
+    }
 
     const cfg = await this.getConfiguration(companyId);
     const gtin = overrides.gtin || `0894001${product.sku.replace(/\D/g, '').padStart(6, '0').slice(0, 6)}07`;
@@ -608,14 +654,22 @@ class ExportV2Service {
       gtin,
       productName: product.name,
       hsCode: product.hsCode,
+      cnCode: product.hsCode,
       embeddedKgPerUnit: Number(product.kgPerUnit.toFixed(4)),
       embeddedTonnesBatch: Number(product.totalTonnes.toFixed(4)),
+      fiberComposition: product.materials.map((material) => ({
+        name: material.materialType || material.material_type || material.type || 'material',
+        ratio: asNumber(material.percentage, 0)
+      })),
+      supplyGapPenaltyRatio: 0,
       customsDeclarationNo: cfg.customsDeclarationNo,
       poContractId: cfg.poContractId,
       billOfLadingNo: cfg.billOfLadingNo,
       containerNo: cfg.containerNo,
       evidenceLookupCode: product.evidenceLookupCode,
       evidenceHashes: [],
+      carbonAuthority: product.carbonAuthority,
+      carbonResults: product.carbonResults,
       issuedAt: new Date().toISOString()
     };
     const payloadSha256 = sha256Json(payload);
@@ -623,7 +677,7 @@ class ExportV2Service {
       overrides.decentralizedUrl ||
       `https://dpp.weavecarbon.local/01/${encodeURIComponent(gtin)}?sku=${encodeURIComponent(product.sku)}&hash=${payloadSha256.slice(0, 16)}`;
 
-    const result = await pool.query(
+    const result = await this.database.query(
       `
         INSERT INTO dpp_locks (
           company_id,
@@ -659,7 +713,7 @@ class ExportV2Service {
   }
 
   async getDppLock(companyId, id) {
-    const result = await pool.query(
+    const result = await this.database.query(
       'SELECT * FROM dpp_locks WHERE id = $1 AND company_id = $2',
       [id, companyId]
     );
@@ -680,7 +734,12 @@ class ExportV2Service {
         hsCode: product.hsCode,
         units: product.quantity,
         embeddedKgPerUnit: Number(product.kgPerUnit.toFixed(4)),
-        embeddedTonnesBatch: Number(product.totalTonnes.toFixed(4))
+        embeddedTonnesBatch: Number(product.totalTonnes.toFixed(4)),
+        carbonAuthority: product.carbonAuthority
+      })),
+      calculationManifest: products.map((product) => ({
+        sku: product.sku,
+        carbonAuthority: product.carbonAuthority
       })),
       totals: {
         units: products.reduce((sum, product) => sum + product.quantity, 0),
@@ -698,6 +757,7 @@ class ExportV2Service {
       gtin: row.gtin,
       barcodeStandard: row.barcode_standard,
       payload: row.payload,
+      carbonAuthority: row.payload?.carbonAuthority || null,
       payloadSha256: row.payload_sha256,
       decentralizedUrl: row.decentralized_url,
       status: row.status,
@@ -709,3 +769,5 @@ class ExportV2Service {
 }
 
 module.exports = new ExportV2Service();
+module.exports.ExportV2Service = ExportV2Service;
+module.exports.createExportV2Service = (dependencies) => new ExportV2Service(dependencies);

@@ -31,5 +31,8 @@ module.exports = {
   },
   get helpers() {
     return require('./helpers');
+  },
+  get buildOfficialReportPayload() {
+    return require('./officialCarbonPayload').buildOfficialReportPayload;
   }
 };

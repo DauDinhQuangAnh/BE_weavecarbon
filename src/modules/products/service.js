@@ -27,7 +27,8 @@ const {
 const { bulkImport: executeBulkImport } = require('./services/bulkImportExecution');
 const {
     calculateAuthoritativeProductCarbon,
-    stripClientCarbonOutputs
+    stripClientCarbonOutputs,
+    buildCarbonAuthorityReference
 } = require('../carbon');
 
 class ProductsService {
@@ -145,13 +146,18 @@ class ProductsService {
 
             if (productIds.length > 0) {
                 const snapshotsQuery = `
-                    SELECT product_id, payload
+                    SELECT
+                        id AS snapshot_id,
+                        product_id,
+                        version AS snapshot_version,
+                        payload,
+                        updated_at AS snapshot_updated_at
                     FROM product_assessment_snapshots
                     WHERE product_id = ANY($1)
                 `;
                 const snapshotsResult = await client.query(snapshotsQuery, [productIds]);
                 snapshotsResult.rows.forEach(row => {
-                    snapshotsMap[row.product_id] = row.payload;
+                    snapshotsMap[row.product_id] = row;
                 });
 
                 if (!isSummary) {
@@ -181,7 +187,8 @@ class ProductsService {
 
             const items = productsResult.rows.map(row => {
                 if (isSummary) {
-                    const snapshotSummary = toPayloadObject(snapshotsMap[row.id]);
+                    const snapshotRecord = snapshotsMap[row.id] || {};
+                    const snapshotSummary = toPayloadObject(snapshotRecord.payload);
                     const summaryConfidence = (() => {
                         const computed = computeDataConfidenceScore(snapshotSummary);
                         if (computed > 0) return computed;
@@ -215,13 +222,15 @@ class ProductsService {
                             scope2: snapshotSummary.carbonResults?.scope2 || 0,
                             scope3: snapshotSummary.carbonResults?.scope3 || 0
                         },
+                        carbonAuthority: buildCarbonAuthorityReference(snapshotRecord),
                         createdAt: row.created_at,
                         updatedAt: row.updated_at
                     };
                 }
 
                 const latestShipment = latestShipmentMap[row.id] || null;
-                const snapshot = toPayloadObject(snapshotsMap[row.id]);
+                const snapshotRecord = snapshotsMap[row.id] || {};
+                const snapshot = toPayloadObject(snapshotRecord.payload);
                 const destinationMarket = extractDestinationMarketFromPayload(
                     snapshot,
                     row.target_markets
@@ -300,6 +309,7 @@ class ProductsService {
                         scope2: snapshot.carbonResults?.scope2 || 0,
                         scope3: snapshot.carbonResults?.scope3 || 0
                     },
+                    carbonAuthority: buildCarbonAuthorityReference(snapshotRecord),
                     createdAt: row.created_at,
                     updatedAt: row.updated_at
                 };
@@ -369,7 +379,11 @@ class ProductsService {
 
             // Get snapshot with full payload
             const snapshotQuery = `
-                SELECT version, payload
+                SELECT
+                    id AS snapshot_id,
+                    version AS snapshot_version,
+                    payload,
+                    updated_at AS snapshot_updated_at
                 FROM product_assessment_snapshots
                 WHERE product_id = $1
                 ORDER BY version DESC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC
@@ -379,10 +393,12 @@ class ProductsService {
 
             let payload = {};
             let version = 1;
+            let carbonAuthority = null;
 
             if (snapshotResult.rows.length > 0) {
-                version = snapshotResult.rows[0].version;
+                version = snapshotResult.rows[0].snapshot_version ?? snapshotResult.rows[0].version;
                 payload = toPayloadObject(snapshotResult.rows[0].payload);
+                carbonAuthority = buildCarbonAuthorityReference(snapshotResult.rows[0]);
             }
             const destinationMarket = extractDestinationMarketFromPayload(
                 payload,
@@ -427,7 +443,8 @@ class ProductsService {
                     },
                     confidenceLevel: getConfidenceLevel(confidenceScore),
                     confidenceScore
-                }
+                },
+                carbonAuthority
             };
         } finally {
             client.release();
@@ -525,6 +542,10 @@ class ProductsService {
                     version,
                     payload
                 ) VALUES ($1, $2, $3)
+                RETURNING
+                    id AS snapshot_id,
+                    version AS snapshot_version,
+                    updated_at AS snapshot_updated_at
             `;
 
             const fullPayload = {
@@ -533,7 +554,7 @@ class ProductsService {
                 carbonResults: normalizedCarbonResults
             };
 
-            await client.query(snapshotInsertQuery, [
+            const snapshotResult = await client.query(snapshotInsertQuery, [
                 product.id,
                 1,
                 JSON.stringify(fullPayload)
@@ -586,7 +607,8 @@ class ProductsService {
                 shipmentCreationSkipped: shipmentMeta.shipmentCreationSkipped,
                 skipReason: shipmentMeta.skipReason,
                 domesticComplianceWarning,
-                carbonResults: normalizedCarbonResults
+                carbonResults: normalizedCarbonResults,
+                carbonAuthority: buildCarbonAuthorityReference(snapshotResult.rows[0])
             };
         } catch (error) {
             await client.query('ROLLBACK');
@@ -682,7 +704,10 @@ class ProductsService {
                     payload = $1,
                     updated_at = NOW()
                 WHERE product_id = $2
-                RETURNING version
+                RETURNING
+                    id AS snapshot_id,
+                    version AS snapshot_version,
+                    updated_at AS snapshot_updated_at
             `;
 
             const fullPayload = {
@@ -721,7 +746,9 @@ class ProductsService {
 
             await client.query('COMMIT');
 
-            const version = snapshotResult.rows.length > 0 ? snapshotResult.rows[0].version : 1;
+            const version = snapshotResult.rows.length > 0
+                ? snapshotResult.rows[0].snapshot_version ?? snapshotResult.rows[0].version
+                : 1;
 
             return {
                 success: true,
@@ -734,7 +761,8 @@ class ProductsService {
                     shipmentReferenceNumber: shipmentMeta.shipmentReferenceNumber,
                     shipmentCreationSkipped: shipmentMeta.shipmentCreationSkipped,
                     skipReason: shipmentMeta.skipReason,
-                    carbonResults: normalizedCarbonResults
+                    carbonResults: normalizedCarbonResults,
+                    carbonAuthority: buildCarbonAuthorityReference(snapshotResult.rows[0])
                 }
             };
         } catch (error) {
@@ -758,10 +786,21 @@ class ProductsService {
 
             // Get current status and product weight (with latest snapshot)
             const selectQuery = `
-                SELECT p.id, p.status, p.weight_kg, p.total_co2e, p.transport_co2e, s.payload
+                SELECT p.id, p.status,
+                    p.weight_kg,
+                    p.total_co2e,
+                    p.transport_co2e,
+                    s.snapshot_id,
+                    s.snapshot_version,
+                    s.snapshot_updated_at,
+                    s.payload
                 FROM products p
                 LEFT JOIN LATERAL (
-                    SELECT payload
+                    SELECT
+                        id AS snapshot_id,
+                        version AS snapshot_version,
+                        updated_at AS snapshot_updated_at,
+                        payload
                     FROM product_assessment_snapshots ps
                     WHERE ps.product_id = p.id
                     ORDER BY ps.version DESC NULLS LAST, ps.updated_at DESC NULLS LAST, ps.created_at DESC
@@ -779,6 +818,7 @@ class ProductsService {
             const currentStatus = dbToFeStatus(product.status);
             let domesticComplianceWarning = null;
             let authoritativeCarbonResults;
+            let carbonAuthority = buildCarbonAuthorityReference(product);
 
             // Validate transitions
             const validTransitions = {
@@ -842,13 +882,20 @@ class ProductsService {
                         companyId
                     ]
                 );
-                await client.query(
+                const authoritativeSnapshotResult = await client.query(
                     `
                     UPDATE product_assessment_snapshots
-                    SET payload = $1, updated_at = NOW()
+                    SET version = version + 1, payload = $1, updated_at = NOW()
                     WHERE product_id = $2
+                    RETURNING
+                        id AS snapshot_id,
+                        version AS snapshot_version,
+                        updated_at AS snapshot_updated_at
                     `,
                     [JSON.stringify(authoritativeSnapshot), productId]
+                );
+                carbonAuthority = buildCarbonAuthorityReference(
+                    authoritativeSnapshotResult.rows[0]
                 );
                 product.total_co2e = authoritativeCarbonResults.perProduct.total;
                 product.transport_co2e = authoritativeCarbonResults.perProduct.transport;
@@ -898,7 +945,10 @@ class ProductsService {
                     skipReason: shipmentMeta.skipReason,
                     domesticComplianceWarning,
                     ...(authoritativeCarbonResults
-                        ? { carbonResults: authoritativeCarbonResults }
+                        ? {
+                            carbonResults: authoritativeCarbonResults,
+                            carbonAuthority
+                        }
                         : {})
                 }
             };

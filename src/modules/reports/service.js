@@ -6,6 +6,9 @@ const { UPLOADS_ROOT } = require('../shared/runtime');
 const analyticsService = require('../shared/analytics');
 const reportJobQueue = require('./jobQueue');
 const pdfReportService = require('./pdfService');
+const { createAppError } = require('../shared/errors');
+const { requireAuthoritativeProductCarbon } = require('../carbon');
+const { buildOfficialReportPayload } = require('./officialCarbonPayload');
 
 const PDF_REPORT_TYPES = new Set(['product_carbon', 'batch_export', 'facility_emission', 'compliance']);
 
@@ -21,13 +24,15 @@ class ReportsService {
         analytics = analyticsService,
         jobQueue = reportJobQueue,
         pdfService = pdfReportService,
-        uploadsRoot = UPLOADS_ROOT
+        uploadsRoot = UPLOADS_ROOT,
+        loadProductCarbon = requireAuthoritativeProductCarbon
     } = {}) {
         this.database = database;
         this.analytics = analytics;
         this.jobQueue = jobQueue;
         this.pdfService = pdfService;
         this.uploadsRoot = uploadsRoot;
+        this.loadProductCarbon = loadProductCarbon;
     }
 
     async getActiveV2Template() {
@@ -45,18 +50,29 @@ class ReportsService {
 
     async createV2Snapshot(companyId, userId, snapshotData = {}) {
         const template = await this.getActiveV2Template();
-        const payload = snapshotData.payload || {};
-        const sku = snapshotData.sku || payload?.sku?.sku || payload?.sku || null;
         const requestedProductId = normalizeUuid(snapshotData.product_id || snapshotData.productId);
-        let productId = null;
-
-        if (requestedProductId) {
-            const productResult = await this.database.query(
-                'SELECT id FROM products WHERE id = $1 AND company_id = $2',
-                [requestedProductId, companyId]
-            );
-            productId = productResult.rows[0]?.id || null;
+        if (!requestedProductId) {
+            throw createAppError('productId is required for an official report snapshot.', {
+                statusCode: 400,
+                code: 'PRODUCT_ID_REQUIRED'
+            });
         }
+        const authorityRecord = await this.loadProductCarbon(
+            this.database,
+            requestedProductId,
+            companyId
+        );
+        const payload = buildOfficialReportPayload(snapshotData.payload || {}, authorityRecord);
+        const productId = authorityRecord.product.id;
+        const sku = authorityRecord.product.sku;
+        const chartData = {
+            pieData: payload.pieData,
+            esgRows: payload.esgRows,
+            cbamRows: payload.cbamRows
+        };
+        const formulas = Object.fromEntries(
+            payload.breakdownRows.map((row, index) => [`row_${index + 1}`, row.formula])
+        );
 
         const result = await this.database.query(
             `
@@ -81,12 +97,16 @@ class ReportsService {
                 sku,
                 JSON.stringify(payload),
                 JSON.stringify(snapshotData.style_config || snapshotData.styleConfig || {}),
-                JSON.stringify(snapshotData.chart_data || snapshotData.chartData || {}),
-                JSON.stringify(snapshotData.formulas || {}),
+                JSON.stringify(chartData),
+                JSON.stringify(formulas),
                 userId
             ]
         );
-        return result.rows[0];
+        return {
+            ...result.rows[0],
+            payload,
+            carbonAuthority: authorityRecord.carbonAuthority
+        };
     }
 
     /**
@@ -786,8 +806,13 @@ class ReportsService {
                     SELECT p.sku, p.name, p.category, p.status, p.weight_kg,
                            p.total_co2e, p.materials_co2e, p.production_co2e,
                            p.transport_co2e, p.packaging_co2e,
-                           p.data_confidence_score, p.created_at
+                           p.data_confidence_score,
+                           ps.id AS calculation_id,
+                           ps.version AS calculation_version,
+                           ps.updated_at AS calculated_at,
+                           p.created_at
                     FROM products p
+                    INNER JOIN product_assessment_snapshots ps ON ps.product_id = p.id
                     WHERE p.company_id = $1
                       AND p.status <> 'archived'
                     ORDER BY p.created_at DESC
@@ -796,11 +821,13 @@ class ReportsService {
                 columns: ['sku', 'name', 'category', 'status', 'weight_kg',
                           'total_co2e', 'materials_co2e', 'production_co2e',
                           'transport_co2e', 'packaging_co2e',
-                          'data_confidence_score', 'created_at']
+                          'data_confidence_score', 'calculation_id',
+                          'calculation_version', 'calculated_at', 'created_at']
             },
             'activity': {
                 query: `
-                    SELECT cc.calculation_type, cc.period_start, cc.period_end,
+                    SELECT cc.id AS calculation_id,
+                           cc.calculation_type, cc.period_start, cc.period_end,
                            cc.materials_co2e, cc.production_co2e, cc.transport_co2e,
                            cc.packaging_co2e, cc.total_co2e, cc.methodology,
                            cc.emission_factor_version, cc.notes, cc.created_at,
@@ -811,7 +838,7 @@ class ReportsService {
                     ORDER BY cc.created_at DESC
                 `,
                 params: [companyId],
-                columns: ['calculation_type', 'period_start', 'period_end',
+                columns: ['calculation_id', 'calculation_type', 'period_start', 'period_end',
                           'materials_co2e', 'production_co2e', 'transport_co2e',
                           'packaging_co2e', 'total_co2e', 'methodology',
                           'emission_factor_version', 'notes', 'created_at',
@@ -819,7 +846,8 @@ class ReportsService {
             },
             'audit': {
                 query: `
-                    SELECT cc.calculation_type, cc.period_start, cc.period_end,
+                    SELECT cc.id AS calculation_id,
+                           cc.calculation_type, cc.period_start, cc.period_end,
                            cc.materials_co2e, cc.production_co2e, cc.transport_co2e,
                            cc.packaging_co2e, cc.total_co2e, cc.methodology,
                            cc.emission_factor_version, cc.notes, cc.created_at,
@@ -830,7 +858,7 @@ class ReportsService {
                     ORDER BY cc.created_at DESC
                 `,
                 params: [companyId],
-                columns: ['calculation_type', 'period_start', 'period_end',
+                columns: ['calculation_id', 'calculation_type', 'period_start', 'period_end',
                           'materials_co2e', 'production_co2e', 'transport_co2e',
                           'packaging_co2e', 'total_co2e', 'methodology',
                           'emission_factor_version', 'notes', 'created_at',
@@ -1101,14 +1129,20 @@ class ReportsService {
                     const dataRes = await client.query(`
                         SELECT p.sku, p.name, p.category, p.status, p.weight_kg,
                                p.total_co2e, p.materials_co2e, p.production_co2e,
-                               p.transport_co2e, p.packaging_co2e, p.created_at
+                               p.transport_co2e, p.packaging_co2e,
+                               ps.id AS calculation_id,
+                               ps.version AS calculation_version,
+                               ps.updated_at AS calculated_at,
+                               p.created_at
                         FROM products p
+                        INNER JOIN product_assessment_snapshots ps ON ps.product_id = p.id
                         WHERE p.company_id = $1 AND p.status <> 'archived'
                         ORDER BY p.total_co2e DESC NULLS LAST
                     `, [companyId]);
                     columns = ['sku', 'name', 'category', 'status', 'weight_kg',
                                'total_co2e', 'materials_co2e', 'production_co2e',
-                               'transport_co2e', 'packaging_co2e', 'created_at'];
+                               'transport_co2e', 'packaging_co2e', 'calculation_id',
+                               'calculation_version', 'calculated_at', 'created_at'];
                     rows = dataRes.rows;
                 } else if (report.report_type === 'export_declaration') {
                     const dataRes = await client.query(`
@@ -1123,12 +1157,19 @@ class ReportsService {
                     rows = dataRes.rows;
                 } else {
                     const dataRes = await client.query(`
-                        SELECT p.sku, p.name, p.category, p.total_co2e, p.created_at
+                        SELECT p.sku, p.name, p.category, p.total_co2e,
+                               ps.id AS calculation_id,
+                               ps.version AS calculation_version,
+                               ps.updated_at AS calculated_at,
+                               p.created_at
                         FROM products p
+                        INNER JOIN product_assessment_snapshots ps ON ps.product_id = p.id
                         WHERE p.company_id = $1 AND p.status <> 'archived'
                         ORDER BY p.created_at DESC
                     `, [companyId]);
-                    columns = ['sku', 'name', 'category', 'total_co2e', 'created_at'];
+                    columns = ['sku', 'name', 'category', 'total_co2e',
+                               'calculation_id', 'calculation_version', 'calculated_at',
+                               'created_at'];
                     rows = dataRes.rows;
                 }
 

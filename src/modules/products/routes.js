@@ -233,7 +233,10 @@ router.post('/', createProductValidation, validate, asyncHandler(async (req, res
       changedField: 'product.created',
       newValue: result?.id || req.body?.sku || req.body?.productName || null,
       reason: 'product.create',
-      notes: `Created product ${result?.sku || req.body?.sku || result?.name || req.body?.productName || ''}`.trim()
+      notes: JSON.stringify({
+        message: `Created product ${result?.sku || req.body?.sku || result?.name || req.body?.productName || ''}`.trim(),
+        carbonAuthority: result?.carbonAuthority || null
+      })
     });
 
     return sendSuccess(res, {
@@ -274,7 +277,10 @@ router.put('/:id', updateProductValidation, validate, asyncHandler(async (req, r
     oldValue: req.params.id,
     newValue: result.data?.id || req.params.id,
     reason: 'product.update',
-    notes: `Updated product ${result.data?.sku || result.data?.name || req.params.id}`
+    notes: JSON.stringify({
+      message: `Updated product ${result.data?.sku || result.data?.name || req.params.id}`,
+      carbonAuthority: result.data?.carbonAuthority || null
+    })
   });
 
   return sendSuccess(res, {
@@ -313,7 +319,10 @@ router.patch(
       oldValue: req.params.id,
       newValue: req.body.status,
       reason: 'product.status',
-      notes: `Product status changed to ${req.body.status}`
+      notes: JSON.stringify({
+        message: `Product status changed to ${req.body.status}`,
+        carbonAuthority: result.data?.carbonAuthority || null
+      })
     });
 
     return sendSuccess(res, {

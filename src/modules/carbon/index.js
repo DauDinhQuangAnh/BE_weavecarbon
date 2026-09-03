@@ -5,6 +5,18 @@ module.exports = {
   get stripClientCarbonOutputs() {
     return require('./authoritativeCalculation').stripClientCarbonOutputs;
   },
+  get buildCarbonAuthorityReference() {
+    return require('./authorityReference').buildCarbonAuthorityReference;
+  },
+  get buildAuthoritativeCarbonResult() {
+    return require('./authorityReference').buildAuthoritativeCarbonResult;
+  },
+  get loadAuthoritativeProductCarbon() {
+    return require('./authorityReference').loadAuthoritativeProductCarbon;
+  },
+  get requireAuthoritativeProductCarbon() {
+    return require('./authorityReference').requireAuthoritativeProductCarbon;
+  },
   get carbonRepository() {
     return require('./repository').carbonRepository;
   },

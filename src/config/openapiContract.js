@@ -143,6 +143,31 @@ const CARBON_ENGINE_INPUT_SCHEMA = {
 };
 
 const REQUEST_BODY_OVERRIDES = {
+  'POST /reports/v2/snapshots': {
+    type: 'object',
+    required: ['productId', 'payload'],
+    properties: {
+      productId: { type: 'string', format: 'uuid' },
+      payload: {
+        type: 'object',
+        additionalProperties: true,
+        description: 'Presentation payload. Carbon totals are replaced by the authoritative server snapshot.'
+      }
+    },
+    additionalProperties: true
+  },
+  'POST /export/dpp-locks': {
+    type: 'object',
+    properties: {
+      productId: { type: 'string', format: 'uuid' },
+      product_id: { type: 'string', format: 'uuid' },
+      sku: { type: 'string' },
+      gtin: { type: 'string' },
+      decentralizedUrl: { type: 'string', format: 'uri' }
+    },
+    additionalProperties: false,
+    description: 'Product carbon values are always loaded from the authoritative server snapshot.'
+  },
   'POST /carbon-calculations': {
     type: 'object',
     required: ['calculation_type', 'carbon_input'],
@@ -495,6 +520,7 @@ function contractComponents() {
           quantity: { type: 'integer', minimum: 0 },
           weightPerUnit: { type: 'number', minimum: 0 },
           totalCo2e: { type: 'number', nullable: true },
+          carbonAuthority: { $ref: '#/components/schemas/CarbonAuthorityReference' },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' }
         },
@@ -508,6 +534,24 @@ function contractComponents() {
           quantity: 1000,
           weightPerUnit: 250
         }
+      },
+      CarbonAuthorityReference: {
+        type: 'object',
+        required: [
+          'authoritative',
+          'source',
+          'calculationId',
+          'calculationVersion',
+          'calculatedAt'
+        ],
+        properties: {
+          authoritative: { type: 'boolean', enum: [true] },
+          source: { type: 'string', enum: ['product_assessment_snapshot'] },
+          calculationId: { type: 'string', format: 'uuid' },
+          calculationVersion: { type: 'integer', minimum: 1 },
+          calculatedAt: { type: 'string', format: 'date-time', nullable: true }
+        },
+        additionalProperties: false
       },
       ProductListData: {
         type: 'object',

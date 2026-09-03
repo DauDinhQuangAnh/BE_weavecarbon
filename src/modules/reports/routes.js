@@ -426,7 +426,10 @@ router.post(
                 changedField: 'report.generated',
                 newValue: snapshot?.id || null,
                 reason: 'report.v2_snapshot',
-                notes: 'Created V2 audit snapshot'
+                notes: JSON.stringify({
+                    message: 'Created V2 audit snapshot',
+                    carbonAuthority: snapshot?.carbonAuthority || null
+                })
             });
             return res.status(201).json({
                 success: true,
