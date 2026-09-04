@@ -8,6 +8,8 @@ const { UPLOADS_ROOT } = require('../config/runtime');
 const validate = require('../middleware/validator');
 const exportMarketsService = require('../services/exportMarketsService');
 const logger = require('../utils/logger');
+const { expensiveOperationLimiter } = require('../middleware/rateLimiter');
+const { uploadPolicy: { assertSafeEvidenceUpload } } = require('../modules/evidence');
 const {
     recommendationActionValidation,
     addProductToScopeValidation,
@@ -107,9 +109,32 @@ const complianceUpload = multer({
 });
 
 function uploadComplianceDocumentFile(req, res, next) {
-    complianceUpload.single('file')(req, res, (error) => {
+    complianceUpload.single('file')(req, res, async (error) => {
         if (!error) {
-            return next();
+            try {
+                if (req.file) {
+                    const buffer = await fs.promises.readFile(req.file.path);
+                    const safeUpload = await assertSafeEvidenceUpload({ ...req.file, buffer });
+                    if (safeUpload.extension !== '.pdf') {
+                        throw Object.assign(new Error('Only PDF files are allowed.'), {
+                            code: 'UNSAFE_UPLOAD',
+                            statusCode: 415
+                        });
+                    }
+                    req.file.originalname = safeUpload.filename;
+                    req.file.mimetype = safeUpload.mime;
+                }
+                return next();
+            } catch (validationError) {
+                if (req.file?.path) await fs.promises.unlink(req.file.path).catch(() => {});
+                return res.status(validationError.statusCode || 415).json({
+                    success: false,
+                    error: {
+                        code: validationError.code || 'INVALID_UPLOAD_FILE',
+                        message: validationError.message || 'Invalid upload file.'
+                    }
+                });
+            }
         }
 
         if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
@@ -435,6 +460,7 @@ router.post(
     requireRole('b2b'),
     documentParamsValidation,
     validate,
+    expensiveOperationLimiter,
     uploadComplianceDocumentFile,
     async (req, res, next) => {
         try {

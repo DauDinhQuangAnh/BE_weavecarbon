@@ -7,6 +7,8 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendError, sendSuccess } = require('../utils/http');
 const { UPLOADS_ROOT } = require('../config/runtime');
+const { expensiveOperationLimiter } = require('../middleware/rateLimiter');
+const { uploadPolicy: { assertSafeEvidenceUpload } } = require('../modules/evidence');
 const b2cCollectionPointsService = require('../services/b2cCollectionPointsService');
 const b2cService = require('../services/b2cService');
 const {
@@ -71,10 +73,37 @@ const donationImageUpload = multer({
   }
 });
 
+async function validateImageUpload(file) {
+  if (!file) return;
+  const buffer = file.buffer || await fs.promises.readFile(file.path);
+  const safeUpload = await assertSafeEvidenceUpload({ ...file, buffer });
+  if (!['.png', '.jpg', '.jpeg'].includes(safeUpload.extension)) {
+    const error = new Error('Only PNG and JPEG image files are allowed.');
+    error.code = 'UNSAFE_UPLOAD';
+    throw error;
+  }
+  file.originalname = safeUpload.filename;
+  file.mimetype = safeUpload.mime;
+}
+
+async function removeRejectedUpload(file) {
+  if (file?.path) await fs.promises.unlink(file.path).catch(() => {});
+}
+
 const uploadDonationImage = (req, res, next) => {
-  donationImageUpload.single('source_image')(req, res, (error) => {
+  donationImageUpload.single('source_image')(req, res, async (error) => {
     if (!error) {
-      next();
+      try {
+        await validateImageUpload(req.file);
+        next();
+      } catch (validationError) {
+        await removeRejectedUpload(req.file);
+        sendError(res, {
+          status: validationError.statusCode || 415,
+          code: validationError.code || 'INVALID_DONATION_IMAGE',
+          message: validationError.message || 'Invalid donation image upload.'
+        });
+      }
       return;
     }
 
@@ -112,9 +141,18 @@ const analysisImageUpload = multer({
 });
 
 const uploadAnalysisImage = (req, res, next) => {
-  analysisImageUpload.single('image')(req, res, (error) => {
+  analysisImageUpload.single('image')(req, res, async (error) => {
     if (!error) {
-      next();
+      try {
+        await validateImageUpload(req.file);
+        next();
+      } catch (validationError) {
+        sendError(res, {
+          status: validationError.statusCode || 415,
+          code: validationError.code || 'INVALID_DONATION_IMAGE',
+          message: validationError.message || 'Invalid donation image upload.'
+        });
+      }
       return;
     }
 
@@ -230,6 +268,7 @@ router.get(
 
 router.post(
   '/analyze-donation-image',
+  expensiveOperationLimiter,
   uploadAnalysisImage,
   asyncHandler(async (req, res) => {
     try {
@@ -340,6 +379,7 @@ router.get(
 
 router.post(
   '/donations',
+  expensiveOperationLimiter,
   uploadDonationImage,
   asyncHandler(async (req, res) => {
     let payload;

@@ -69,6 +69,7 @@ describe('immutable calculation snapshot builder', () => {
 
     const snapshot = await insertFinalizedProductSnapshot(client, {
       productId: 'product-1',
+      companyId: 'company-1',
       assessmentPayload: { productName: 'Tee' },
       input: { quantity: 2 },
       result: carbonResult,
@@ -78,7 +79,8 @@ describe('immutable calculation snapshot builder', () => {
     const [sql, params] = client.query.mock.calls[0];
     expect(sql).toContain('COALESCE(MAX(version), 0) + 1');
     expect(sql).not.toContain('UPDATE product_assessment_snapshots');
-    expect(JSON.parse(params[1]).calculationMetadata.engineVersion).toBe('engine-v1');
+    expect(params[1]).toBe('company-1');
+    expect(JSON.parse(params[2]).calculationMetadata.engineVersion).toBe('engine-v1');
     expect(snapshot.row.snapshot_version).toBe(2);
   });
 });

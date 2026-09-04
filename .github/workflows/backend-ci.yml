@@ -193,6 +193,12 @@ jobs:
       - name: Verify immutable calculation snapshot migration
         run: npm run test:migration-snapshots
 
+      - name: Verify M1 tenant and factor-registry integrity
+        run: npm run test:m1-integrity
+
+      - name: Audit representative hot-query plans
+        run: npm run db:audit-hot-queries
+
       - name: Run isolated PostgreSQL and evidence restore drill
         run: bash scripts/backup-restore-drill.sh
 

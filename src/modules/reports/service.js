@@ -818,7 +818,8 @@ class ReportsService {
                            ps.is_legacy,
                            p.created_at
                     FROM products p
-                    INNER JOIN latest_product_assessment_snapshots ps ON ps.product_id = p.id
+                    INNER JOIN latest_product_assessment_snapshots ps
+                      ON ps.product_id = p.id AND ps.company_id = p.company_id
                     WHERE p.company_id = $1
                       AND p.status <> 'archived'
                     ORDER BY p.created_at DESC
@@ -1161,7 +1162,8 @@ class ReportsService {
                                ps.is_legacy,
                                p.created_at
                         FROM products p
-                        INNER JOIN latest_product_assessment_snapshots ps ON ps.product_id = p.id
+                        INNER JOIN latest_product_assessment_snapshots ps
+                          ON ps.product_id = p.id AND ps.company_id = p.company_id
                         WHERE p.company_id = $1 AND p.status <> 'archived'
                         ORDER BY p.total_co2e DESC NULLS LAST
                     `, [companyId]);
@@ -1197,7 +1199,8 @@ class ReportsService {
                                ps.is_legacy,
                                p.created_at
                         FROM products p
-                        INNER JOIN latest_product_assessment_snapshots ps ON ps.product_id = p.id
+                        INNER JOIN latest_product_assessment_snapshots ps
+                          ON ps.product_id = p.id AND ps.company_id = p.company_id
                         WHERE p.company_id = $1 AND p.status <> 'archived'
                         ORDER BY p.created_at DESC
                     `, [companyId]);

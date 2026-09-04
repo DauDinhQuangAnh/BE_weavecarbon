@@ -545,7 +545,8 @@ class ExportV2Service {
           s.canonical_input_hash AS snapshot_canonical_input_hash,
           s.is_legacy AS snapshot_is_legacy
         FROM products p
-        INNER JOIN latest_product_assessment_snapshots s ON s.product_id = p.id
+        INNER JOIN latest_product_assessment_snapshots s
+          ON s.product_id = p.id AND s.company_id = p.company_id
         WHERE p.company_id = $1 AND p.status <> 'archived'
         ORDER BY p.created_at ASC
         LIMIT 200

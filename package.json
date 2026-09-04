@@ -9,6 +9,8 @@
     "dev": "nodemon src/server.js",
     "migrate": "node scripts/migrate.js",
     "test:migration-snapshots": "node scripts/test-immutable-snapshots.js",
+    "test:m1-integrity": "node scripts/verify-m1-integrity.js",
+    "db:audit-hot-queries": "node scripts/audit-hot-queries.js",
     "analytics:flush": "node scripts/flush-analytics-outbox.js",
     "build:release": "node scripts/build-release.js",
     "clean:local": "node scripts/clean-local.js",

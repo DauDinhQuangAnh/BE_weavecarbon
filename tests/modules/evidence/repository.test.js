@@ -5,6 +5,20 @@ jest.mock('../../../src/modules/shared/database', () => (
 const { createEvidenceRepository } = require('../../../src/modules/evidence');
 
 describe('evidenceRepository', () => {
+  test('rolls back a failed multi-write operation and releases the connection', async () => {
+    const failure = new Error('audit failed');
+    const client = { query: jest.fn().mockResolvedValue({}), release: jest.fn() };
+    const database = { connect: jest.fn().mockResolvedValue(client) };
+    const repository = createEvidenceRepository({ database });
+
+    await expect(repository.withTransaction(async () => {
+      throw failure;
+    })).rejects.toBe(failure);
+
+    expect(client.query.mock.calls.map(([sql]) => sql)).toEqual(['BEGIN', 'ROLLBACK']);
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+
   test('lists evidence with company/product/code filters and bounded pagination', async () => {
     const database = { query: jest.fn() };
     database.query

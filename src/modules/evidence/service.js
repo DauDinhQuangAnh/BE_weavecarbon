@@ -1,6 +1,7 @@
 const { evidenceRepository } = require('./repository');
 const fileStorage = require('./fileStorage');
 const logger = require('../shared/logger');
+const { logAuditTrail } = require('../shared/auditing');
 
 function toObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -26,17 +27,25 @@ function toUuidOrNull(value) {
 }
 
 class EvidenceService {
-  constructor({ repository = evidenceRepository, storage = fileStorage, log = logger } = {}) {
+  constructor({
+    repository = evidenceRepository,
+    storage = fileStorage,
+    log = logger,
+    audit = logAuditTrail
+  } = {}) {
     this.repository = repository;
     this.storage = storage;
     this.log = log;
+    this.audit = audit;
   }
 
-  async ensureProductBelongsToCompany(companyId, productId) {
+  async ensureProductBelongsToCompany(companyId, productId, queryable) {
     const safeProductId = toUuidOrNull(productId);
     if (!safeProductId) return null;
 
-    return this.repository.findProductId({ companyId, productId: safeProductId });
+    return queryable
+      ? this.repository.findProductId({ companyId, productId: safeProductId }, queryable)
+      : this.repository.findProductId({ companyId, productId: safeProductId });
   }
 
   async listEvidence(companyId, filters = {}) {
@@ -62,14 +71,23 @@ class EvidenceService {
     };
   }
 
-  async createEvidence(companyId, userId, payload = {}) {
+  async createEvidence(companyId, userId, payload = {}, queryable) {
     const productId = await this.ensureProductBelongsToCompany(
       companyId,
-      payload.product_id || payload.productId
+      payload.product_id || payload.productId,
+      queryable
     );
 
     if ((payload.product_id || payload.productId) && !productId) {
       return { error: 'PRODUCT_NOT_FOUND' };
+    }
+
+    const requestedShipmentId = toUuidOrNull(payload.shipment_id || payload.shipmentId);
+    const shipmentId = requestedShipmentId
+      ? await this.repository.findShipmentId({ companyId, shipmentId: requestedShipmentId }, queryable)
+      : null;
+    if ((payload.shipment_id || payload.shipmentId) && !shipmentId) {
+      return { error: 'SHIPMENT_NOT_FOUND' };
     }
 
     const evidenceType = toText(payload.evidence_type || payload.evidenceType || payload.type) || 'document';
@@ -78,10 +96,10 @@ class EvidenceService {
       return { error: 'DOCUMENT_NAME_REQUIRED' };
     }
 
-    const row = await this.repository.create({
+    const values = {
       companyId,
       productId,
-      shipmentId: toUuidOrNull(payload.shipment_id || payload.shipmentId),
+      shipmentId,
       evidenceType,
       documentName,
       lookupCode: toText(payload.lookup_code || payload.lookupCode) || null,
@@ -105,13 +123,37 @@ class EvidenceService {
         toText(payload.checksum_sha256 || payload.checksumSha256 || payload.sha256) || null,
       extractedJson: JSON.stringify(toObject(payload.extracted_json || payload.extractedJson)),
       userId
-    });
+    };
+    const row = queryable
+      ? await this.repository.create(values, queryable)
+      : await this.repository.create(values);
 
     return { data: this.formatEvidence(row) };
   }
 
-  async updateExtractedJson(evidenceId, extractedJson, newStatus = 'ocr_parsed') {
+  async createEvidenceWithAudit(companyId, userId, payload = {}) {
+    return this.repository.withTransaction(async (client) => {
+      const result = await this.createEvidence(companyId, userId, payload, client);
+      if (result.error) return result;
+      await this.audit({
+        client,
+        strict: true,
+        companyId,
+        userId,
+        evidenceDocumentId: result.data.id,
+        dataGroup: 'evidence',
+        changedField: 'evidence.uploaded',
+        newValue: result.data.fileName || result.data.documentName,
+        reason: payload.auditReason || 'evidence.create',
+        notes: `Created evidence ${result.data.documentName || result.data.fileName || ''}`.trim()
+      });
+      return result;
+    });
+  }
+
+  async updateExtractedJson(companyId, evidenceId, extractedJson, newStatus = 'ocr_parsed') {
     await this.repository.updateExtractedJson({
+      companyId,
       evidenceId,
       extractedJson: JSON.stringify(extractedJson || {}),
       status: newStatus
@@ -120,9 +162,10 @@ class EvidenceService {
 
   // Records why AI extraction produced no usable data, so the frontend can show a reason
   // instead of a silent "no fields" state. `reason` is a short, user-facing message.
-  async markExtractionFailed(evidenceId, reason) {
+  async markExtractionFailed(companyId, evidenceId, reason) {
     const message = String(reason || 'AI không đọc được chứng từ.').slice(0, 500);
     await this.repository.markExtractionFailed({
+      companyId,
       evidenceId,
       warnings: JSON.stringify([message]),
       reason: message
@@ -132,6 +175,28 @@ class EvidenceService {
   async lockEvidence(companyId, userId, evidenceId) {
     const row = await this.repository.lock({ companyId, userId, evidenceId });
     return row ? this.formatEvidence(row) : null;
+  }
+
+  async lockEvidenceWithAudit(companyId, userId, evidenceId, reason = 'evidence.lock') {
+    return this.repository.withTransaction(async (client) => {
+      const row = await this.repository.lock({ companyId, userId, evidenceId }, client);
+      if (!row) return null;
+      const evidence = this.formatEvidence(row);
+      await this.audit({
+        client,
+        strict: true,
+        companyId,
+        userId,
+        evidenceDocumentId: evidence.id,
+        dataGroup: 'evidence',
+        changedField: 'evidence.verified',
+        oldValue: 'uploaded',
+        newValue: 'locked',
+        reason,
+        notes: `Locked evidence ${evidence.fileName || evidence.documentName || evidence.id}`
+      });
+      return evidence;
+    });
   }
 
   async evidenceExists(companyId, evidenceId) {
@@ -162,9 +227,12 @@ class EvidenceService {
   }
 
   async deleteEvidence(companyId, evidenceId) {
-    const storedFile = await this.repository.getStoredFile({ companyId, evidenceId });
-    await this.repository.deleteLinkedInvoices({ companyId, evidenceId });
-    const deleted = await this.repository.deleteEvidence({ companyId, evidenceId });
+    const { storedFile, deleted } = await this.repository.withTransaction(async (client) => {
+      const currentFile = await this.repository.getStoredFile({ companyId, evidenceId }, client);
+      await this.repository.deleteLinkedInvoices({ companyId, evidenceId }, client);
+      const wasDeleted = await this.repository.deleteEvidence({ companyId, evidenceId }, client);
+      return { storedFile: currentFile, deleted: wasDeleted };
+    });
     if (!deleted) return false;
 
     if (storedFile?.storage_provider === 'local' && storedFile.storage_key) {

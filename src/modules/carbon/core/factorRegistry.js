@@ -1,5 +1,63 @@
+const crypto = require('crypto');
 const factors = require('./factors.v1.json');
 const { normalizeToken } = require('./normalization');
+
+const FACTOR_REGISTRY_ID = 'weavecarbon-textile-factors';
+const FACTOR_REGISTRY_RELEASE = 'v1';
+const FACTOR_REGISTRY_SCHEMA_VERSION = 'emission-factor-registry-v1';
+const SUPPORTED_FACTOR_UNITS = new Set([
+  'kgCO2e/kg',
+  'kgCO2e/kWh',
+  'kWh/kg',
+  'kgCO2e/tonne.km'
+]);
+
+const canonicalize = (value) => {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (!value || typeof value !== 'object') return value;
+  return Object.keys(value).sort().reduce((result, key) => {
+    if (value[key] !== undefined) result[key] = canonicalize(value[key]);
+    return result;
+  }, {});
+};
+
+const registryContentHash = crypto
+  .createHash('sha256')
+  .update(JSON.stringify(canonicalize(factors)))
+  .digest('hex');
+const FACTOR_REGISTRY_VERSION = `factors-${FACTOR_REGISTRY_RELEASE}:${registryContentHash}`;
+
+const deepFreeze = (value) => {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  Object.values(value).forEach(deepFreeze);
+  return Object.freeze(value);
+};
+
+const factorValues = Object.values(factors);
+const factorIds = new Set();
+const factorVersionIds = new Set();
+for (const factor of factorValues) {
+  const required = [
+    'id', 'factorVersionId', 'label', 'value', 'unit', 'source', 'sourceUrl',
+    'geography', 'boundaryType', 'quality', 'factorClass', 'gwpBasis', 'uncertaintyCv'
+  ];
+  const missing = required.filter((key) => factor[key] === undefined || factor[key] === null || factor[key] === '');
+  if (missing.length > 0) {
+    throw new Error(`Carbon factor ${factor.id || '<unknown>'} is missing: ${missing.join(', ')}`);
+  }
+  if (!Number.isFinite(factor.value) || factor.value < 0) {
+    throw new Error(`Carbon factor ${factor.id} has an invalid value.`);
+  }
+  if (!SUPPORTED_FACTOR_UNITS.has(factor.unit)) {
+    throw new Error(`Carbon factor ${factor.id} uses unsupported unit ${factor.unit}.`);
+  }
+  if (factorIds.has(factor.id) || factorVersionIds.has(factor.factorVersionId)) {
+    throw new Error(`Carbon factor identity is duplicated: ${factor.id}/${factor.factorVersionId}.`);
+  }
+  factorIds.add(factor.id);
+  factorVersionIds.add(factor.factorVersionId);
+}
+deepFreeze(factors);
 
 const FACTOR_ID_ALIASES = {
   cotton: 'cat-cotton-100',
@@ -96,6 +154,54 @@ const getCarbonFactor = (idOrAlias) => {
   return resolvedId ? factors[resolvedId] : undefined;
 };
 
+const buildFactorProvenance = (factor) => factor ? Object.freeze({
+  registryId: FACTOR_REGISTRY_ID,
+  registryVersion: FACTOR_REGISTRY_VERSION,
+  factorId: factor.id,
+  factorVersionId: factor.factorVersionId,
+  label: factor.label,
+  value: factor.value,
+  unit: factor.unit,
+  source: Object.freeze({
+    name: factor.source,
+    url: factor.sourceUrl,
+    year: factor.year ?? null
+  }),
+  geography: factor.geography,
+  boundary: factor.boundaryType,
+  validity: Object.freeze({
+    from: factor.validFrom ?? null,
+    to: factor.validTo ?? null
+  }),
+  quality: Object.freeze({
+    grade: factor.quality,
+    class: factor.factorClass,
+    scores: factor.qualityScores || null,
+    uncertaintyCv: factor.uncertaintyCv,
+    isProxy: Boolean(factor.isProxy)
+  }),
+  gwpBasis: factor.gwpBasis
+}) : null;
+
+const getFactorRegistryMetadata = () => Object.freeze({
+  id: FACTOR_REGISTRY_ID,
+  release: FACTOR_REGISTRY_RELEASE,
+  schemaVersion: FACTOR_REGISTRY_SCHEMA_VERSION,
+  version: FACTOR_REGISTRY_VERSION,
+  contentHash: registryContentHash,
+  factorCount: factorValues.length,
+  gwpBases: Object.freeze(Array.from(new Set(factorValues.map((factor) => factor.gwpBasis))).sort())
+});
+
+const getFactorProvenance = (idOrAlias) => buildFactorProvenance(getCarbonFactor(idOrAlias));
+
+const listFactorProvenance = ({ unit, geography, factorClass, isProxy } = {}) => factorValues
+  .filter((factor) => !unit || factor.unit === unit)
+  .filter((factor) => !geography || factor.geography === geography)
+  .filter((factor) => !factorClass || factor.factorClass === factorClass)
+  .filter((factor) => typeof isProxy !== 'boolean' || Boolean(factor.isProxy) === isProxy)
+  .map(buildFactorProvenance);
+
 const resolveFactorOrFallback = (factorId, fallbackId) => {
   const factor = getCarbonFactor(factorId) || getCarbonFactor(fallbackId);
   if (!factor) throw new Error(`Unknown carbon factor and fallback: ${factorId} / ${fallbackId}`);
@@ -145,10 +251,18 @@ const resolveAccessoryFactorIdByKeyword = (value) => {
 
 module.exports = {
   CATEGORY_METHODOLOGY,
+  FACTOR_REGISTRY_ID,
+  FACTOR_REGISTRY_RELEASE,
+  FACTOR_REGISTRY_SCHEMA_VERSION,
+  FACTOR_REGISTRY_VERSION,
   FACTOR_ID_ALIASES,
   MARKET_DISTANCE_DEFAULTS,
+  SUPPORTED_FACTOR_UNITS,
+  getFactorProvenance,
+  getFactorRegistryMetadata,
   getCarbonFactor,
-  listCarbonFactors: () => Object.values(factors),
+  listCarbonFactors: () => factorValues,
+  listFactorProvenance,
   resolveAccessoryFactorIdByKeyword,
   resolveCarbonFactorId,
   resolveCategoryMethodology,

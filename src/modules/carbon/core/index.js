@@ -7,5 +7,6 @@ module.exports = {
   ...require('./stageModel'),
   ...require('./stages'),
   ...require('./uncertainty'),
+  ...require('./units'),
   ...require('./validation')
 };

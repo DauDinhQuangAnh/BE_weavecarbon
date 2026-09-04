@@ -13,9 +13,12 @@ const COMPANY_ID = '123e4567-e89b-12d3-a456-426614174000';
 const PRODUCT_ID = '223e4567-e89b-12d3-a456-426614174000';
 
 function createDependencies() {
+  const transaction = { id: 'transaction' };
   return {
     repository: {
+      withTransaction: jest.fn((work) => work(transaction)),
       findProductId: jest.fn(),
+      findShipmentId: jest.fn(),
       list: jest.fn(),
       create: jest.fn(),
       updateExtractedJson: jest.fn(),
@@ -29,7 +32,9 @@ function createDependencies() {
       deleteEvidence: jest.fn()
     },
     storage: { removeEvidenceFile: jest.fn().mockResolvedValue(undefined) },
-    log: { warn: jest.fn() }
+    log: { warn: jest.fn() },
+    audit: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+    transaction
   };
 }
 
@@ -146,9 +151,33 @@ describe('EvidenceService', () => {
     expect(dependencies.repository.deleteLinkedInvoices).toHaveBeenCalledWith({
       companyId: COMPANY_ID,
       evidenceId: 'evidence-1'
-    });
+    }, dependencies.transaction);
     expect(dependencies.storage.removeEvidenceFile)
       .toHaveBeenCalledWith('evidence/company/2026/file.pdf');
+  });
+
+  test('creates evidence and its audit row on the same transaction', async () => {
+    const dependencies = createDependencies();
+    dependencies.repository.create.mockResolvedValue({
+      id: 'evidence-1', company_id: COMPANY_ID, evidence_type: 'invoice',
+      document_name: 'Invoice.pdf', original_filename: 'Invoice.pdf', status: 'uploaded'
+    });
+    const service = createEvidenceService(dependencies);
+
+    await expect(service.createEvidenceWithAudit(COMPANY_ID, 'user-1', {
+      documentName: 'Invoice.pdf'
+    })).resolves.toEqual({ data: expect.objectContaining({ id: 'evidence-1' }) });
+
+    expect(dependencies.repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ companyId: COMPANY_ID }),
+      dependencies.transaction
+    );
+    expect(dependencies.audit).toHaveBeenCalledWith(expect.objectContaining({
+      client: dependencies.transaction,
+      strict: true,
+      companyId: COMPANY_ID,
+      evidenceDocumentId: 'evidence-1'
+    }));
   });
 
   test('keeps database deletion successful when local file cleanup fails', async () => {

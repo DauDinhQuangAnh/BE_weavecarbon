@@ -113,7 +113,8 @@ describe('bulkImport', () => {
         const snapshotInsert = client.query.mock.calls.find(([sql]) =>
             String(sql).includes('INSERT INTO product_assessment_snapshots')
         );
-        const snapshot = JSON.parse(snapshotInsert[1][1]);
+        expect(snapshotInsert[1][1]).toBe('company-1');
+        const snapshot = JSON.parse(snapshotInsert[1][2]);
         expect(snapshot.carbonResults).toEqual(serverResult);
         expect(snapshot).not.toHaveProperty('total_co2e');
     });

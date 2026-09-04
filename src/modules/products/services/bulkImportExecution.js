@@ -126,6 +126,7 @@ async function bulkImport(
 
                 const calculationSnapshot = await insertProductSnapshot(client, {
                     productId,
+                    companyId,
                     assessmentPayload: snapshotPayload,
                     input: authoritativeCarbon.input,
                     result: normalizedCarbonResults

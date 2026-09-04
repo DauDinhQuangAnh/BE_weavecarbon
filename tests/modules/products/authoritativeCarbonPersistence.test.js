@@ -88,7 +88,8 @@ describe('product assessment authoritative carbon persistence', () => {
     const snapshotInsert = client.query.mock.calls.find(([sql]) =>
       String(sql).includes('INSERT INTO product_assessment_snapshots')
     );
-    const snapshot = JSON.parse(snapshotInsert[1][1]);
+    expect(snapshotInsert[1][1]).toBe('company-1');
+    const snapshot = JSON.parse(snapshotInsert[1][2]);
     expect(snapshot.carbonResults).toMatchObject({
       perProduct: { total: 0.21 },
       confidenceScore: 15,
@@ -235,7 +236,8 @@ describe('product assessment authoritative carbon persistence', () => {
     const snapshotUpdate = client.query.mock.calls.find(([sql]) =>
       String(sql).includes('INSERT INTO product_assessment_snapshots')
     );
-    const snapshot = JSON.parse(snapshotUpdate[1][1]);
+    expect(snapshotUpdate[1][1]).toBe('company-1');
+    const snapshot = JSON.parse(snapshotUpdate[1][2]);
     expect(snapshot.carbonResults).toEqual(authoritativeResult);
     expect(snapshot).not.toHaveProperty('total_co2e');
     expect(response.data.carbonResults).toEqual(authoritativeResult);

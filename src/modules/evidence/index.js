@@ -14,6 +14,9 @@ module.exports = {
   get fileStorage() {
     return require('./fileStorage');
   },
+  get uploadPolicy() {
+    return require('./uploadPolicy');
+  },
   get evidenceRouter() {
     return require('./routes');
   }

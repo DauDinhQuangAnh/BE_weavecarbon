@@ -18,6 +18,7 @@ const apiRoutes = require('./config/apiRoutes');
 const app = express();
 const PORT = process.env.PORT || 4000;
 const allowedOrigins = resolveAllowedFrontendOrigins();
+const API_JSON_LIMIT = process.env.API_JSON_LIMIT || '1mb';
 
 function createCorsOptions(frontendOrigins) {
   return {
@@ -62,7 +63,7 @@ function slowRequestLogger(req, res, next) {
     }
 
     logger.warn(
-      `[http] Slow request ${durationMs.toFixed(1)}ms :: ${req.method} ${req.originalUrl} -> ${res.statusCode}`
+      `[http] Slow request ${durationMs.toFixed(1)}ms :: ${req.method} ${String(req.originalUrl || '').split('?')[0]} -> ${res.statusCode}`
     );
   });
 
@@ -80,10 +81,11 @@ function skipCompactAiAccessLog(req) {
 app.disable('x-powered-by');
 app.use(helmet());
 app.use(cors(createCorsOptions(allowedOrigins)));
-app.use(morgan('[http] :method :url -> :status', { skip: skipCompactAiAccessLog }));
+morgan.token('safe-url', (req) => String(req.originalUrl || req.url || '').split('?')[0]);
+app.use(morgan('[http] :method :safe-url -> :status', { skip: skipCompactAiAccessLog }));
 app.use(slowRequestLogger);
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: API_JSON_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: API_JSON_LIMIT, parameterLimit: 1000 }));
 
 app.use('/api', apiLimiter);
 

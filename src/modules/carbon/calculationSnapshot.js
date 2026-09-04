@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const factorRegistry = require('./core/factors.v1.json');
+const { FACTOR_REGISTRY_VERSION } = require('./core/factorRegistry');
 
 const SNAPSHOT_SCHEMA_VERSION = 'carbon-calculation-snapshot-v1';
 
@@ -19,8 +19,6 @@ const canonicalize = (value) => {
 const stableCanonicalJson = (value) => JSON.stringify(canonicalize(value));
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
-
-const FACTOR_REGISTRY_VERSION = `factors-v1:${sha256(stableCanonicalJson(factorRegistry))}`;
 
 const buildCalculationMetadata = ({ input, result, calculatedAt = new Date() }) => {
   const timestamp = calculatedAt instanceof Date
@@ -67,6 +65,7 @@ const buildFinalizedCalculationSnapshot = ({
 
 const insertFinalizedProductSnapshot = async (client, {
   productId,
+  companyId,
   assessmentPayload,
   input,
   result,
@@ -83,6 +82,7 @@ const insertFinalizedProductSnapshot = async (client, {
     `
       INSERT INTO product_assessment_snapshots (
         product_id,
+        company_id,
         version,
         payload,
         engine_version,
@@ -98,20 +98,21 @@ const insertFinalizedProductSnapshot = async (client, {
       )
       SELECT
         $1,
+        $2,
         COALESCE(MAX(version), 0) + 1,
-        $2::jsonb,
-        $3,
+        $3::jsonb,
         $4,
         $5,
         $6,
         $7,
         $8,
-        $9::jsonb,
+        $9,
         $10::jsonb,
+        $11::jsonb,
         false,
-        $7
+        $8
       FROM product_assessment_snapshots
-      WHERE product_id = $1
+      WHERE product_id = $1 AND company_id = $2
       RETURNING
         id AS snapshot_id,
         version AS snapshot_version,
@@ -125,6 +126,7 @@ const insertFinalizedProductSnapshot = async (client, {
     `,
     [
       productId,
+      companyId,
       JSON.stringify(snapshot.payload),
       metadata.engineVersion,
       metadata.methodologyVersion,

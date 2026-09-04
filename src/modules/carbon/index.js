@@ -47,6 +47,15 @@ module.exports = {
   get fuelInvoicesRouter() {
     return require('./fuelInvoicesRoutes');
   },
+  get factorRegistryRouter() {
+    return require('./factorRegistryRoutes');
+  },
+  get factorRegistryRepository() {
+    return require('./factorRegistryRepository').factorRegistryRepository;
+  },
+  get factorRegistryService() {
+    return require('./factorRegistryService').factorRegistryService;
+  },
   get core() {
     return require('./core');
   }

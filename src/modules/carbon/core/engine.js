@@ -15,12 +15,13 @@ const {
 } = require('./stages');
 const { buildRssUncertainty } = require('./uncertainty');
 const { assertValidCarbonInput } = require('./validation');
+const { CANONICAL_UNITS, ROUNDING_POLICY } = require('./units');
 
 const RULE_ENGINE_VERSION = 'scope-quality-rss-1.0.0';
 
 const calculateCarbonFootprint = (rawInput) => {
-  assertValidCarbonInput(rawInput);
   const input = normalizeCarbonInput(rawInput);
+  assertValidCarbonInput(input);
   const warnings = [
     'This result is an attributional, climate-only partial CFP estimate for decision support.',
     'This result is not a comparative claim, product label, ISO certification, or third-party verification statement.'
@@ -86,6 +87,8 @@ const calculateCarbonFootprint = (rawInput) => {
     transport.scope3Amount;
 
   return {
+    units: CANONICAL_UNITS,
+    roundingPolicy: ROUNDING_POLICY,
     perProduct: aggregation.perProduct,
     totalBatch: aggregation.totalBatch,
     biogenicCarbon: biogenicCarbonKgCO2e > 0

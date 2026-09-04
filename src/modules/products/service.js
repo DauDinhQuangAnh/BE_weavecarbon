@@ -162,9 +162,9 @@ class ProductsService {
                         canonical_input_hash AS snapshot_canonical_input_hash,
                         is_legacy AS snapshot_is_legacy
                     FROM latest_product_assessment_snapshots
-                    WHERE product_id = ANY($1)
+                    WHERE product_id = ANY($1) AND company_id = $2
                 `;
-                const snapshotsResult = await client.query(snapshotsQuery, [productIds]);
+                const snapshotsResult = await client.query(snapshotsQuery, [productIds, companyId]);
                 snapshotsResult.rows.forEach(row => {
                     snapshotsMap[row.product_id] = row;
                 });
@@ -400,11 +400,11 @@ class ProductsService {
                     canonical_input_hash AS snapshot_canonical_input_hash,
                     is_legacy AS snapshot_is_legacy
                 FROM latest_product_assessment_snapshots
-                WHERE product_id = $1
+                WHERE product_id = $1 AND company_id = $2
                 ORDER BY version DESC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC
                 LIMIT 1
             `;
-            const snapshotResult = await client.query(snapshotQuery, [productId]);
+            const snapshotResult = await client.query(snapshotQuery, [productId, companyId]);
 
             let payload = {};
             let version = 1;
@@ -552,6 +552,7 @@ class ProductsService {
 
             const calculationSnapshot = await this.insertProductSnapshot(client, {
                 productId: product.id,
+                companyId,
                 assessmentPayload: payloadWithoutCarbonResults,
                 input: authoritativeCarbon.input,
                 result: normalizedCarbonResults
@@ -697,6 +698,7 @@ class ProductsService {
 
             const calculationSnapshot = await this.insertProductSnapshot(client, {
                 productId,
+                companyId,
                 assessmentPayload: payloadWithoutCarbonResults,
                 input: authoritativeCarbon.input,
                 result: normalizedCarbonResults
@@ -794,7 +796,7 @@ class ProductsService {
                         is_legacy AS snapshot_is_legacy,
                         payload
                     FROM latest_product_assessment_snapshots ps
-                    WHERE ps.product_id = p.id
+                    WHERE ps.product_id = p.id AND ps.company_id = p.company_id
                 ) s ON true
                 WHERE p.id = $1 AND p.company_id = $2
                 FOR UPDATE OF p
@@ -871,6 +873,7 @@ class ProductsService {
                 );
                 const calculationSnapshot = await this.insertProductSnapshot(client, {
                     productId,
+                    companyId,
                     assessmentPayload: sanitizedSnapshot,
                     input: authoritativeCarbon.input,
                     result: authoritativeCarbonResults

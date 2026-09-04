@@ -43,5 +43,7 @@ describe('config/jwt fail-fast validation', () => {
 
         expect(jwtConfig.jwtSecret).toBe('secret');
         expect(jwtConfig.jwtRefreshSecret).toBe('refresh-secret');
+        expect(jwtConfig.jwtExpiresIn).toBe('15m');
+        expect(jwtConfig.jwtRefreshExpiresIn).toBe('30d');
     });
 });

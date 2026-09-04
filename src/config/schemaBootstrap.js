@@ -10,7 +10,10 @@ const REQUIRED_TABLES = [
   'subscription_cycles',
   'subscription_payment_sessions',
   'compliance_documents',
-  'product_compliance_documents'
+  'product_compliance_documents',
+  'product_assessment_snapshots',
+  'emission_factor_registries',
+  'emission_factors'
 ];
 
 const REQUIRED_COLUMNS = [
@@ -23,7 +26,8 @@ const REQUIRED_COLUMNS = [
   ['subscription_cycles', 'trial_ends_at'],
   ['subscription_cycles', 'standard_started_at'],
   ['subscription_cycles', 'standard_expires_at'],
-  ['subscription_cycles', 'standard_sku_limit']
+  ['subscription_cycles', 'standard_sku_limit'],
+  ['product_assessment_snapshots', 'company_id']
 ];
 
 const REQUIRED_PRICING_PLAN_VALUES = [

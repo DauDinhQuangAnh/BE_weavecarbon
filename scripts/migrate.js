@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const pool = require('../src/config/database');
+const { factorRegistryRepository } = require('../src/modules/carbon/factorRegistryRepository');
 
 const MIGRATIONS_DIR = path.resolve(__dirname, '..', 'migrations');
 
@@ -121,6 +122,8 @@ async function main() {
     console.log(`[migrate] Applying ${fileName}`);
     await applyMigration(fileName, sql, checksum);
   }
+
+  await factorRegistryRepository.syncCurrentRegistry(pool);
 
   console.log('[migrate] Database migrations are up to date');
 }

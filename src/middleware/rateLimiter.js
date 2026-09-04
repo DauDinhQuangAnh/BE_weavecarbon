@@ -1,4 +1,4 @@
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const authService = require('../services/authService');
 
 const isDev = process.env.NODE_ENV !== 'production';
@@ -40,6 +40,12 @@ const getAuthenticatedRateLimitKey = (req) => {
 
   const decoded = authService.verifyAccessToken(token);
   return decoded?.sub ? `user_${decoded.sub}` : null;
+};
+
+const getExpensiveRateLimitKey = (req) => {
+  if (req.userId && req.companyId) return `tenant_${req.companyId}_user_${req.userId}`;
+  if (req.userId) return `user_${req.userId}`;
+  return ipKeyGenerator(req.ip || req.socket?.remoteAddress || '127.0.0.1');
 };
 
 // General API rate limiter
@@ -123,6 +129,22 @@ const googleAuthLimiter = rateLimit({
   keyGenerator: (req) => req.ip || req.connection.remoteAddress,
 });
 
+const expensiveOperationLimiter = rateLimit({
+  windowMs: parsePositiveInt(process.env.EXPENSIVE_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
+  max: parsePositiveInt(process.env.EXPENSIVE_RATE_LIMIT_MAX, isDev ? 500 : 30),
+  skip: (req) => req.method === 'OPTIONS',
+  message: {
+    success: false,
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many expensive operations, please try again later'
+    }
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getExpensiveRateLimitKey
+});
+
 // Strict limiter for email verification resend
 const verifyEmailLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
@@ -144,5 +166,8 @@ module.exports = {
   signinLimiter,
   refreshLimiter,
   verifyEmailLimiter,
-  googleAuthLimiter
+  googleAuthLimiter,
+  expensiveOperationLimiter,
+  getAuthenticatedRateLimitKey,
+  getExpensiveRateLimitKey
 };

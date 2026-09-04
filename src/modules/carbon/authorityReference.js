@@ -88,7 +88,8 @@ const loadAuthoritativeProductCarbon = async (database, productId, companyId) =>
         s.canonical_input_hash AS snapshot_canonical_input_hash,
         s.is_legacy AS snapshot_is_legacy
       FROM products p
-      INNER JOIN latest_product_assessment_snapshots s ON s.product_id = p.id
+      INNER JOIN latest_product_assessment_snapshots s
+        ON s.product_id = p.id AND s.company_id = p.company_id
       WHERE p.id = $1 AND p.company_id = $2
       LIMIT 1
     `,

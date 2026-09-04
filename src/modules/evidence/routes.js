@@ -5,8 +5,9 @@ const { authenticate, requireRole } = require('../shared/security');
 const { asyncHandler, sendError, sendNoCompany, sendSuccess } = require('../shared/http');
 const evidenceService = require('./service');
 const chatService = require('../shared/rag');
-const { logAuditTrail } = require('../shared/auditing');
 const logger = require('../shared/logger');
+const { expensiveOperationLimiter } = require('../shared/rateLimiter');
+const { assertSafeEvidenceUpload } = require('./uploadPolicy');
 const {
   removeEvidenceFile,
   storeEvidenceFile,
@@ -83,7 +84,7 @@ function processFileAsync(docId, file, kind, companyId) {
         fields && typeof fields === 'object' ? Object.keys(fields).length : 0;
 
       if (fieldCount > 0) {
-        await evidenceService.updateExtractedJson(docId, fields, 'ocr_parsed');
+        await evidenceService.updateExtractedJson(companyId, docId, fields, 'ocr_parsed');
         logger.info(
           { docId, fieldCount, keys: Object.keys(fields).slice(0, 20) },
           '[evidence] AI extract OK'
@@ -96,6 +97,7 @@ function processFileAsync(docId, file, kind, companyId) {
           '[evidence] AI extract returned 0 fields (document parsed but no data extracted)'
         );
         await evidenceService.markExtractionFailed(
+          companyId,
           docId,
           'AI đã đọc nhưng không trích xuất được trường dữ liệu nào. '
             + 'Hãy kiểm tra chất lượng ảnh/PDF, hoặc tải file gốc (PDF/XLSX) rõ ràng hơn.'
@@ -118,7 +120,7 @@ function processFileAsync(docId, file, kind, companyId) {
       );
       // Persist the reason so it shows up on the FE instead of a silent empty state.
       try {
-        await evidenceService.markExtractionFailed(docId, humanizeExtractError(e));
+        await evidenceService.markExtractionFailed(companyId, docId, humanizeExtractError(e));
       } catch (persistErr) {
         logger.warn({ err: persistErr, docId }, '[evidence] failed to persist extraction error');
       }
@@ -146,27 +148,20 @@ router.post('/:id/verify', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
 
-  const result = await evidenceService.lockEvidence(companyId, req.userId, req.params.id);
+  const result = await evidenceService.lockEvidenceWithAudit(
+    companyId,
+    req.userId,
+    req.params.id,
+    'evidence.verify'
+  );
   if (!result) {
     return sendError(res, { status: 404, code: 'EVIDENCE_NOT_FOUND', message: 'Evidence document not found.' });
   }
-  await logAuditTrail({
-    companyId,
-    userId: req.userId,
-    evidenceDocumentId: result.id || req.params.id,
-    dataGroup: 'evidence',
-    changedField: 'evidence.verified',
-    oldValue: 'uploaded',
-    newValue: 'verified',
-    reason: 'evidence.verify',
-    notes: `Verified evidence ${result.fileName || result.documentName || req.params.id}`
-  });
-
   return sendSuccess(res, { data: result });
 }));
 
 // POST /api/evidence/upload — multipart/form-data file upload
-router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
+router.post('/upload', expensiveOperationLimiter, upload.single('file'), asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
 
@@ -174,6 +169,10 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
   if (!file) {
     return sendError(res, { status: 400, code: 'FILE_REQUIRED', message: 'No file provided.' });
   }
+
+  const safeUpload = await assertSafeEvidenceUpload(file);
+  file.originalname = safeUpload.filename;
+  file.mimetype = safeUpload.mime;
 
   const kind = req.body.kind || req.body.evidence_type || 'other';
   const documentName = req.body.documentName || file.originalname;
@@ -186,7 +185,7 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
 
   let result;
   try {
-    result = await evidenceService.createEvidence(companyId, req.userId, {
+    result = await evidenceService.createEvidenceWithAudit(companyId, req.userId, {
       evidence_type: kind,
       documentName,
       fileName: file.originalname,
@@ -199,6 +198,7 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
       storage_provider: 'local',
       storage_key: storedFile.storageKey,
       notes: req.body.notes || null,
+      auditReason: 'evidence.upload'
     });
   } catch (error) {
     await removeEvidenceFile(storedFile.storageKey).catch((cleanupError) => {
@@ -207,28 +207,27 @@ router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
     throw error;
   }
 
+  if (result.error === 'PRODUCT_NOT_FOUND' || result.error === 'SHIPMENT_NOT_FOUND') {
+    await removeEvidenceFile(storedFile.storageKey);
+    return sendError(res, {
+      status: 404,
+      code: result.error,
+      message: result.error === 'PRODUCT_NOT_FOUND'
+        ? 'Product not found for this company.'
+        : 'Shipment not found for this company.'
+    });
+  }
   if (result.error === 'DOCUMENT_NAME_REQUIRED') {
     await removeEvidenceFile(storedFile.storageKey);
     return sendError(res, { status: 400, code: 'DOCUMENT_NAME_REQUIRED', message: 'File name is required.' });
   }
-  await logAuditTrail({
-    companyId,
-    userId: req.userId,
-    evidenceDocumentId: result.data?.id || null,
-    dataGroup: 'evidence',
-    changedField: 'evidence.uploaded',
-    newValue: file.originalname,
-    reason: 'evidence.upload',
-    notes: `Uploaded ${kind} evidence: ${file.originalname}`
-  });
-
   // Kick off AI extraction + RAG ingest in background — response returns immediately
   processFileAsync(result.data?.id, file, kind, companyId);
 
   return sendSuccess(res, { status: 201, data: result.data });
 }));
 
-router.post('/:id/rag-ingest', upload.single('file'), asyncHandler(async (req, res) => {
+router.post('/:id/rag-ingest', expensiveOperationLimiter, upload.single('file'), asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
 
@@ -239,6 +238,10 @@ router.post('/:id/rag-ingest', upload.single('file'), asyncHandler(async (req, r
   if (!(await evidenceService.evidenceExists(companyId, req.params.id))) {
     return sendError(res, { status: 404, code: 'EVIDENCE_NOT_FOUND', message: 'Evidence document not found.' });
   }
+
+  const safeUpload = await assertSafeEvidenceUpload(req.file);
+  req.file.originalname = safeUpload.filename;
+  req.file.mimetype = safeUpload.mime;
 
   const formData = new FormData();
   formData.append(
@@ -276,12 +279,19 @@ router.post('/', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
 
-  const result = await evidenceService.createEvidence(companyId, req.userId, req.body || {});
+  const result = await evidenceService.createEvidenceWithAudit(companyId, req.userId, req.body || {});
   if (result.error === 'PRODUCT_NOT_FOUND') {
     return sendError(res, {
       status: 404,
       code: 'PRODUCT_NOT_FOUND',
       message: 'Product not found for this company.'
+    });
+  }
+  if (result.error === 'SHIPMENT_NOT_FOUND') {
+    return sendError(res, {
+      status: 404,
+      code: 'SHIPMENT_NOT_FOUND',
+      message: 'Shipment not found for this company.'
     });
   }
   if (result.error === 'DOCUMENT_NAME_REQUIRED') {
@@ -291,17 +301,6 @@ router.post('/', asyncHandler(async (req, res) => {
       message: 'documentName or fileName is required.'
     });
   }
-  await logAuditTrail({
-    companyId,
-    userId: req.userId,
-    evidenceDocumentId: result.data?.id || null,
-    dataGroup: 'evidence',
-    changedField: 'evidence.uploaded',
-    newValue: result.data?.fileName || result.data?.documentName || req.body?.documentName || req.body?.fileName || null,
-    reason: 'evidence.create',
-    notes: `Created evidence ${result.data?.documentName || result.data?.fileName || ''}`.trim()
-  });
-
   return sendSuccess(res, { status: 201, data: result.data });
 }));
 
@@ -309,7 +308,12 @@ router.post('/:id/lock', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
 
-  const evidence = await evidenceService.lockEvidence(companyId, req.userId, req.params.id);
+  const evidence = await evidenceService.lockEvidenceWithAudit(
+    companyId,
+    req.userId,
+    req.params.id,
+    'evidence.lock'
+  );
   if (!evidence) {
     return sendError(res, {
       status: 404,
@@ -317,18 +321,6 @@ router.post('/:id/lock', asyncHandler(async (req, res) => {
       message: 'Evidence document not found.'
     });
   }
-  await logAuditTrail({
-    companyId,
-    userId: req.userId,
-    evidenceDocumentId: evidence.id || req.params.id,
-    dataGroup: 'evidence',
-    changedField: 'evidence.verified',
-    oldValue: 'uploaded',
-    newValue: 'locked',
-    reason: 'evidence.lock',
-    notes: `Locked evidence ${evidence.fileName || evidence.documentName || req.params.id}`
-  });
-
   return sendSuccess(res, { data: evidence });
 }));
 
@@ -364,22 +356,15 @@ router.post('/:id/confirm', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
 
-  const result = await evidenceService.lockEvidence(companyId, req.userId, req.params.id);
+  const result = await evidenceService.lockEvidenceWithAudit(
+    companyId,
+    req.userId,
+    req.params.id,
+    'evidence.confirm'
+  );
   if (!result) {
     return sendError(res, { status: 404, code: 'EVIDENCE_NOT_FOUND', message: 'Evidence document not found.' });
   }
-  await logAuditTrail({
-    companyId,
-    userId: req.userId,
-    evidenceDocumentId: result.id || req.params.id,
-    dataGroup: 'evidence',
-    changedField: 'evidence.verified',
-    oldValue: 'uploaded',
-    newValue: 'confirmed',
-    reason: 'evidence.confirm',
-    notes: `Confirmed evidence ${result.fileName || result.documentName || req.params.id}`
-  });
-
   return sendSuccess(res, { data: result });
 }));
 
@@ -409,7 +394,6 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   if (!deleted) {
     return sendError(res, { status: 404, code: 'NOT_FOUND', message: 'Evidence document not found.' });
   }
-
   return sendSuccess(res, { data: { deleted: true } });
 }));
 

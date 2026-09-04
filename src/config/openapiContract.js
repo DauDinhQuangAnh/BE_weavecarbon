@@ -62,6 +62,8 @@ const QUERY_PARAMETER_OVERRIDES = {
   'GET /b2c/donations': ['limit'],
   'GET /b2c/reward-transactions': ['limit'],
   'GET /carbon-calculations': ['limit'],
+  'GET /carbon-factors': ['registry_version', 'unit', 'geography', 'factor_class', 'is_proxy'],
+  'GET /carbon-factors/{factorId}': ['registry_version'],
   'GET /chat/conversations': ['page', 'page_size'],
   'GET /company/members': ['status', 'role'],
   'GET /evidence': ['productId', 'page', 'page_size', 'status'],

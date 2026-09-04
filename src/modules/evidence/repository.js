@@ -1,11 +1,24 @@
 const pool = require('../shared/database');
+const { withTransaction } = require('../shared/transaction');
 
 function createEvidenceRepository({ database = pool } = {}) {
   return {
-    async findProductId({ companyId, productId }) {
-      const { rows } = await database.query(
+    withTransaction(work) {
+      return withTransaction(database, work);
+    },
+
+    async findProductId({ companyId, productId }, queryable = database) {
+      const { rows } = await queryable.query(
         'SELECT id FROM products WHERE id = $1 AND company_id = $2',
         [productId, companyId]
+      );
+      return rows[0]?.id || null;
+    },
+
+    async findShipmentId({ companyId, shipmentId }, queryable = database) {
+      const { rows } = await queryable.query(
+        'SELECT id FROM shipments WHERE id = $1 AND company_id = $2',
+        [shipmentId, companyId]
       );
       return rows[0]?.id || null;
     },
@@ -29,7 +42,14 @@ function createEvidenceRepository({ database = pool } = {}) {
       const where = conditions.join(' AND ');
       const [result, countResult] = await Promise.all([
         database.query(
-          `SELECT * FROM evidence_documents WHERE ${where} ORDER BY created_at DESC LIMIT $${index} OFFSET $${index + 1}`,
+          `SELECT id, company_id, product_id, shipment_id, evidence_type, document_name,
+                  lookup_code, source_vendor, reporting_period_start, reporting_period_end,
+                  storage_provider, storage_bucket, storage_key, original_filename, mime_type,
+                  file_size_bytes, checksum_sha256, extracted_json, status, warnings,
+                  extraction_error, locked_at, uploaded_at, created_at, updated_at
+           FROM evidence_documents
+           WHERE ${where}
+           ORDER BY created_at DESC LIMIT $${index} OFFSET $${index + 1}`,
           [...params, pageSize, offset]
         ),
         database.query(`SELECT COUNT(*) FROM evidence_documents WHERE ${where}`, params)
@@ -37,8 +57,8 @@ function createEvidenceRepository({ database = pool } = {}) {
       return { rows: result.rows, total: parseInt(countResult.rows[0].count, 10) };
     },
 
-    async create(values) {
-      const { rows } = await database.query(
+    async create(values, queryable = database) {
+      const { rows } = await queryable.query(
         `INSERT INTO evidence_documents (
            company_id,
            product_id,
@@ -85,7 +105,7 @@ function createEvidenceRepository({ database = pool } = {}) {
       return rows[0];
     },
 
-    async updateExtractedJson({ evidenceId, extractedJson, status }) {
+    async updateExtractedJson({ companyId, evidenceId, extractedJson, status }) {
       await database.query(
         `UPDATE evidence_documents
          SET extracted_json = $1,
@@ -93,25 +113,25 @@ function createEvidenceRepository({ database = pool } = {}) {
              warnings = '[]'::jsonb,
              extraction_error = NULL,
              updated_at = now()
-         WHERE id = $3`,
-        [extractedJson, status, evidenceId]
+         WHERE id = $3 AND company_id = $4`,
+        [extractedJson, status, evidenceId, companyId]
       );
     },
 
-    async markExtractionFailed({ evidenceId, warnings, reason }) {
+    async markExtractionFailed({ companyId, evidenceId, warnings, reason }) {
       await database.query(
         `UPDATE evidence_documents
          SET status = 'extract_failed',
              warnings = $1::jsonb,
              extraction_error = $2,
              updated_at = now()
-         WHERE id = $3`,
-        [warnings, reason, evidenceId]
+         WHERE id = $3 AND company_id = $4`,
+        [warnings, reason, evidenceId, companyId]
       );
     },
 
-    async lock({ companyId, userId, evidenceId }) {
-      const { rows } = await database.query(
+    async lock({ companyId, userId, evidenceId }, queryable = database) {
+      const { rows } = await queryable.query(
         `UPDATE evidence_documents
          SET status = 'locked',
              locked_at = now(),
@@ -153,8 +173,8 @@ function createEvidenceRepository({ database = pool } = {}) {
       return rows[0] || null;
     },
 
-    async getStoredFile({ evidenceId, companyId }) {
-      const { rows } = await database.query(
+    async getStoredFile({ evidenceId, companyId }, queryable = database) {
+      const { rows } = await queryable.query(
         `SELECT storage_provider, storage_key
          FROM evidence_documents
          WHERE id = $1 AND company_id = $2`,
@@ -163,19 +183,19 @@ function createEvidenceRepository({ database = pool } = {}) {
       return rows[0] || null;
     },
 
-    async deleteLinkedInvoices({ evidenceId, companyId }) {
-      await database.query(
+    async deleteLinkedInvoices({ evidenceId, companyId }, queryable = database) {
+      await queryable.query(
         'DELETE FROM electricity_invoices WHERE evidence_document_id = $1 AND company_id = $2',
         [evidenceId, companyId]
       );
-      await database.query(
+      await queryable.query(
         'DELETE FROM fuel_invoices WHERE evidence_document_id = $1 AND company_id = $2',
         [evidenceId, companyId]
       );
     },
 
-    async deleteEvidence({ evidenceId, companyId }) {
-      const { rowCount } = await database.query(
+    async deleteEvidence({ evidenceId, companyId }, queryable = database) {
+      const { rowCount } = await queryable.query(
         'DELETE FROM evidence_documents WHERE id = $1 AND company_id = $2',
         [evidenceId, companyId]
       );

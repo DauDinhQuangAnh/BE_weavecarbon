@@ -11,7 +11,8 @@ async function logAuditTrail({
   oldValue = null,
   newValue = null,
   reason = null,
-  notes = null
+  notes = null,
+  strict = false
 }) {
   if (!companyId || !dataGroup || !changedField) {
     return null;
@@ -40,6 +41,7 @@ async function logAuditTrail({
     return rows[0] || null;
   } catch (error) {
     logger.error({ err: error }, '[auditTrailService] Failed to write audit trail');
+    if (strict) throw error;
     return null;
   }
 }

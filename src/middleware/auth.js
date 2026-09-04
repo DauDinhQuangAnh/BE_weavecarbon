@@ -3,6 +3,7 @@ const companyMembersService = require('../services/companyMembersService');
 const { enforceSubscriptionAccess } = require('./subscriptionAccess');
 const { sendError } = require('../utils/http');
 const logger = require('../utils/logger');
+const { enforceTenantMutationAccess } = require('./tenantAccess');
 
 function hasAnyRole(userRoles, allowedRoles) {
   return Array.isArray(userRoles) && userRoles.some((role) => allowedRoles.includes(role));
@@ -18,9 +19,9 @@ function getBearerToken(req) {
   return authHeader.slice(7);
 }
 
-function assignRequestUserContext(req, user, companyId) {
+function assignRequestUserContext(req, user, companyContext) {
   const userRoles = Array.isArray(user.roles) ? user.roles.filter(Boolean) : [];
-  const resolvedCompanyId = companyId || null;
+  const resolvedCompanyId = companyContext?.companyId || null;
 
   req.user = {
     ...user,
@@ -30,19 +31,32 @@ function assignRequestUserContext(req, user, companyId) {
   req.userId = user.id;
   req.userRoles = userRoles;
   req.companyId = resolvedCompanyId;
+  req.companyRole = companyContext?.companyRole || null;
+  req.companyMembershipStatus = companyContext?.status || null;
 }
 
-async function resolveCompanyId(user, decodedCompanyId) {
-  if (decodedCompanyId || user.company_id) {
-    return decodedCompanyId || user.company_id;
-  }
-
+async function resolveCompanyContext(user, decodedCompanyId) {
   if (!hasAnyRole(user.roles, ['b2b', 'admin'])) {
     return null;
   }
 
+  if (decodedCompanyId) {
+    const selected = await authService.getCompanyMembership(decodedCompanyId, user.id);
+    if (selected?.status !== 'active') return null;
+    return {
+      companyId: selected.company_id,
+      companyRole: selected.role,
+      status: selected.status
+    };
+  }
+
   const membership = await authService.getPrimaryCompanyMembership(user.id);
-  return membership?.company_id || null;
+  if (!membership || membership.member_status !== 'active') return null;
+  return {
+    companyId: membership.company_id,
+    companyRole: membership.company_role,
+    status: membership.member_status
+  };
 }
 
 async function hydrateRequestUser(req, decoded) {
@@ -51,8 +65,8 @@ async function hydrateRequestUser(req, decoded) {
     return null;
   }
 
-  const companyId = await resolveCompanyId(user, decoded.company_id);
-  assignRequestUserContext(req, user, companyId);
+  const companyContext = await resolveCompanyContext(user, decoded.company_id);
+  assignRequestUserContext(req, user, companyContext);
   return req.user;
 }
 
@@ -132,7 +146,7 @@ const authenticate = async (req, res, next) => {
       });
     }
 
-    return enforceSubscriptionAccess(req, res, next);
+    return enforceTenantMutationAccess(req, res, () => enforceSubscriptionAccess(req, res, next));
   } catch (error) {
     logger.error({ err: error }, 'Auth middleware error');
     return sendError(res, {
@@ -154,6 +168,8 @@ const requireRole = (...roles) => (req, res, next) => {
 
   next();
 };
+
+const requirePlatformAdmin = requireRole('admin');
 
 const optionalAuth = async (req, _res, next) => {
   try {
@@ -210,6 +226,7 @@ const requireCompanyRoot = createCompanyAccessGuard({
 module.exports = {
   authenticate,
   requireRole,
+  requirePlatformAdmin,
   optionalAuth,
   requireCompanyAdmin,
   requireCompanyMember,

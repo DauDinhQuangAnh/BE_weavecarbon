@@ -152,6 +152,7 @@ const buildCarbonEngineInputFromAssessment = (payload = {}) => {
   const transportLegs = safeArray(payload.transportLegs || payload.transport_legs);
 
   return {
+    validationMode: 'strict',
     unitMassKg: Math.max(
       0,
       toNumber(payload.weightPerUnit ?? payload.weight_per_unit) / 1000

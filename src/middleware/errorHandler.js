@@ -2,10 +2,11 @@ const { sendError } = require('../utils/http');
 const logger = require('../utils/logger');
 
 function buildErrorLogEntry(err, req) {
+  const safePath = String(req.originalUrl || '').split('?')[0];
   return {
     code: err.code || 'INTERNAL_ERROR',
     message: err.message || 'An unexpected error occurred',
-    path: `${req.method} ${req.originalUrl}`,
+    path: `${req.method} ${safePath}`,
     status: err.statusCode || 500
   };
 }
@@ -51,22 +52,25 @@ const errorHandler = (err, req, res, next) => {
   applyValidationError(err);
 
   logger.error(buildErrorLogEntry(err, req), 'Unhandled request error');
-  if (process.env.LOG_ERROR_STACK === 'true' && err.stack) {
+  if (process.env.NODE_ENV !== 'production' && process.env.LOG_ERROR_STACK === 'true' && err.stack) {
     logger.error(err.stack);
   }
 
+  const status = err.statusCode || 500;
+  const hideInternalDetails = process.env.NODE_ENV === 'production' && status >= 500;
+
   return sendError(res, {
-    status: err.statusCode || 500,
-    code: err.code || 'INTERNAL_ERROR',
-    message: err.message || 'An unexpected error occurred',
-    details: err.details
+    status,
+    code: hideInternalDetails ? 'INTERNAL_ERROR' : (err.code || 'INTERNAL_ERROR'),
+    message: hideInternalDetails ? 'An unexpected error occurred' : (err.message || 'An unexpected error occurred'),
+    details: hideInternalDetails ? undefined : err.details
   });
 };
 
 const notFound = (req, res) => sendError(res, {
   status: 404,
   code: 'NOT_FOUND',
-  message: `Route ${req.originalUrl} not found`
+  message: `Route ${String(req.originalUrl || '').split('?')[0]} not found`
 });
 
 module.exports = {

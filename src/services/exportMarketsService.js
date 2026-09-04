@@ -124,7 +124,8 @@ class ExportMarketsService {
                     ps.is_legacy
                 FROM market_product_scope mps
                 JOIN products p ON p.id = mps.product_id
-                INNER JOIN latest_product_assessment_snapshots ps ON ps.product_id = p.id
+                INNER JOIN latest_product_assessment_snapshots ps
+                  ON ps.product_id = p.id AND ps.company_id = p.company_id
                 WHERE mps.market_id = ANY($1)
                 ORDER BY p.name ASC
             `;
@@ -1163,7 +1164,8 @@ class ExportMarketsService {
                            ps.is_legacy
                     FROM market_product_scope mps
                     INNER JOIN products p ON p.id = mps.product_id
-                    INNER JOIN latest_product_assessment_snapshots ps ON ps.product_id = p.id
+                    INNER JOIN latest_product_assessment_snapshots ps
+                      ON ps.product_id = p.id AND ps.company_id = p.company_id
                     WHERE mps.market_id = $1 AND p.company_id = $2
                     ORDER BY p.sku
                 `,

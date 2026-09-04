@@ -115,7 +115,8 @@ async function getOverview(companyId, trendMonths) {
 
   const statsQuery = `
     WITH tracked_products AS (
-      SELECT *
+      SELECT id, materials_co2e, production_co2e, packaging_co2e,
+             transport_co2e, data_confidence_score
       FROM products
       WHERE company_id = $1
         AND status <> 'archived'

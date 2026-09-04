@@ -69,6 +69,9 @@ describe('authenticate', () => {
     it('hydrates req.user/userRoles/companyId and delegates to enforceSubscriptionAccess on success', async () => {
         authService.verifyAccessToken.mockReturnValue({ sub: 'user-1', company_id: 'company-1' });
         authService.getUserById.mockResolvedValue({ id: 'user-1', roles: ['b2b'], company_id: 'company-1' });
+        authService.getCompanyMembership.mockResolvedValue({
+            company_id: 'company-1', role: 'member', status: 'active'
+        });
         const req = createReq({ authorization: 'Bearer good-token' });
         const res = createRes();
         const next = jest.fn();
@@ -78,8 +81,27 @@ describe('authenticate', () => {
         expect(req.userId).toBe('user-1');
         expect(req.userRoles).toEqual(['b2b']);
         expect(req.companyId).toBe('company-1');
+        expect(req.companyRole).toBe('member');
         expect(enforceSubscriptionAccess).toHaveBeenCalledWith(req, res, next);
         expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it('does not trust a stale company id from a signed access token', async () => {
+        authService.verifyAccessToken.mockReturnValue({ sub: 'user-1', company_id: 'company-b' });
+        authService.getUserById.mockResolvedValue({
+            id: 'user-1', roles: ['b2b'], company_id: 'company-a'
+        });
+        authService.getCompanyMembership.mockResolvedValue(null);
+        const req = createReq({ authorization: 'Bearer stale-token' });
+        const res = createRes();
+        const next = jest.fn();
+
+        await authenticate(req, res, next);
+
+        expect(authService.getCompanyMembership).toHaveBeenCalledWith('company-b', 'user-1');
+        expect(req.companyId).toBeNull();
+        expect(req.companyRole).toBeNull();
+        expect(enforceSubscriptionAccess).toHaveBeenCalledWith(req, res, next);
     });
 
     it('returns a 500 when an unexpected error is thrown', async () => {

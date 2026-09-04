@@ -21,12 +21,32 @@ const normalizeToken = (value) => String(value || '')
 
 const normalizeCarbonInput = (input) => ({
   ...input,
+  unitMassKg: canonicalOrConverted(
+    input.unitMassKg,
+    input.unitMass,
+    input.unitMassUnit,
+    'mass'
+  ),
   materials: Array.isArray(input.materials) ? input.materials.map((item) => ({ ...item })) : [],
-  accessories: Array.isArray(input.accessories) ? input.accessories.map((item) => ({ ...item })) : [],
-  packaging: input.packaging ? { ...input.packaging } : null,
+  accessories: Array.isArray(input.accessories) ? input.accessories.map((item) => ({
+    ...item,
+    weightKg: canonicalOrConverted(item.weightKg, item.weight, item.weightUnit, 'mass')
+  })) : [],
+  packaging: input.packaging ? {
+    ...input.packaging,
+    weightKg: canonicalOrConverted(
+      input.packaging.weightKg,
+      input.packaging.weight,
+      input.packaging.weightUnit,
+      'mass'
+    )
+  } : null,
   processFactorIds: Array.isArray(input.processFactorIds) ? [...input.processFactorIds] : [],
   energyMix: Array.isArray(input.energyMix) ? input.energyMix.map((item) => ({ ...item })) : [],
-  transport: Array.isArray(input.transport) ? input.transport.map((item) => ({ ...item })) : []
+  transport: Array.isArray(input.transport) ? input.transport.map((item) => ({
+    ...item,
+    distanceKm: canonicalOrConverted(item.distanceKm, item.distance, item.distanceUnit, 'distance')
+  })) : []
 });
 
 module.exports = {
@@ -39,3 +59,4 @@ module.exports = {
   roundPerProduct,
   sumValues
 };
+const { canonicalOrConverted } = require('./units');

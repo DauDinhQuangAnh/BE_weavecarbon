@@ -221,21 +221,21 @@ async function upsertProducts(client, companyId) {
     await client.query(
       `
         INSERT INTO product_assessment_snapshots (
-          product_id, version, payload,
+          product_id, company_id, version, payload,
           engine_version, methodology_version, factor_registry_version, gwp_basis,
           calculated_at, canonical_input_hash, factor_snapshot, assumptions,
           is_legacy, finalized_at, created_at, updated_at
         )
         SELECT
-          $1, 1, $2::jsonb,
+          $1, $2, 1, $3::jsonb,
           'demo-seed-legacy', 'demo-seed-legacy', 'demo-seed-legacy',
-          'demo-seed-legacy', $4, 'legacy:' || $1::text, '[]'::jsonb, '[]'::jsonb,
-          true, $4, $3, $4
+          'demo-seed-legacy', $5, 'legacy:' || $1::text, '[]'::jsonb, '[]'::jsonb,
+          true, $5, $4, $5
         WHERE NOT EXISTS (
-          SELECT 1 FROM product_assessment_snapshots WHERE product_id = $1
+          SELECT 1 FROM product_assessment_snapshots WHERE product_id = $1 AND company_id = $2
         )
       `,
-      [result.rows[0].id, toJson(buildProductSnapshot(product)), createdAt, updatedAt]
+      [result.rows[0].id, companyId, toJson(buildProductSnapshot(product)), createdAt, updatedAt]
     );
   }
 

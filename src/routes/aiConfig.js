@@ -4,13 +4,13 @@ const asyncHandler = require('../utils/asyncHandler');
 const validate = require('../middleware/validator');
 const {
   authenticate,
-  requireRole,
-  requireCompanyAdmin,
-  requireCompanyMember
+  requirePlatformAdmin
 } = require('../middleware/auth');
-const { sendNoCompany, sendSuccess } = require('../utils/http');
+const { sendSuccess } = require('../utils/http');
 const chatService = require('../services/chatService');
 const { updateGlobalAiRuntimeValidation } = require('../validators/aiConfigValidators');
+const { expensiveOperationLimiter } = require('../middleware/rateLimiter');
+const { uploadPolicy: { assertSafeEvidenceUpload } } = require('../modules/evidence');
 
 const router = express.Router();
 const ragUpload = multer({
@@ -20,15 +20,7 @@ const ragUpload = multer({
   }
 });
 
-const ensureCompanyContext = (req, res, next) => {
-  if (!req.companyId) {
-    return sendNoCompany(res, 'User does not belong to a company', 404);
-  }
-
-  return next();
-};
-
-router.use(authenticate, requireRole('b2b', 'admin'), ensureCompanyContext, requireCompanyMember);
+router.use(authenticate, requirePlatformAdmin);
 
 router.get(
   '/runtime',
@@ -41,7 +33,6 @@ router.get(
 
 router.put(
   '/runtime',
-  requireCompanyAdmin,
   updateGlobalAiRuntimeValidation,
   validate,
   asyncHandler(async (req, res) => {
@@ -88,7 +79,6 @@ router.get(
 
 router.post(
   '/rag/collections',
-  requireCompanyAdmin,
   asyncHandler(async (req, res) => {
     const data = await chatService.callGlobalRagEndpoint('/collections', {
       method: 'POST',
@@ -116,7 +106,6 @@ router.get(
 
 router.patch(
   '/rag/collections/:collection_name',
-  requireCompanyAdmin,
   asyncHandler(async (req, res) => {
     const data = await chatService.callGlobalRagEndpoint(
       `/collections/${encodeURIComponent(req.params.collection_name)}`,
@@ -137,7 +126,6 @@ router.patch(
 
 router.delete(
   '/rag/collections/:collection_name',
-  requireCompanyAdmin,
   asyncHandler(async (req, res) => {
     const data = await chatService.callGlobalRagEndpoint(
       `/collections/${encodeURIComponent(req.params.collection_name)}`,
@@ -177,7 +165,6 @@ router.get(
 
 router.post(
   '/rag/collections/:collection_name/documents/delete',
-  requireCompanyAdmin,
   asyncHandler(async (req, res) => {
     const source = String(req.body?.source || '').trim();
     const data = await chatService.callGlobalRagEndpoint(
@@ -192,7 +179,7 @@ router.post(
 
 router.post(
   '/rag/ingest',
-  requireCompanyAdmin,
+  expensiveOperationLimiter,
   ragUpload.single('file'),
   asyncHandler(async (req, res) => {
     if (!req.file) {
@@ -204,6 +191,9 @@ router.post(
         }
       });
     }
+    const safeUpload = await assertSafeEvidenceUpload(req.file);
+    req.file.originalname = safeUpload.filename;
+    req.file.mimetype = safeUpload.mime;
 
     const formData = new FormData();
     formData.append(
