@@ -14,7 +14,7 @@ Public compatibility is preserved. Existing calculation fixtures still use the c
 
 - The current JSON factor catalog is validated at process startup and frozen in memory.
 - Its registry version is content-addressed as `factors-v1:<sha256>`; a changed factor catalog produces a new registry identity instead of silently changing historical meaning.
-- Migration `014_m1_factor_registry_and_snapshot_tenant.sql` creates immutable `emission_factor_registries` and `emission_factors` tables. Update/delete triggers protect published history.
+- Migration `014_m1_factor_registry_and_snapshot_tenant.sql` creates immutable `emission_factor_registries` and `emission_factor_versions` tables. The separate name preserves the legacy `emission_factors` reference table used by export-market compatibility flows. Update/delete triggers protect published history.
 - Migration execution atomically synchronizes the complete current catalog and aborts on hash or factor-count mismatch.
 - Authenticated B2B/platform-admin consumers can query registry metadata and factor provenance at:
   - `GET /api/carbon-factors/registries`
@@ -116,7 +116,7 @@ Migration 014 backfills snapshot ownership from the product table without deleti
 ## Verification evidence
 
 - Backend `npm run verify:full`: PASS.
-- Backend Jest: 80 suites, 502 tests passed.
+- Backend Jest: 81 suites, 504 tests passed.
 - Syntax: 218 JavaScript files passed.
 - OpenAPI: 133 paths, 169 documented operations, 168 mounted runtime operations matched.
 - Module boundaries: 9 modules, 1 reference implementation, 0 violations.

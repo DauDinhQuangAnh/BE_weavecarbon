@@ -13,7 +13,7 @@ const REQUIRED_TABLES = [
   'product_compliance_documents',
   'product_assessment_snapshots',
   'emission_factor_registries',
-  'emission_factors'
+  'emission_factor_versions'
 ];
 
 const REQUIRED_COLUMNS = [

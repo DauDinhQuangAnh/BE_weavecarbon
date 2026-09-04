@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS public.emission_factor_registries (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS public.emission_factors (
+CREATE TABLE IF NOT EXISTS public.emission_factor_versions (
   factor_version_id TEXT PRIMARY KEY,
   registry_version TEXT NOT NULL
     REFERENCES public.emission_factor_registries(registry_version) ON DELETE RESTRICT,
@@ -60,10 +60,10 @@ CREATE TRIGGER trg_emission_factor_registry_immutable
 BEFORE UPDATE OR DELETE ON public.emission_factor_registries
 FOR EACH ROW EXECUTE FUNCTION public.reject_factor_catalog_mutation();
 
-DROP TRIGGER IF EXISTS trg_emission_factor_immutable
-  ON public.emission_factors;
-CREATE TRIGGER trg_emission_factor_immutable
-BEFORE UPDATE OR DELETE ON public.emission_factors
+DROP TRIGGER IF EXISTS trg_emission_factor_version_immutable
+  ON public.emission_factor_versions;
+CREATE TRIGGER trg_emission_factor_version_immutable
+BEFORE UPDATE OR DELETE ON public.emission_factor_versions
 FOR EACH ROW EXECUTE FUNCTION public.reject_factor_catalog_mutation();
 
 ALTER TABLE public.product_assessment_snapshots

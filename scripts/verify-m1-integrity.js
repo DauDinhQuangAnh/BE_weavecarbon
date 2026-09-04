@@ -17,7 +17,7 @@ async function main() {
             FROM product_assessment_snapshots s
             JOIN products p ON p.id = s.product_id
             WHERE s.company_id <> p.company_id`),
-    scalar(`SELECT COUNT(*) FROM emission_factors WHERE registry_version = $1`, [FACTOR_REGISTRY_VERSION])
+    scalar(`SELECT COUNT(*) FROM emission_factor_versions WHERE registry_version = $1`, [FACTOR_REGISTRY_VERSION])
   ]);
 
   const result = {

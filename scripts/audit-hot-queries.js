@@ -60,7 +60,7 @@ async function main() {
       FROM carbon_calculations
       WHERE company_id = $1 ORDER BY created_at DESC LIMIT 100`, [companyId]),
     explain('product-batches-feed', `
-      SELECT id, batch_number, status, updated_at
+      SELECT id, batch_name, status, updated_at
       FROM product_batches
       WHERE company_id = $1 ORDER BY updated_at DESC LIMIT 20`, [companyId])
   ]);

@@ -87,7 +87,7 @@ function createFactorRegistryRepository({ database = pool } = {}) {
 
     const serialized = serializeCurrentFactors();
     await queryable.query(
-      `INSERT INTO emission_factors (${FACTOR_COLUMNS})
+      `INSERT INTO emission_factor_versions (${FACTOR_COLUMNS})
        SELECT
          x.registry_version, x.factor_id, x.factor_version_id, x.label,
          x.value, x.unit, x.source_name, x.source_url, x.source_year,
@@ -104,7 +104,7 @@ function createFactorRegistryRepository({ database = pool } = {}) {
     );
 
     const count = await queryable.query(
-      'SELECT COUNT(*)::int AS count FROM emission_factors WHERE registry_version = $1',
+      'SELECT COUNT(*)::int AS count FROM emission_factor_versions WHERE registry_version = $1',
       [metadata.version]
     );
     if (Number(count.rows[0]?.count) !== metadata.factorCount) {
@@ -144,7 +144,7 @@ function createFactorRegistryRepository({ database = pool } = {}) {
 
       const result = await database.query(
         `SELECT ${FACTOR_COLUMNS}
-         FROM emission_factors
+         FROM emission_factor_versions
          WHERE ${conditions.join(' AND ')}
          ORDER BY factor_id ASC`,
         params
@@ -155,7 +155,7 @@ function createFactorRegistryRepository({ database = pool } = {}) {
     async getFactor(factorId, registryVersion = FACTOR_REGISTRY_VERSION) {
       const result = await database.query(
         `SELECT ${FACTOR_COLUMNS}
-         FROM emission_factors
+         FROM emission_factor_versions
          WHERE registry_version = $1
            AND (factor_id = $2 OR factor_version_id = $2)
          LIMIT 1`,
