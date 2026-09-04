@@ -26,4 +26,13 @@ describe('M1 migration contract', () => {
     const indexes = [...sql.matchAll(/CREATE INDEX CONCURRENTLY IF NOT EXISTS/g)];
     expect(indexes).toHaveLength(6);
   });
+
+  test('keeps the integration immutability fixture tenant-scoped', () => {
+    const script = fs.readFileSync(
+      path.join(__dirname, '..', '..', 'scripts', 'test-immutable-snapshots.js'),
+      'utf8'
+    );
+    expect(script).toContain('product_id, company_id, version, payload');
+    expect(script).toContain('WHERE product_id = $1 AND company_id = $2');
+  });
 });

@@ -55,17 +55,18 @@ async function main() {
     const currentTimestamp = new Date().toISOString();
     const inserted = await client.query(
       `INSERT INTO product_assessment_snapshots (
-         product_id, version, payload,
+         product_id, company_id, version, payload,
          engine_version, methodology_version, factor_registry_version, gwp_basis,
          calculated_at, canonical_input_hash, factor_snapshot, assumptions,
          is_legacy, finalized_at
        ) VALUES (
-         $1, 2, $2::jsonb,
+         $1, $2, 2, $3::jsonb,
          'engine-v1', 'method-v1', 'factors-v1:test', 'IPCC_AR5_100y',
-         $3, $4, $5::jsonb, $6::jsonb, false, $3
+         $4, $5, $6::jsonb, $7::jsonb, false, $4
        ) RETURNING id, version`,
       [
         PRODUCT_ID,
+        COMPANY_ID,
         JSON.stringify({ calculationMetadata: { schemaVersion: 'carbon-calculation-snapshot-v1' } }),
         currentTimestamp,
         'a'.repeat(64),
@@ -76,8 +77,9 @@ async function main() {
     assert(inserted.rows[0].version === 2, 'Recalculation did not create version 2');
 
     const latest = await client.query(
-      'SELECT id, version FROM latest_product_assessment_snapshots WHERE product_id = $1',
-      [PRODUCT_ID]
+      `SELECT id, version FROM latest_product_assessment_snapshots
+       WHERE product_id = $1 AND company_id = $2`,
+      [PRODUCT_ID, COMPANY_ID]
     );
     assert(latest.rows[0]?.id === inserted.rows[0].id, 'Latest snapshot view did not select version 2');
 

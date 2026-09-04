@@ -38,6 +38,8 @@ describe('config/jwt fail-fast validation', () => {
     it('loads successfully when both secrets are present', () => {
         process.env.JWT_SECRET = 'secret';
         process.env.JWT_REFRESH_SECRET = 'refresh-secret';
+        delete process.env.JWT_EXPIRES_IN;
+        delete process.env.JWT_REFRESH_EXPIRES_IN;
 
         const jwtConfig = require('../../src/config/jwt');
 
