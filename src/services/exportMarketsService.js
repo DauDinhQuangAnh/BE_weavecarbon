@@ -61,8 +61,16 @@ const DOCUMENT_UPLOAD_DONE_STATUSES = new Set(['uploaded', 'approved']);
 
 class ExportMarketsService {
     constructor() {
-        this.marketListCache = new TtlCache({ ttlMs: READ_CACHE_TTL_MS });
-        this.emissionFactorsCache = new TtlCache({ ttlMs: EMISSION_FACTORS_CACHE_TTL_MS });
+        this.marketListCache = new TtlCache({
+            ttlMs: READ_CACHE_TTL_MS,
+            owner: 'export-markets',
+            version: 'v1'
+        });
+        this.emissionFactorsCache = new TtlCache({
+            ttlMs: EMISSION_FACTORS_CACHE_TTL_MS,
+            owner: 'emission-factors',
+            version: 'v1'
+        });
     }
 
     invalidateListCache(companyId) {
@@ -1239,7 +1247,7 @@ class ExportMarketsService {
 
             const report = insertResult.rows[0];
 
-            reportJobQueue.enqueue({
+            await reportJobQueue.enqueue({
                 type: 'market_compliance_report',
                 reportId: report.id,
                 companyId

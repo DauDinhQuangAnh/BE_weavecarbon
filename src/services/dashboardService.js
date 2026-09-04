@@ -4,7 +4,11 @@ const { READ_CACHE_TTL_MS } = require('../config/runtime');
 const TtlCache = require('../utils/ttlCache');
 
 const MARKET_READINESS_PREVIEW_LIMIT = 3;
-const overviewCache = new TtlCache({ ttlMs: READ_CACHE_TTL_MS });
+const overviewCache = new TtlCache({
+  ttlMs: READ_CACHE_TTL_MS,
+  owner: 'dashboard-overview',
+  version: 'v1'
+});
 
 const toNumber = (value) => {
   const parsed = Number.parseFloat(value);

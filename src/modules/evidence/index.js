@@ -1,4 +1,7 @@
 module.exports = {
+  get processor() {
+    return require('./processor');
+  },
   get evidenceRepository() {
     return require('./repository').evidenceRepository;
   },

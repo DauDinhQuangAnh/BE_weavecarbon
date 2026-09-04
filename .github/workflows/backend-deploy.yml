@@ -76,6 +76,7 @@ jobs:
           password: ${{ github.token }}
 
       - name: Build and push backend image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -85,7 +86,40 @@ jobs:
           tags: ${{ steps.release.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: false
+          provenance: mode=max
+          sbom: true
+
+      - name: Scan immutable backend image
+        uses: aquasecurity/trivy-action@0.31.0
+        with:
+          image-ref: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Enforce backend image policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          image='${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}'
+          docker pull "$image"
+          bytes="$(docker image inspect "$image" --format '{{.Size}}')"
+          user="$(docker image inspect "$image" --format '{{.Config.User}}')"
+          test -n "$user" && test "$user" != '0' && test "$user" != 'root'
+          test "$bytes" -le 367001600
+          echo "Backend image bytes: $bytes; runtime user: $user" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record release evidence
+        shell: bash
+        run: |
+          {
+            echo '### Backend immutable release'
+            echo
+            echo '- Source: `${{ steps.release.outputs.sha }}`'
+            echo '- Image: `${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}`'
+            echo '- SBOM and provenance: attached OCI attestations'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check deploy secrets
         id: deploy_secrets
@@ -137,7 +171,7 @@ jobs:
         run: |
           set -euo pipefail
           DEPLOY_PORT="${DEPLOY_PORT:-22}"
-          REMOTE_BE_IMAGE="${{ steps.image.outputs.name }}:${{ steps.release.outputs.tag }}"
+          REMOTE_BE_IMAGE="${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
           GHCR_TOKEN_B64="$(printf '%s' "${GHCR_TOKEN:-}" | base64 -w0)"
 
           ssh \
@@ -171,11 +205,21 @@ jobs:
           done
 
           cd /opt/weavecarbon/FE
+          PREVIOUS_BE_IMAGE="$(grep '^BE_IMAGE=' .env.vps | cut -d= -f2- || true)"
           if grep -q '^BE_IMAGE=' .env.vps; then
             sed -i "s|^BE_IMAGE=.*|BE_IMAGE=${BE_IMAGE}|" .env.vps
           else
             printf 'BE_IMAGE=%s\n' "$BE_IMAGE" >> .env.vps
           fi
           export BE_IMAGE
-          bash deploy/redeploy-vps.sh --backend-only
+          if ! bash deploy/redeploy-vps.sh --backend-only; then
+            echo "[deploy] Backend smoke failed; restoring previous immutable image."
+            if [ -n "$PREVIOUS_BE_IMAGE" ]; then
+              sed -i "s|^BE_IMAGE=.*|BE_IMAGE=${PREVIOUS_BE_IMAGE}|" .env.vps
+              export BE_IMAGE="$PREVIOUS_BE_IMAGE"
+              bash deploy/redeploy-vps.sh --backend-only
+            fi
+            exit 1
+          fi
+          printf '%s backend %s %s\n' "$(date -u +%FT%TZ)" '${{ steps.release.outputs.sha }}' "$BE_IMAGE" >> .deploy-history
           EOF

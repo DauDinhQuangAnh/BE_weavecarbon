@@ -6,6 +6,7 @@ const { asyncHandler, sendError, sendNoCompany, sendSuccess } = require('../shar
 const evidenceService = require('./service');
 const chatService = require('../shared/rag');
 const logger = require('../shared/logger');
+const reportJobQueue = require('../shared/jobQueue');
 const { expensiveOperationLimiter } = require('../shared/rateLimiter');
 const { assertSafeEvidenceUpload } = require('./uploadPolicy');
 const {
@@ -32,115 +33,6 @@ function requireCompany(req, res) {
 function getEvidenceRagCollectionName(companyId) {
   const prefix = String(process.env.RAG_EVIDENCE_COLLECTION_PREFIX || 'evidence').trim() || 'evidence';
   return `${prefix}_${String(companyId).replace(/[^a-zA-Z0-9_]/g, '_')}`;
-}
-
-// Turn an extraction error into a short, user-facing Vietnamese reason for the FE.
-function humanizeExtractError(e) {
-  const code = e?.code;
-  const status = e?.response?.status || e?.statusCode;
-  const detail = String(e?.response?.data?.detail || e?.message || '');
-
-  if (code === 'RAG_BACKEND_UNAVAILABLE' || code === 'ECONNREFUSED') {
-    return 'Không kết nối được dịch vụ AI đọc chứng từ. Vui lòng thử lại sau ít phút.';
-  }
-  if (code === 'RAG_BACKEND_TIMEOUT') {
-    return 'Dịch vụ AI phản hồi quá lâu (timeout). Thử lại hoặc dùng file nhỏ hơn.';
-  }
-  if (status === 401 || status === 403) {
-    return 'Dịch vụ AI từ chối xác thực. Vui lòng báo quản trị viên kiểm tra cấu hình.';
-  }
-  if (detail.includes('GEMINI_API_KEY')) {
-    return 'Dịch vụ AI chưa được cấu hình (thiếu khóa API). Vui lòng báo quản trị viên.';
-  }
-  return `AI đọc chứng từ thất bại: ${detail.slice(0, 200) || 'lỗi không xác định'}`;
-}
-
-// Fire-and-forget: AI extraction + RAG ingest — both run in background, never block upload response
-function processFileAsync(docId, file, kind, companyId) {
-  if (!docId || !file?.buffer?.length) return;
-  (async () => {
-    const blob = new Blob([file.buffer], { type: file.mimetype || 'application/octet-stream' });
-    const filename = file.originalname || 'document';
-
-    // 1. AI field extraction → extracted_json
-    try {
-      const extractForm = new FormData();
-      extractForm.append('file', blob, filename);
-      extractForm.append('kind', kind);
-      extractForm.append('language', 'vi');
-
-      logger.info(
-        { docId, filename, kind, mimetype: file.mimetype, bytes: file.buffer.length },
-        '[evidence] AI extract → calling RAG /extract'
-      );
-
-      const result = await chatService.callGlobalRagEndpoint('/extract', {
-        method: 'POST',
-        data: extractForm,
-      });
-
-      const fields = result?.fields ?? result ?? {};
-      const fieldCount =
-        fields && typeof fields === 'object' ? Object.keys(fields).length : 0;
-
-      if (fieldCount > 0) {
-        await evidenceService.updateExtractedJson(companyId, docId, fields, 'ocr_parsed');
-        logger.info(
-          { docId, fieldCount, keys: Object.keys(fields).slice(0, 20) },
-          '[evidence] AI extract OK'
-        );
-      } else {
-        // RAG replied but extracted nothing — this is what shows "chưa trích xuất
-        // được trường nào" in the UI. Persist a reason so the FE can explain it.
-        logger.warn(
-          { docId, filename, kind, resultKeys: result && typeof result === 'object' ? Object.keys(result) : typeof result },
-          '[evidence] AI extract returned 0 fields (document parsed but no data extracted)'
-        );
-        await evidenceService.markExtractionFailed(
-          companyId,
-          docId,
-          'AI đã đọc nhưng không trích xuất được trường dữ liệu nào. '
-            + 'Hãy kiểm tra chất lượng ảnh/PDF, hoặc tải file gốc (PDF/XLSX) rõ ràng hơn.'
-        );
-      }
-    } catch (e) {
-      // Surface the actionable bits: HTTP status + app error code + upstream RAG detail.
-      logger.warn(
-        {
-          docId,
-          filename,
-          kind,
-          err: e,
-          code: e?.code,
-          statusCode: e?.statusCode,
-          ragStatus: e?.response?.status,
-          ragDetail: e?.response?.data?.detail || e?.message,
-        },
-        `[evidence] AI field extraction FAILED for ${docId}`
-      );
-      // Persist the reason so it shows up on the FE instead of a silent empty state.
-      try {
-        await evidenceService.markExtractionFailed(companyId, docId, humanizeExtractError(e));
-      } catch (persistErr) {
-        logger.warn({ err: persistErr, docId }, '[evidence] failed to persist extraction error');
-      }
-    }
-
-    // 2. RAG ingest → knowledge base (non-fatal)
-    try {
-      const ingestForm = new FormData();
-      ingestForm.append('file', blob, filename);
-      ingestForm.append('collection_name', getEvidenceRagCollectionName(companyId));
-      ingestForm.append('chunking_profile', 'hybrid');
-
-      await chatService.callGlobalRagEndpoint('/ingest', {
-        method: 'POST',
-        data: ingestForm,
-      });
-    } catch (e) {
-      logger.warn({ err: e }, `[evidence] RAG ingest failed for ${docId}`);
-    }
-  })();
 }
 
 // POST /api/evidence/:id/verify — mark evidence as verified (alias for lock)
@@ -222,7 +114,11 @@ router.post('/upload', expensiveOperationLimiter, upload.single('file'), asyncHa
     return sendError(res, { status: 400, code: 'DOCUMENT_NAME_REQUIRED', message: 'File name is required.' });
   }
   // Kick off AI extraction + RAG ingest in background — response returns immediately
-  processFileAsync(result.data?.id, file, kind, companyId);
+  await reportJobQueue.enqueue({
+    type: 'evidence_process',
+    evidenceId: result.data?.id,
+    companyId
+  });
 
   return sendSuccess(res, { status: 201, data: result.data });
 }));

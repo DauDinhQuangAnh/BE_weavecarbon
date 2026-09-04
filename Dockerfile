@@ -18,9 +18,11 @@ COPY src ./src
 COPY migrations ./migrations
 COPY templates ./templates
 COPY scripts/migrate.js ./scripts/migrate.js
-RUN mkdir -p uploads
+RUN mkdir -p uploads && chown -R node:node /app
+
+USER node
 
 EXPOSE 4000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 CMD wget -qO- "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1 || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 CMD wget -qO- "http://127.0.0.1:${PORT}/ready" >/dev/null 2>&1 || exit 1
 
 CMD ["sh", "-c", "node scripts/migrate.js && node src/server.js"]

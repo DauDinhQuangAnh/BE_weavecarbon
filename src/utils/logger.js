@@ -1,9 +1,8 @@
 const pino = require('pino');
 
-const isProduction = process.env.NODE_ENV === 'production';
-
-const logger = pino({
-    level: process.env.LOG_LEVEL || (isProduction ? 'info' : 'debug'),
+function createLogger({ destination, production = process.env.NODE_ENV === 'production' } = {}) {
+  return pino({
+    level: process.env.LOG_LEVEL || (production ? 'info' : 'debug'),
     redact: {
         paths: [
             'req.headers.authorization',
@@ -21,12 +20,16 @@ const logger = pino({
         ],
         censor: '[REDACTED]'
     },
-    transport: isProduction
+    transport: production || destination
         ? undefined
         : {
               target: 'pino-pretty',
               options: { colorize: true, translateTime: 'SYS:standard', ignore: 'pid,hostname' }
           }
-});
+  }, destination);
+}
+
+const logger = createLogger();
 
 module.exports = logger;
+module.exports.createLogger = createLogger;

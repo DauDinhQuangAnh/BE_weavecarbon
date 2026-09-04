@@ -12,6 +12,7 @@ jest.mock('../../../src/services/analyticsService', () => ({
 }));
 
 const chatService = require('../../../src/services/chatService');
+const { requestContext } = require('../../../src/middleware/requestContext');
 
 const ENV_KEYS = [
   'RAG_INTERNAL_API_KEY',
@@ -91,4 +92,21 @@ test('uses the private service URL, bounded timeout and internal header', async 
       headers: { 'X-Internal-API-Key': 'server-secret' }
     })
   );
+});
+
+test('propagates the inbound correlation ID to RAG', (done) => {
+  process.env.RAG_INTERNAL_API_KEY = 'server-secret';
+  process.env.RAG_REQUIRE_INTERNAL_API_KEY = 'true';
+  const req = { get: () => 'trace-rag-123' };
+  const res = { setHeader: jest.fn() };
+
+  requestContext(req, res, () => {
+    setImmediate(() => {
+      expect(chatService.buildRagRequestHeaders()).toEqual({
+        'X-Internal-API-Key': 'server-secret',
+        'X-Correlation-ID': 'trace-rag-123'
+      });
+      done();
+    });
+  });
 });

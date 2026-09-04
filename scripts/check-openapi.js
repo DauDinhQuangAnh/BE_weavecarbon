@@ -31,8 +31,8 @@ function assertRouteParity() {
   }
 
   assert(
-    countOperations(swaggerSpec) === runtimeOperations.length + 1,
-    `Expected ${runtimeOperations.length + 1} documented operations (runtime + health), found ${countOperations(swaggerSpec)}`
+    countOperations(swaggerSpec) === runtimeOperations.length + 3,
+    `Expected ${runtimeOperations.length + 3} documented operations (runtime + operational endpoints), found ${countOperations(swaggerSpec)}`
   );
 
   return runtimeOperations.length;

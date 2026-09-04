@@ -363,7 +363,7 @@ class ReportsService {
                 }
             }, 'wc_report_requested');
 
-            this.jobQueue.enqueue({
+            await this.jobQueue.enqueue({
                 type: 'manual_report',
                 reportId: report.id,
                 companyId
@@ -587,7 +587,7 @@ class ReportsService {
                 }
             }, 'wc_report_requested');
 
-            this.jobQueue.enqueue({
+            await this.jobQueue.enqueue({
                 type: 'dataset_export',
                 reportId: report.id,
                 companyId,

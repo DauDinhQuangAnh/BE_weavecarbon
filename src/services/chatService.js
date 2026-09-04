@@ -3,6 +3,7 @@ const pool = require('../config/database');
 const analyticsService = require('./analyticsService');
 const { createAppError } = require('../utils/appError');
 const logger = require('../utils/logger');
+const { getCorrelationId } = require('../middleware/requestContext');
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 20;
@@ -142,6 +143,7 @@ class ChatService {
   buildRagRequestHeaders(headers = {}) {
     const nextHeaders = { ...headers };
     const internalApiKey = this.getRagInternalApiKey();
+    const correlationId = getCorrelationId();
 
     if (internalApiKey) {
       for (const headerName of Object.keys(nextHeaders)) {
@@ -150,6 +152,9 @@ class ChatService {
         }
       }
       nextHeaders[RAG_INTERNAL_API_KEY_HEADER] = internalApiKey;
+    }
+    if (correlationId) {
+      nextHeaders['X-Correlation-ID'] = correlationId;
     }
 
     return nextHeaders;

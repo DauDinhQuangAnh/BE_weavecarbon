@@ -748,7 +748,7 @@ function buildOpenApiContract(documentedSpec, apiRoutes) {
       security: [],
       responses: {
         200: {
-          description: 'Application and database are healthy',
+          description: 'Application process is alive',
           content: {
             'application/json': {
               schema: { $ref: '#/components/schemas/GenericSuccessResponse' },
@@ -757,26 +757,38 @@ function buildOpenApiContract(documentedSpec, apiRoutes) {
                 data: {
                   status: 'healthy',
                   timestamp: '2026-08-28T00:00:00.000Z',
-                  uptime: 120,
-                  db: 'ok'
+                  uptime: 120
                 }
-              }
-            }
-          }
-        },
-        503: {
-          description: 'Database is unavailable',
-          content: {
-            'application/json': {
-              schema: { $ref: '#/components/schemas/ErrorResponse' },
-              example: {
-                success: false,
-                error: { code: 'DB_UNAVAILABLE', message: 'Database not reachable' }
               }
             }
           }
         }
       }
+    }
+  };
+
+  spec.paths['/ready'] = {
+    get: {
+      tags: ['Health'], summary: 'Database and worker readiness', operationId: 'getReadiness',
+      servers: [{ url: '/' }], security: [],
+      responses: {
+        200: { description: 'Dependencies are ready', content: { 'application/json': {
+          schema: { $ref: '#/components/schemas/GenericSuccessResponse' }
+        } } },
+        503: { description: 'A dependency is unavailable', content: { 'application/json': {
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+        } } }
+      }
+    }
+  };
+
+  spec.paths['/metrics'] = {
+    get: {
+      tags: ['Health'], summary: 'Prometheus metrics', operationId: 'getMetrics',
+      servers: [{ url: '/' }], security: [],
+      responses: { 200: { description: 'Prometheus text exposition', content: {
+        'text/plain': { schema: { type: 'string' } }
+      } } }
     }
   };
 

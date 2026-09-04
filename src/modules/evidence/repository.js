@@ -175,7 +175,8 @@ function createEvidenceRepository({ database = pool } = {}) {
 
     async getStoredFile({ evidenceId, companyId }, queryable = database) {
       const { rows } = await queryable.query(
-        `SELECT storage_provider, storage_key
+        `SELECT storage_provider, storage_key, original_filename, document_name,
+                mime_type, evidence_type
          FROM evidence_documents
          WHERE id = $1 AND company_id = $2`,
         [evidenceId, companyId]

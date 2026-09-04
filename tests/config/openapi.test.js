@@ -18,8 +18,10 @@ describe('OpenAPI runtime contract', () => {
       expect(swaggerSpec.paths[operation.path][operation.method]).toBeDefined();
     }
 
-    expect(countOperations(swaggerSpec)).toBe(runtimeOperations.length + 1);
+    expect(countOperations(swaggerSpec)).toBe(runtimeOperations.length + 3);
     expect(swaggerSpec.paths['/health'].get).toBeDefined();
+    expect(swaggerSpec.paths['/ready'].get).toBeDefined();
+    expect(swaggerSpec.paths['/metrics'].get).toBeDefined();
   });
 
   test('keeps representative product and member contracts generation-ready', () => {

@@ -6977,7 +6977,6 @@
               "application/json": {
                 "example": {
                   "data": {
-                    "db": "ok",
                     "status": "healthy",
                     "timestamp": "2026-08-28T00:00:00.000Z",
                     "uptime": 120
@@ -6989,24 +6988,7 @@
                 }
               }
             },
-            "description": "Application and database are healthy"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "example": {
-                  "error": {
-                    "code": "DB_UNAVAILABLE",
-                    "message": "Database not reachable"
-                  },
-                  "success": false
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Database is unavailable"
+            "description": "Application process is alive"
           }
         },
         "security": [],
@@ -7493,6 +7475,83 @@
         "summary": "PATCH /logistics/shipments/{id}/status",
         "tags": [
           "Logistics"
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "getMetrics",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Prometheus text exposition"
+          }
+        },
+        "security": [],
+        "servers": [
+          {
+            "url": "/"
+          }
+        ],
+        "summary": "Prometheus metrics",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/operations/jobs/{id}": {
+      "get": {
+        "operationId": "getOperationsJobsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /operations/jobs/{id}",
+        "tags": [
+          "Operations"
         ]
       }
     },
@@ -8906,6 +8965,43 @@
         "summary": "PATCH /products/{id}/status",
         "tags": [
           "Products"
+        ]
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericSuccessResponse"
+                }
+              }
+            },
+            "description": "Dependencies are ready"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A dependency is unavailable"
+          }
+        },
+        "security": [],
+        "servers": [
+          {
+            "url": "/"
+          }
+        ],
+        "summary": "Database and worker readiness",
+        "tags": [
+          "Health"
         ]
       }
     },
@@ -10402,6 +10498,9 @@
     },
     {
       "name": "Carbon factors"
+    },
+    {
+      "name": "Operations"
     },
     {
       "name": "Health"

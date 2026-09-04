@@ -1,8 +1,11 @@
+const crypto = require('crypto');
 const express = require('express');
 const { authenticate, requireRole } = require('../shared/security');
 const validate = require('../shared/validation');
 const productsService = require('./service');
 const { logAuditTrail } = require('../shared/auditing');
+const jobQueue = require('../shared/jobQueue');
+const { ASYNC_IMPORT_THRESHOLD } = require('../shared/runtime');
 const {
   asyncHandler,
   parsePositiveInt,
@@ -356,12 +359,33 @@ router.post('/bulk-import', bulkImportValidation, validate, asyncHandler(async (
     return;
   }
 
-  const result = await productsService.bulkImport(
-    companyId,
-    req.userId,
-    req.body.rows,
-    req.body.save_mode || 'draft'
-  );
+  const rows = req.body.rows;
+  const saveMode = req.body.save_mode || 'draft';
+  let result;
+  let responseStatus = 200;
+
+  if (rows.length >= ASYNC_IMPORT_THRESHOLD) {
+    const payloadHash = crypto.createHash('sha256')
+      .update(JSON.stringify({ rows, saveMode }))
+      .digest('hex');
+    const receipt = await jobQueue.enqueueWithReceipt({
+      type: 'products_bulk_import',
+      companyId,
+      userId: req.userId,
+      rows,
+      saveMode,
+      idempotencyKey: `products-import:${companyId}:${payloadHash}`
+    });
+    result = {
+      job_id: receipt.id,
+      status: receipt.status,
+      accepted: receipt.accepted,
+      total_rows: rows.length
+    };
+    responseStatus = 202;
+  } else {
+    result = await productsService.bulkImport(companyId, req.userId, rows, saveMode);
+  }
   await logAuditTrail({
     companyId,
     userId: req.userId,
@@ -369,10 +393,11 @@ router.post('/bulk-import', bulkImportValidation, validate, asyncHandler(async (
     changedField: 'product.created',
     newValue: Array.isArray(req.body.rows) ? `${req.body.rows.length} rows` : 'bulk import',
     reason: 'product.bulk_import',
-    notes: `Bulk imported products with save mode ${req.body.save_mode || 'draft'}`
+    notes: `Bulk import requested with save mode ${saveMode}`
   });
 
   return sendSuccess(res, {
+    status: responseStatus,
     data: result
   });
 }));
