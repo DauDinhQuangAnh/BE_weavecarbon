@@ -90,7 +90,7 @@ jobs:
           sbom: true
 
       - name: Scan immutable backend image
-        uses: aquasecurity/trivy-action@0.31.0
+        uses: aquasecurity/trivy-action@v0.31.0
         with:
           image-ref: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
           format: table
