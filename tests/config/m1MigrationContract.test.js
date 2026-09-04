@@ -35,4 +35,13 @@ describe('M1 migration contract', () => {
     expect(script).toContain('product_id, company_id, version, payload');
     expect(script).toContain('WHERE product_id = $1 AND company_id = $2');
   });
+
+  test('excludes session-local tables from backup/restore count comparisons', () => {
+    const script = fs.readFileSync(
+      path.join(__dirname, '..', '..', 'scripts', 'backup-restore-drill.sh'),
+      'utf8'
+    );
+    expect(script).toContain("schemaname NOT LIKE 'pg_temp_%'");
+    expect(script).toContain("schemaname NOT LIKE 'pg_toast_temp_%'");
+  });
 });
