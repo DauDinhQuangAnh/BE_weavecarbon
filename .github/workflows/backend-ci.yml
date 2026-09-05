@@ -283,6 +283,13 @@ jobs:
             echo '```'
             echo '</details>'
           } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$test_status" != '0' ]]; then
+            failure_summary="$(grep '^FAILURE_SUMMARY_JSON=' api-integration.log | tail -n 1 || true)"
+            failure_summary="${failure_summary//'%'/'%25'}"
+            failure_summary="${failure_summary//$'\r'/'%0D'}"
+            failure_summary="${failure_summary//$'\n'/'%0A'}"
+            echo "::error title=API integration failure details::${failure_summary:-No structured failure summary was produced.}"
+          fi
           exit "$test_status"
 
       - name: Show server log on failure

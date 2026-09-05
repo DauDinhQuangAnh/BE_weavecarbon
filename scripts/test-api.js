@@ -565,6 +565,9 @@ async function main() {
     results.filter(r => r.icon === FAIL).forEach(r => {
       console.log(`    ✘ ${r.name}  (${r.note})`);
     });
+    console.log(`FAILURE_SUMMARY_JSON=${JSON.stringify(
+      results.filter(r => r.icon === FAIL).map(({ name, status, note }) => ({ name, status, note }))
+    )}`);
   }
 
   console.log('');
