@@ -18,7 +18,12 @@ COPY src ./src
 COPY migrations ./migrations
 COPY templates ./templates
 COPY scripts/migrate.js ./scripts/migrate.js
-RUN mkdir -p uploads && chown -R node:node /app
+# npm is required only in the dependency stage. Keeping it in the production
+# image adds an unused package manager and its transitive vulnerability surface.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx \
+    && mkdir -p uploads \
+    && chown -R node:node /app
 
 USER node
 
