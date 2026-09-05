@@ -241,3 +241,18 @@ jobs:
           fi
           printf '%s backend %s %s\n' "$(date -u +%FT%TZ)" '${{ steps.release.outputs.sha }}' "$BE_IMAGE" >> .deploy-history
           EOF
+
+      - name: Verify public backend health
+        shell: bash
+        env:
+          PUBLIC_BASE_URL: ${{ vars.APP_PUBLIC_URL || 'https://weavecarbon.com' }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error --max-time 15 "${PUBLIC_BASE_URL%/}/health"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error title=Public backend health failed::${PUBLIC_BASE_URL%/}/health did not return success after deploy."
+          exit 1
