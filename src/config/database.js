@@ -1,6 +1,7 @@
 const { Pool } = require('pg');
 const { SLOW_REQUEST_MS } = require('./runtime');
 const logger = require('../utils/logger');
+const metrics = require('../operations/metrics');
 const { buildDatabasePoolConfig } = require('./databaseOptions');
 require('dotenv').config();
 
@@ -15,9 +16,15 @@ const summarizeSql = (text) => String(text || '')
   .slice(0, 200);
 
 function logSlowQuery(source, text, durationMs) {
+  const operation = summarizeSql(text).split(' ', 1)[0]?.toUpperCase() || 'UNKNOWN';
+  const labels = { source, operation };
+  metrics.increment('weavecarbon_db_queries_total', labels);
+  metrics.increment('weavecarbon_db_query_duration_ms_sum', labels, durationMs);
   if (durationMs < SLOW_REQUEST_MS) {
     return;
   }
+
+  metrics.increment('weavecarbon_db_slow_queries_total', labels);
 
   logger.warn(
     `[db:${source}] Slow query ${durationMs.toFixed(1)}ms :: ${summarizeSql(text)}`

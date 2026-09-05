@@ -149,6 +149,9 @@ app.get('/ready', async (req, res) => {
 });
 
 app.get('/metrics', (req, res) => {
+  metrics.setGauge('weavecarbon_db_pool_connections', { state: 'total' }, pool.totalCount);
+  metrics.setGauge('weavecarbon_db_pool_connections', { state: 'idle' }, pool.idleCount);
+  metrics.setGauge('weavecarbon_db_pool_connections', { state: 'waiting' }, pool.waitingCount);
   res.type('text/plain; version=0.0.4').send(metrics.render());
 });
 
