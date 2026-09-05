@@ -241,8 +241,23 @@ async function runEvidence() {
     const r = await req('GET', '/api/evidence');
     assert([200, 403].includes(r.status), `Got ${r.status}`, r.status);
     const items = r.data?.data?.items || [];
-    docId = items.length > 0 ? items[0].id : null;
     return { status: r.status, note: `docs=${items.length}` };
+  });
+
+  await test('POST /api/evidence (isolated integration fixture)', async () => {
+    if (!companyId) return 'skip';
+    const r = await req('POST', '/api/evidence', {
+      evidence_type: 'document',
+      document_name: `api-integration-${Date.now()}.txt`,
+      storage_provider: 'local',
+      extracted_json: { integration_fixture: true },
+    });
+    assert([201, 403].includes(r.status), `Got ${r.status}`, r.status);
+    if (r.status === 201) {
+      docId = r.data?.data?.id || null;
+      assert(docId, 'Created evidence did not return an id', 'NO_ID');
+    }
+    return { status: r.status };
   });
 
   await test('POST /api/evidence/upload (multipart)', async () => {
@@ -259,7 +274,6 @@ async function runEvidence() {
     });
     const data = await r.json().catch(() => ({}));
     assert([200, 201, 400].includes(r.status), `Got ${r.status}: ${JSON.stringify(data)}`, r.status);
-    if ((r.status === 200 || r.status === 201) && data?.data?.id) docId = data.data.id;
     return { status: r.status };
   });
 
@@ -280,6 +294,14 @@ async function runEvidence() {
   await test('GET /api/evidence/product/:product_id (no product)', async () => {
     const r = await req('GET', '/api/evidence/product/00000000-0000-0000-0000-000000000000');
     assert([200, 403, 404].includes(r.status), `Got ${r.status}`, r.status);
+    return { status: r.status };
+  });
+
+  await test('DELETE /api/evidence/:id (integration fixture cleanup)', async () => {
+    if (!docId) return 'skip';
+    const r = await req('DELETE', `/api/evidence/${docId}`);
+    assert([200, 403, 404].includes(r.status), `Got ${r.status}`, r.status);
+    if (r.status === 200 || r.status === 404) docId = null;
     return { status: r.status };
   });
 }
