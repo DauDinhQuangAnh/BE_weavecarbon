@@ -267,7 +267,23 @@ jobs:
           exit 1
 
       - name: Run API integration tests
-        run: node scripts/test-api.js http://localhost:4100
+        shell: bash
+        run: |
+          set +e
+          node scripts/test-api.js http://localhost:4100 2>&1 | tee api-integration.log
+          test_status="${PIPESTATUS[0]}"
+          set -e
+          {
+            echo '### API integration test output'
+            echo
+            echo '<details><summary>Full result</summary>'
+            echo
+            echo '```text'
+            cat api-integration.log
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$test_status"
 
       - name: Show server log on failure
         if: failure()

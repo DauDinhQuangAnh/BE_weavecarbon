@@ -85,6 +85,16 @@ async function runHealthCheck() {
     const r = await req('GET', '/health');
     assert(r.status === 200, `Expected 200, got ${r.status}`, r.status);
   });
+
+  await test('GET /metrics exposes database pool telemetry', async () => {
+    const r = await req('GET', '/metrics');
+    assert(r.status === 200, `Expected 200, got ${r.status}`, r.status);
+    assert(
+      typeof r.data === 'string' && r.data.includes('weavecarbon_db_pool_connections{state="total"}'),
+      'Database pool telemetry is missing from /metrics',
+      'METRICS'
+    );
+  });
 }
 
 async function runAuth() {
