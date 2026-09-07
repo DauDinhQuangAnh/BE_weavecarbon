@@ -44,6 +44,7 @@ function createEvidenceRepository({ database = pool } = {}) {
         database.query(
           `SELECT id, company_id, product_id, shipment_id, evidence_type, document_name,
                   lookup_code, source_vendor, reporting_period_start, reporting_period_end,
+                  valid_from, valid_to, approved_by, approval_note,
                   storage_provider, storage_bucket, storage_key, original_filename, mime_type,
                   file_size_bytes, checksum_sha256, extracted_json, status, warnings,
                   extraction_error, locked_at, uploaded_at, created_at, updated_at
@@ -69,6 +70,8 @@ function createEvidenceRepository({ database = pool } = {}) {
            source_vendor,
            reporting_period_start,
            reporting_period_end,
+           valid_from,
+           valid_to,
            storage_provider,
            storage_bucket,
            storage_key,
@@ -79,7 +82,7 @@ function createEvidenceRepository({ database = pool } = {}) {
            extracted_json,
            status,
            uploaded_by
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'uploaded',$18)
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'uploaded',$20)
          RETURNING *`,
         [
           values.companyId,
@@ -91,6 +94,8 @@ function createEvidenceRepository({ database = pool } = {}) {
           values.sourceVendor,
           values.reportingPeriodStart,
           values.reportingPeriodEnd,
+          values.validFrom ?? null,
+          values.validTo ?? null,
           values.storageProvider,
           values.storageBucket,
           values.storageKey,
@@ -136,6 +141,7 @@ function createEvidenceRepository({ database = pool } = {}) {
          SET status = 'locked',
              locked_at = now(),
              locked_by = $3,
+             approved_by = $3,
              updated_at = now()
          WHERE id = $1 AND company_id = $2
          RETURNING *`,

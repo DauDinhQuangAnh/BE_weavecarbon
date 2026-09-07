@@ -8,6 +8,7 @@ function repositoryStub(overrides = {}) {
   return {
     enqueue: jest.fn().mockResolvedValue({ accepted: true, id: 'job-id', status: 'pending' }),
     recoverStale: jest.fn().mockResolvedValue(0),
+    pruneFinished: jest.fn().mockResolvedValue(0),
     backfillReports: jest.fn().mockResolvedValue(0),
     backfillEvidence: jest.fn().mockResolvedValue(0),
     claimNext: jest.fn().mockResolvedValue(null),
@@ -59,6 +60,7 @@ describe('durable operational queue', () => {
     await queue.initialize();
     await new Promise((resolve) => setImmediate(resolve));
     expect(repository.recoverStale).toHaveBeenCalledTimes(1);
+    expect(repository.pruneFinished).toHaveBeenCalledWith(30);
     expect(repository.backfillReports).toHaveBeenCalledTimes(1);
     expect(repository.backfillEvidence).toHaveBeenCalledTimes(1);
     expect(queue.isReady()).toBe(true);
@@ -111,5 +113,30 @@ describe('durable operational queue', () => {
     expect(generate).toHaveBeenCalledWith('report-1', 'company-1');
     expect(repository.complete).toHaveBeenCalledWith('job-1', undefined);
     await queue.stop();
+  });
+
+  test('marks a shipment export document failed when retries are exhausted', async () => {
+    const failure = new Error('xlsx renderer failed');
+    const markDocumentFailed = jest.fn().mockResolvedValue(undefined);
+    const repository = repositoryStub({ fail: jest.fn().mockResolvedValue('dead') });
+    const queue = createReportJobQueue({
+      repository,
+      loadExportShipmentService: () => ({
+        generateDocumentFile: jest.fn().mockRejectedValue(failure),
+        markDocumentFailed
+      })
+    });
+
+    await queue._execute({
+      id: 'job-export', kind: 'shipment_export_document', attempts: 3, max_attempts: 3,
+      payload: {
+        type: 'shipment_export_document', reportId: 'report-1',
+        exportDocumentId: 'document-1', companyId: 'company-1'
+      }
+    });
+
+    expect(markDocumentFailed).toHaveBeenCalledWith(
+      'report-1', 'document-1', 'company-1', failure
+    );
   });
 });

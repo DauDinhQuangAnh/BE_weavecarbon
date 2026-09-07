@@ -54,15 +54,15 @@ describe('getRequiredDocumentsForMarket', () => {
     it('returns the market-specific document templates, normalizing codes', () => {
         const docs = getRequiredDocumentsForMarket('EU');
         expect(docs.map((d) => d.code)).toEqual([
-            'dpp',
-            'textile_epr',
+            'eu_import_dossier',
+            'eu_textile_fibre_label',
             'reach_compliance',
-            'green_claims_substantiation'
+            'gpsr_operator_traceability'
         ]);
         expect(docs[0]).toMatchObject({
-            name: 'Digital Product Passport (DPP)',
-            document_type: 'report',
-            regulation_reference: 'EU Ecodesign for Sustainable Products Regulation (ESPR) 2024/1781'
+            name: 'EU Import Dossier (invoice, packing list, carrier document, ICS2 support data)',
+            document_type: 'declaration',
+            regulation_reference: 'Union Customs Code and ICS2'
         });
     });
 
@@ -78,8 +78,8 @@ describe('getRequiredDocumentsForMarket', () => {
 
 describe('resolveDocumentTypeForMarket', () => {
     it('returns the document_type for a known market/document pair', () => {
-        expect(resolveDocumentTypeForMarket('EU', 'dpp')).toBe('report');
-        expect(resolveDocumentTypeForMarket('EU', 'DPP')).toBe('report');
+        expect(resolveDocumentTypeForMarket('EU', 'eu_import_dossier')).toBe('declaration');
+        expect(resolveDocumentTypeForMarket('EU', 'EU_IMPORT_DOSSIER')).toBe('declaration');
     });
 
     it('returns null when the document code is empty', () => {

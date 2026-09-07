@@ -1,11 +1,16 @@
 ﻿const pool = require('../config/database');
-const { randomUUID } = require('crypto');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const PDFDocument = require('pdfkit');
+const { randomUUID } = crypto;
 const {
     SUPPORTED_TARGET_MARKETS_SET,
     normalizeTargetMarkets
 } = require('../constants/targetMarkets');
 const { getSchemaCapabilities } = require('../config/schemaCapabilities');
-const { EMISSION_FACTORS_CACHE_TTL_MS, READ_CACHE_TTL_MS } = require('../config/runtime');
+const { EMISSION_FACTORS_CACHE_TTL_MS, READ_CACHE_TTL_MS, UPLOADS_ROOT } = require('../config/runtime');
+const { buildSimpleXlsx } = require('../utils/simpleXlsx');
 const analyticsService = require('./analyticsService');
 const domesticComplianceService = require('./domesticComplianceService');
 const reportJobQueue = require('./reportJobQueue');
@@ -57,7 +62,7 @@ const safeTrackAnalyticsEvent = async (payload, scope) => {
     }
 };
 
-const DOCUMENT_UPLOAD_DONE_STATUSES = new Set(['uploaded', 'approved']);
+const DOCUMENT_UPLOAD_DONE_STATUSES = new Set(['approved']);
 
 class ExportMarketsService {
     constructor() {
@@ -1669,7 +1674,10 @@ class ExportMarketsService {
                     docs_by_code AS (
                         SELECT
                             LOWER(COALESCE(document_code, '')) AS code,
-                            BOOL_OR(LOWER(COALESCE(status, 'missing')) IN ('uploaded', 'approved')) AS is_done
+                            BOOL_OR(
+                              LOWER(COALESCE(status, 'missing')) = 'approved'
+                              AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
+                            ) AS is_done
                         FROM compliance_documents
                         WHERE company_id = $1
                           AND UPPER(market_code) = UPPER($2)
@@ -1708,51 +1716,111 @@ class ExportMarketsService {
     }
 
     async _simulateComplianceReport(reportId, companyId) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
         const client = await pool.connect();
         try {
-            const storageKey = `reports/${companyId}/compliance/${reportId}.pdf`;
-            const fileSize = Math.floor(Math.random() * 300000) + 10000;
+            const reportResult = await client.query(
+                'SELECT file_format, target_market, title FROM reports WHERE id=$1 AND company_id=$2',
+                [reportId, companyId]
+            );
+            if (!reportResult.rows[0]) throw new Error('Compliance report not found.');
+            const report = reportResult.rows[0];
+            const format = ['pdf', 'xlsx', 'csv'].includes(report.file_format) ? report.file_format : 'xlsx';
+            const marketCode = String(report.target_market || '').toUpperCase();
+            const dataResult = await client.query(
+                `SELECT document_code, document_name, status, valid_from, valid_to, checksum_sha256
+                 FROM compliance_documents
+                 WHERE company_id=$1 AND UPPER(market_code)=UPPER($2)
+                 ORDER BY document_code`,
+                [companyId, marketCode]
+            );
+            const rows = dataResult.rows.map((row) => ({
+                code: row.document_code,
+                document: row.document_name,
+                status: row.status,
+                validFrom: row.valid_from || '',
+                validTo: row.valid_to || '',
+                checksum: row.checksum_sha256 || ''
+            }));
+            let buffer;
+            if (format === 'xlsx') {
+                buffer = await buildSimpleXlsx({
+                    title: report.title,
+                    sheetName: `${marketCode} Compliance`,
+                    metadata: {
+                        Market: marketCode,
+                        Generated: new Date().toISOString(),
+                        'Status meaning': 'Document completeness only; not an authority filing.'
+                    },
+                    columns: [
+                        { key: 'code', label: 'Code' }, { key: 'document', label: 'Document' },
+                        { key: 'status', label: 'Status' }, { key: 'validFrom', label: 'Valid from' },
+                        { key: 'validTo', label: 'Valid to' }, { key: 'checksum', label: 'SHA-256' }
+                    ],
+                    rows,
+                    watermark: 'INTERNAL COMPLIANCE REVIEW - NOT A CUSTOMS FILING'
+                });
+            } else if (format === 'csv') {
+                const escape = (value) => {
+                    const textValue = String(value ?? '');
+                    return /[",\r\n]/.test(textValue) ? `"${textValue.replace(/"/g, '""')}"` : textValue;
+                };
+                const columns = ['code', 'document', 'status', 'validFrom', 'validTo', 'checksum'];
+                buffer = Buffer.from(
+                    `${columns.join(',')}\r\n${rows.map((row) => columns.map((key) => escape(row[key])).join(',')).join('\r\n')}\r\n`,
+                    'utf8'
+                );
+            } else {
+                buffer = await new Promise((resolve, reject) => {
+                    const pdf = new PDFDocument({ margin: 48, size: 'A4' });
+                    const chunks = [];
+                    pdf.on('data', (chunk) => chunks.push(chunk));
+                    pdf.on('end', () => resolve(Buffer.concat(chunks)));
+                    pdf.on('error', reject);
+                    pdf.fontSize(18).fillColor('#1B4332').text(report.title);
+                    pdf.moveDown().fontSize(9).fillColor('#9B2226').text('INTERNAL COMPLIANCE REVIEW - NOT A CUSTOMS FILING');
+                    pdf.moveDown().fillColor('#222222').text(`Market: ${marketCode}`);
+                    pdf.text(`Generated: ${new Date().toISOString()}`);
+                    pdf.moveDown();
+                    rows.forEach((row) => {
+                        pdf.fontSize(10).text(`${row.code || '-'} | ${row.document || '-'} | ${row.status || 'missing'}`);
+                        if (row.validTo) pdf.fontSize(8).fillColor('#555555').text(`Valid to: ${row.validTo}`).fillColor('#222222');
+                    });
+                    pdf.end();
+                });
+            }
+            if (!buffer || buffer.length === 0) throw new Error('Generated compliance report is empty.');
+            const storageKey = `reports/${companyId}/compliance/${reportId}.${format}`;
+            const filePath = path.resolve(UPLOADS_ROOT, storageKey);
+            await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+            await fs.promises.writeFile(filePath, buffer);
+            const stat = await fs.promises.stat(filePath);
+            if (!stat.isFile() || stat.size !== buffer.length) throw new Error('Compliance report storage verification failed.');
+            const fileSize = stat.size;
+            const checksum = crypto.createHash('sha256').update(buffer).digest('hex');
 
             await client.query(`
                 UPDATE reports
-                SET status = 'completed',
-                    storage_provider = 'local',
-                    storage_key = $1,
-                    original_filename = $2,
-                    download_url = $3,
-                    file_size_bytes = $4,
-                    generated_at = NOW(),
-                    updated_at = NOW()
+                SET status = 'completed', storage_provider = 'local', storage_key = $1,
+                    original_filename = $2, download_url = $3, file_size_bytes = $4,
+                    file_format = $7,
+                    metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('file_sha256', $8::text),
+                    generated_at = NOW(), updated_at = NOW()
                 WHERE id = $5 AND company_id = $6
-            `, [storageKey, `compliance_report_${reportId}.pdf`, `/api/reports/${reportId}/download`, fileSize, reportId, companyId]);
+            `, [storageKey, `compliance_report_${marketCode}_${reportId}.${format}`, `/api/reports/${reportId}/download`, fileSize, reportId, companyId, format, checksum]);
             await safeTrackAnalyticsEvent({
-                event_name: 'wc_report_generated',
-                company_id: companyId,
-                entity_type: 'report',
-                entity_id: reportId,
-                payload: {
-                    report_type: 'compliance',
-                    format: 'pdf'
-                }
+                event_name: 'wc_report_generated', company_id: companyId,
+                entity_type: 'report', entity_id: reportId,
+                payload: { report_type: 'compliance', format }
             }, 'wc_report_generated');
         } catch (error) {
             await client.query(`
-                UPDATE reports
-                SET status = 'failed', error_message = $1, updated_at = NOW()
+                UPDATE reports SET status = 'failed', error_message = $1, updated_at = NOW()
                 WHERE id = $2
             `, [error.message, reportId]).catch(() => {});
             await safeTrackAnalyticsEvent({
-                event_name: 'wc_report_generation_failed',
-                company_id: companyId,
-                entity_type: 'report',
-                entity_id: reportId,
-                payload: {
-                    report_type: 'compliance',
-                    format: 'pdf',
-                    error_code: String(error.code || error.message || 'report_generation_failed')
-                }
+                event_name: 'wc_report_generation_failed', company_id: companyId,
+                entity_type: 'report', entity_id: reportId,
+                payload: { report_type: 'compliance', format: 'requested', error_code: String(error.code || error.message || 'report_generation_failed') }
             }, 'wc_report_generation_failed');
             throw error;
         } finally {

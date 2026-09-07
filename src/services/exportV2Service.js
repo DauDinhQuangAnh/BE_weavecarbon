@@ -14,13 +14,13 @@ const EXPORT_TEMPLATE_PATH = path.resolve(
 );
 
 const DEFAULT_EXPORT_CONFIG = {
-  customsDeclarationNo: '106429381040',
-  poContractId: 'PO-2026-TXT-099',
-  billOfLadingNo: 'ONEVNHAN260411',
-  containerNo: 'ONEU1234567',
+  customsDeclarationNo: '',
+  poContractId: '',
+  billOfLadingNo: '',
+  containerNo: '',
   barcodeStandard: 'GS1-Digital',
-  buyerBrand: 'H&M Group',
-  buyerWebhookUrl: 'https://api.hm-group.com/sustainability/v1/ingest'
+  buyerBrand: '',
+  buyerWebhookUrl: ''
 };
 
 const HS_CODE_BY_CATEGORY = {
@@ -46,7 +46,7 @@ function sha256Json(payload) {
 }
 
 function normalizeConfig(row) {
-  if (!row) return DEFAULT_EXPORT_CONFIG;
+  if (!row) return { ...DEFAULT_EXPORT_CONFIG, metadata: {} };
   return {
     customsDeclarationNo: row.customs_declaration_no || DEFAULT_EXPORT_CONFIG.customsDeclarationNo,
     poContractId: row.po_contract_id || DEFAULT_EXPORT_CONFIG.poContractId,
@@ -57,6 +57,36 @@ function normalizeConfig(row) {
     buyerWebhookUrl: row.buyer_webhook_url || DEFAULT_EXPORT_CONFIG.buyerWebhookUrl,
     metadata: row.metadata || {}
   };
+}
+
+function isValidGtin(value) {
+  const digits = String(value || '').replace(/\s/g, '');
+  if (!/^\d{8}$|^\d{12}$|^\d{13}$|^\d{14}$/.test(digits)) return false;
+  const body = digits.slice(0, -1);
+  const expected = Number(digits.at(-1));
+  const sum = [...body].reverse().reduce((total, digit, index) => total + Number(digit) * (index % 2 === 0 ? 3 : 1), 0);
+  return (10 - (sum % 10)) % 10 === expected;
+}
+
+function isPublicHttpsUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    const host = url.hostname.toLowerCase();
+    const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)?.slice(1).map(Number);
+    const privateIpv4 = ipv4 && (
+      ipv4.some((part) => part < 0 || part > 255) ||
+      ipv4[0] === 0 || ipv4[0] === 10 || ipv4[0] === 127 || ipv4[0] >= 224 ||
+      (ipv4[0] === 100 && ipv4[1] >= 64 && ipv4[1] <= 127) ||
+      (ipv4[0] === 169 && ipv4[1] === 254) ||
+      (ipv4[0] === 172 && ipv4[1] >= 16 && ipv4[1] <= 31) ||
+      (ipv4[0] === 192 && ipv4[1] === 168)
+    );
+    const privateIpv6 = host === '[::1]' || host === '::1' || /^\[?f[cd]/i.test(host) || /^\[?fe[89ab]/i.test(host);
+    return url.protocol === 'https:' && host && host !== 'localhost' && !host.endsWith('.local') && !host.endsWith('.internal') &&
+      !privateIpv4 && !privateIpv6;
+  } catch {
+    return false;
+  }
 }
 
 function asNumber(value, fallback = 0) {
@@ -654,7 +684,28 @@ class ExportV2Service {
     }
 
     const cfg = await this.getConfiguration(companyId);
-    const gtin = overrides.gtin || `0894001${product.sku.replace(/\D/g, '').padStart(6, '0').slice(0, 6)}07`;
+    const gtin = String(overrides.gtin || '').trim();
+    const decentralizedUrl = String(overrides.decentralizedUrl || '').trim();
+    const operatorId = String(overrides.operatorId || '').trim();
+    const facilityId = String(overrides.facilityId || '').trim();
+    if (!isValidGtin(gtin)) {
+      const error = new Error('A valid GS1 GTIN with a correct check digit is required; WeaveCarbon does not generate placeholder identifiers.');
+      error.code = 'VALID_GTIN_REQUIRED'; error.statusCode = 409; throw error;
+    }
+    if (!isPublicHttpsUrl(decentralizedUrl)) {
+      const error = new Error('A public HTTPS DPP URL is required. localhost, private network and .local URLs are not accepted.');
+      error.code = 'PUBLIC_DPP_URL_REQUIRED'; error.statusCode = 409; throw error;
+    }
+    if (!operatorId || !facilityId) {
+      const error = new Error('operatorId and facilityId are required for a traceable DPP prototype.');
+      error.code = 'DPP_ACTOR_IDENTIFIERS_REQUIRED'; error.statusCode = 409; throw error;
+    }
+    const evidenceResult = await this.database.query(
+      `SELECT evidence_type, checksum_sha256 FROM evidence_documents
+       WHERE company_id=$1 AND product_id=$2 AND status IN ('locked', 'third_party_verified')
+         AND checksum_sha256 IS NOT NULL ORDER BY created_at`,
+      [companyId, product.id]
+    );
     const payload = {
       standard: cfg.barcodeStandard,
       sku: product.sku,
@@ -674,16 +725,19 @@ class ExportV2Service {
       billOfLadingNo: cfg.billOfLadingNo,
       containerNo: cfg.containerNo,
       evidenceLookupCode: product.evidenceLookupCode,
-      evidenceHashes: [],
+      evidenceHashes: evidenceResult.rows.map((row) => ({ kind: row.evidence_type, sha256: row.checksum_sha256 })),
+      operatorId,
+      facilityId,
+      accessPolicy: Object.keys(asObject(overrides.accessPolicy)).length
+        ? asObject(overrides.accessPolicy)
+        : { public: ['identity', 'materials', 'carbon'], restricted: ['evidence'] },
+      backupUrl: String(overrides.backupUrl || '').trim() || null,
+      regulatoryStatus: 'prototype',
       carbonAuthority: product.carbonAuthority,
       carbonResults: product.carbonResults,
       issuedAt: new Date().toISOString()
     };
     const payloadSha256 = sha256Json(payload);
-    const decentralizedUrl =
-      overrides.decentralizedUrl ||
-      `https://dpp.weavecarbon.local/01/${encodeURIComponent(gtin)}?sku=${encodeURIComponent(product.sku)}&hash=${payloadSha256.slice(0, 16)}`;
-
     const result = await this.database.query(
       `
         INSERT INTO dpp_locks (
@@ -695,8 +749,9 @@ class ExportV2Service {
           payload,
           payload_sha256,
           decentralized_url,
-          locked_by
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          locked_by,
+          status
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'prototype')
         ON CONFLICT (company_id, sku, payload_sha256) DO UPDATE SET
           payload = EXCLUDED.payload,
           decentralized_url = EXCLUDED.decentralized_url,

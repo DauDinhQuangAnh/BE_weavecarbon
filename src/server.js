@@ -112,7 +112,12 @@ function skipCompactAiAccessLog(req) {
     return false;
   }
 
-  return req.originalUrl.startsWith('/api/chat') || req.originalUrl.startsWith('/api/ai-config/rag');
+  const path = safeMetricPath(req);
+  return path === '/health'
+    || path === '/ready'
+    || path === '/metrics'
+    || req.originalUrl.startsWith('/api/chat')
+    || req.originalUrl.startsWith('/api/ai-config/rag');
 }
 
 app.disable('x-powered-by');

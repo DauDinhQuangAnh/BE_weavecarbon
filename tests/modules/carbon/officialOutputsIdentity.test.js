@@ -42,6 +42,28 @@ const productRow = {
 };
 
 describe('official carbon output identity', () => {
+  test('DPP prototype refuses fabricated identifiers and private URLs', async () => {
+    const database = {
+      query: jest.fn((sql) => {
+        const text = String(sql);
+        if (text.includes('FROM products p')) return Promise.resolve({ rows: [productRow] });
+        if (text.includes('FROM export_configurations')) return Promise.resolve({ rows: [] });
+        return Promise.resolve({ rows: [] });
+      })
+    };
+    const exports = createExportV2Service({ database });
+    await expect(exports.createDppLock('company-1', 'user-1', productRow.id, {}))
+      .rejects.toMatchObject({ code: 'VALID_GTIN_REQUIRED' });
+    await expect(exports.createDppLock('company-1', 'user-1', productRow.id, {
+      gtin: '4006381333931', decentralizedUrl: 'https://dpp.weavecarbon.local/item',
+      operatorId: 'OP-1', facilityId: 'FAC-1'
+    })).rejects.toMatchObject({ code: 'PUBLIC_DPP_URL_REQUIRED' });
+    await expect(exports.createDppLock('company-1', 'user-1', productRow.id, {
+      gtin: '4006381333931', decentralizedUrl: 'https://172.20.0.5/item',
+      operatorId: 'OP-1', facilityId: 'FAC-1'
+    })).rejects.toMatchObject({ code: 'PUBLIC_DPP_URL_REQUIRED' });
+  });
+
   test('report and DPP ignore client totals and carry one server calculation reference', async () => {
     const reportDatabase = {
       query: jest.fn((sql) => {
@@ -79,6 +101,9 @@ describe('official carbon output identity', () => {
         if (text.includes('FROM products p')) {
           return Promise.resolve({ rows: [productRow] });
         }
+        if (text.includes('FROM evidence_documents')) {
+          return Promise.resolve({ rows: [{ evidence_type: 'pcf_source', checksum_sha256: 'b'.repeat(64) }] });
+        }
         if (text.includes('INSERT INTO dpp_locks')) {
           const payload = JSON.parse(params[5]);
           return Promise.resolve({
@@ -91,7 +116,7 @@ describe('official carbon output identity', () => {
               payload,
               payload_sha256: params[6],
               decentralized_url: params[7],
-              status: 'locked',
+              status: 'prototype',
               locked_at: '2026-08-31T00:01:00.000Z'
             }]
           });
@@ -104,7 +129,13 @@ describe('official carbon output identity', () => {
       'company-1',
       'user-1',
       productRow.id,
-      { embeddedKgPerUnit: 999999 }
+      {
+        embeddedKgPerUnit: 999999,
+        gtin: '4006381333931',
+        decentralizedUrl: 'https://weavecarbon.com/dpp/4006381333931',
+        operatorId: 'VN-OPERATOR-1',
+        facilityId: 'VN-FACILITY-1'
+      }
     );
 
     expect(report.payload.totals.pcfKgPerUnit).toBe(4.577);

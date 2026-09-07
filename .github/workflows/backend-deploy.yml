@@ -239,7 +239,12 @@ jobs:
             fi
             exit 1
           fi
-          printf '%s backend %s %s\n' "$(date -u +%FT%TZ)" '${{ steps.release.outputs.sha }}' "$BE_IMAGE" >> .deploy-history
+          DEPLOY_HISTORY_FILE="${DEPLOY_HISTORY_FILE:-/var/lib/weavecarbon/deploy-history.log}"
+          install -d -m 0750 "$(dirname "$DEPLOY_HISTORY_FILE")"
+          (
+            flock -x 9
+            printf '%s backend %s %s\n' "$(date -u +%FT%TZ)" '${{ steps.release.outputs.sha }}' "$BE_IMAGE" >&9
+          ) 9>>"$DEPLOY_HISTORY_FILE"
           EOF
 
       - name: Verify public backend health

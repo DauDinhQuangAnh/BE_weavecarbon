@@ -69,13 +69,13 @@ describe('ensureRequiredDocuments', () => {
     it('inserts only the required documents that are not already present', async () => {
         const client = createMockClient();
         client.query
-            .mockResolvedValueOnce({ rows: [{ market_code: 'EU', document_code: 'dpp' }] }) // existing docs
+            .mockResolvedValueOnce({ rows: [{ market_code: 'EU', document_code: 'eu_import_dossier' }] }) // existing docs
             .mockResolvedValue({}); // inserts
 
         await ensureRequiredDocuments(client, 'company-1', [{ market_code: 'EU' }]);
 
         const insertCalls = client.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO compliance_documents'));
-        // EU requires 4 docs (dpp, textile_epr, reach_compliance, green_claims_substantiation); one already exists.
+        // EU requires 4 core market-access docs; one already exists.
         expect(insertCalls.length).toBe(3);
     });
 

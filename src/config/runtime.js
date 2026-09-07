@@ -13,6 +13,7 @@ module.exports = {
   JOB_POLL_INTERVAL_MS: readPositiveInteger('JOB_POLL_INTERVAL_MS', 1000),
   JOB_RETRY_BASE_MS: readPositiveInteger('JOB_RETRY_BASE_MS', 5000),
   JOB_STALE_AFTER_MS: readPositiveInteger('JOB_STALE_AFTER_MS', 15 * 60 * 1000),
+  JOB_RETENTION_DAYS: readPositiveInteger('JOB_RETENTION_DAYS', 30),
   ASYNC_IMPORT_THRESHOLD: readPositiveInteger('ASYNC_IMPORT_THRESHOLD', 25),
   READ_CACHE_TTL_MS,
   SHUTDOWN_GRACE_MS: readPositiveInteger('SHUTDOWN_GRACE_MS', 30000),

@@ -25,10 +25,11 @@ const sortForSerialization = (value) => {
 
 const expected = `${JSON.stringify(sortForSerialization(swaggerSpec), null, 2)}\n`;
 const checkOnly = process.argv.includes('--check');
+const normalizeNewlines = (value) => value?.replace(/\r\n/g, '\n');
 
 if (checkOnly) {
   const current = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf8') : null;
-  if (current !== expected) {
+  if (normalizeNewlines(current) !== normalizeNewlines(expected)) {
     console.error('OpenAPI artifact is stale. Run `npm run openapi:export` and commit the result.');
     process.exitCode = 1;
   } else {

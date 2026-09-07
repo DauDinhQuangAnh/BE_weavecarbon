@@ -90,16 +90,16 @@ const MARKET_REQUIREMENTS_BY_CODE = {
         market_name: 'European Union',
         required_documents: [
             {
-                code: 'dpp',
-                name: 'Digital Product Passport (DPP)',
-                document_type: 'report',
-                regulation_reference: 'EU Ecodesign for Sustainable Products Regulation (ESPR) 2024/1781'
+                code: 'eu_import_dossier',
+                name: 'EU Import Dossier (invoice, packing list, carrier document, ICS2 support data)',
+                document_type: 'declaration',
+                regulation_reference: 'Union Customs Code and ICS2'
             },
             {
-                code: 'textile_epr',
-                name: 'Textile EPR Registration',
+                code: 'eu_textile_fibre_label',
+                name: 'EU Textile Fibre Composition Label',
                 document_type: 'declaration',
-                regulation_reference: 'Waste Framework Directive (revised) — textile EPR'
+                regulation_reference: 'Regulation (EU) 1007/2011'
             },
             {
                 code: 'reach_compliance',
@@ -108,10 +108,10 @@ const MARKET_REQUIREMENTS_BY_CODE = {
                 regulation_reference: 'Regulation (EC) 1907/2006 (REACH), Annex XVII'
             },
             {
-                code: 'green_claims_substantiation',
-                name: 'Green Claims Substantiation',
+                code: 'gpsr_operator_traceability',
+                name: 'GPSR Economic Operator and Product Traceability',
                 document_type: 'declaration',
-                regulation_reference: 'Empowering Consumers for the Green Transition (ECGT) 2024/825'
+                regulation_reference: 'Regulation (EU) 2023/988'
             }
         ]
     },

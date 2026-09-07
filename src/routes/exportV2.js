@@ -3,6 +3,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendError, sendNoCompany, sendSuccess } = require('../utils/http');
 const exportV2Service = require('../services/exportV2Service');
+const exportShipmentService = require('../services/exportShipmentService');
 const { logAuditTrail } = require('../services/auditTrailService');
 
 const router = express.Router();
@@ -16,18 +17,16 @@ function requireCompany(req, res) {
   return null;
 }
 
-function sendXlsx(res, filename, buffer) {
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  return res.status(200).send(buffer);
+function sendNotFound(res) {
+  return sendError(res, { status: 404, code: 'SHIPMENT_NOT_FOUND', message: 'Shipment not found for this company.' });
 }
 
-function sendTemplateError(res, error) {
+function sendLegacyRetired(res) {
   return sendError(res, {
-    status: 500,
-    code: 'TEMPLATE_EXPORT_FAILED',
-    message: 'Export XLSX template could not be generated.',
-    details: process.env.NODE_ENV === 'production' ? undefined : error.message
+    status: 410,
+    code: 'EXPORT_LEGACY_ENDPOINT_RETIRED',
+    message: 'This company-scoped export endpoint was retired because it could mix products from different shipments.',
+    details: { replacement: '/api/export/shipments/{shipmentId}/documents/{type}/generate' }
   });
 }
 
@@ -73,9 +72,9 @@ router.post('/dpp-locks', asyncHandler(async (req, res) => {
     companyId,
     userId: req.userId,
     dataGroup: 'exports',
-    changedField: 'dpp.locked',
+    changedField: 'dpp.prototype_created',
     newValue: lock.id,
-    reason: 'export.dpp_lock',
+    reason: 'export.dpp_prototype',
     notes: JSON.stringify({
       sku: lock.sku,
       carbonAuthority: lock.carbonAuthority
@@ -102,47 +101,129 @@ router.get('/dpp-locks/:id', asyncHandler(async (req, res) => {
 }));
 
 router.get('/documents/commercial-invoice', asyncHandler(async (req, res) => {
-  const companyId = requireCompany(req, res);
-  if (!companyId) return;
-
-  try {
-    const result = await exportV2Service.buildCommercialInvoice(companyId);
-    return sendXlsx(res, result.filename, result.buffer);
-  } catch (error) {
-    return sendTemplateError(res, error);
-  }
+  if (!requireCompany(req, res)) return;
+  return sendLegacyRetired(res);
 }));
 
 router.get('/documents/packing-list', asyncHandler(async (req, res) => {
-  const companyId = requireCompany(req, res);
-  if (!companyId) return;
-
-  try {
-    const result = await exportV2Service.buildPackingList(companyId);
-    return sendXlsx(res, result.filename, result.buffer);
-  } catch (error) {
-    return sendTemplateError(res, error);
-  }
+  if (!requireCompany(req, res)) return;
+  return sendLegacyRetired(res);
 }));
 
 router.get('/documents/bill-of-lading', asyncHandler(async (req, res) => {
+  if (!requireCompany(req, res)) return;
+  return sendLegacyRetired(res);
+}));
+
+router.get('/shipments/:shipmentId/profile', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
+  const data = await exportShipmentService.getProfile(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
 
+router.put('/shipments/:shipmentId/profile', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.upsertProfile(companyId, req.params.shipmentId, req.userId, req.body || {});
+  if (!data) return sendNotFound(res);
+  await logAuditTrail({ companyId, userId: req.userId, dataGroup: 'exports', changedField: 'shipment_export.profile', newValue: req.params.shipmentId, reason: 'export.profile.update' });
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/lines/sync', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.syncLinesFromShipment(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/lines', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.createLine(companyId, req.params.shipmentId, req.body || {});
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { status: 201, data });
+}));
+
+router.patch('/shipments/:shipmentId/lines/:lineId', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.updateLine(companyId, req.params.shipmentId, req.params.lineId, req.body || {});
+  if (!data) return sendError(res, { status: 404, code: 'EXPORT_LINE_NOT_FOUND', message: 'Export line not found.' });
+  return sendSuccess(res, { data });
+}));
+
+router.delete('/shipments/:shipmentId/lines/:lineId', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const deleted = await exportShipmentService.deleteLine(companyId, req.params.shipmentId, req.params.lineId);
+  if (!deleted) return sendError(res, { status: 404, code: 'EXPORT_LINE_NOT_FOUND', message: 'Export line not found.' });
+  return sendSuccess(res, { data: { deleted: true } });
+}));
+
+router.post('/shipments/:shipmentId/packages', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.createPackage(companyId, req.params.shipmentId, req.body || {});
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { status: 201, data });
+}));
+
+router.patch('/shipments/:shipmentId/packages/:packageId', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.updatePackage(companyId, req.params.shipmentId, req.params.packageId, req.body || {});
+  if (!data) return sendError(res, { status: 404, code: 'EXPORT_PACKAGE_NOT_FOUND', message: 'Package not found.' });
+  return sendSuccess(res, { data });
+}));
+
+router.delete('/shipments/:shipmentId/packages/:packageId', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const deleted = await exportShipmentService.deletePackage(companyId, req.params.shipmentId, req.params.packageId);
+  if (!deleted) return sendError(res, { status: 404, code: 'EXPORT_PACKAGE_NOT_FOUND', message: 'Package not found.' });
+  return sendSuccess(res, { data: { deleted: true } });
+}));
+
+router.get('/shipments/:shipmentId/readiness', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.getReadiness(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/documents/:type/generate', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
   try {
-    const result = await exportV2Service.buildBillOfLading(companyId);
-    return sendXlsx(res, result.filename, result.buffer);
+    const result = await exportShipmentService.createDocumentJob(companyId, req.params.shipmentId, req.userId, req.params.type);
+    if (!result) return sendNotFound(res);
+    if (result.blocked) return sendError(res, { status: 409, code: 'EXPORT_DOCUMENT_BLOCKED', message: 'Required shipment data is incomplete.', details: result.readiness });
+    await logAuditTrail({ companyId, userId: req.userId, dataGroup: 'exports', changedField: 'shipment_export.document.generated', newValue: result.id, reason: 'export.document.generate', notes: req.params.type });
+    return sendSuccess(res, { status: 202, data: result });
   } catch (error) {
-    return sendTemplateError(res, error);
+    if (error.code === 'INVALID_DOCUMENT_TYPE') return sendError(res, { status: 400, code: error.code, message: error.message });
+    throw error;
   }
 }));
 
-router.post('/buyer-webhook-payload', asyncHandler(async (req, res) => {
+router.post('/shipments/:shipmentId/documents/:id/issue', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
+  const result = await exportShipmentService.issueDocument(companyId, req.params.shipmentId, req.params.id, req.userId);
+  if (!result) return sendError(res, { status: 404, code: 'EXPORT_DOCUMENT_NOT_FOUND', message: 'Export document not found.' });
+  if (result.blocked) return sendError(res, { status: 409, code: result.code || 'EXPORT_DOCUMENT_BLOCKED', message: result.message || 'Document cannot be issued.', details: result.readiness });
+  await logAuditTrail({ companyId, userId: req.userId, dataGroup: 'exports', changedField: 'shipment_export.document.issued', newValue: result.id, reason: 'export.document.issue', notes: result.type });
+  return sendSuccess(res, { data: result });
+}));
 
-  const payload = await exportV2Service.buildBuyerWebhookPayload(companyId);
-  return sendSuccess(res, { data: payload });
+router.post('/buyer-webhook-payload', asyncHandler(async (req, res) => {
+  if (!requireCompany(req, res)) return;
+  return sendLegacyRetired(res);
 }));
 
 module.exports = router;

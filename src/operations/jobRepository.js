@@ -41,6 +41,16 @@ function createJobRepository({ database = pool } = {}) {
       return result.rowCount;
     },
 
+    async pruneFinished(retentionDays) {
+      const result = await database.query(
+        `DELETE FROM operational_jobs
+         WHERE status IN ('completed', 'dead')
+           AND COALESCE(completed_at, updated_at) < NOW() - ($1::text || ' days')::interval`,
+        [retentionDays]
+      );
+      return result.rowCount;
+    },
+
     async backfillReports(defaultMaxAttempts) {
       const result = await database.query(
         `INSERT INTO operational_jobs (
@@ -48,16 +58,26 @@ function createJobRepository({ database = pool } = {}) {
          )
          SELECT gen_random_uuid(), r.company_id,
                 CASE
+                  WHEN COALESCE(r.metadata->>'export_document_id', '') <> '' THEN 'shipment_export_document'
                   WHEN r.report_type = 'dataset_export' THEN 'dataset_export'
-                  WHEN r.report_type = 'compliance' AND r.file_format <> 'pdf' THEN 'market_compliance_report'
+                  WHEN r.report_type = 'compliance' AND COALESCE(r.target_market, '') <> '' THEN 'market_compliance_report'
                   ELSE 'manual_report'
                 END,
                 'report:' || r.id::text,
                 jsonb_strip_nulls(jsonb_build_object(
+                  'type', CASE
+                    WHEN COALESCE(r.metadata->>'export_document_id', '') <> '' THEN 'shipment_export_document'
+                    WHEN r.report_type = 'dataset_export' THEN 'dataset_export'
+                    WHEN r.report_type = 'compliance' AND COALESCE(r.target_market, '') <> '' THEN 'market_compliance_report'
+                    ELSE 'manual_report'
+                  END,
                   'reportId', r.id,
                   'companyId', r.company_id,
                   'datasetType', r.dataset_type,
-                  'fileFormat', r.file_format
+                  'fileFormat', r.file_format,
+                  'exportDocumentId', r.metadata->>'export_document_id',
+                  'shipmentId', r.metadata->>'shipment_id',
+                  'documentType', r.metadata->>'document_type'
                 )),
                 $1
          FROM reports r

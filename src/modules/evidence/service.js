@@ -110,6 +110,8 @@ class EvidenceService {
       reportingPeriodEnd: toDateOrNull(
         payload.reporting_period_end || payload.reportingPeriodEnd
       ),
+      validFrom: toDateOrNull(payload.valid_from || payload.validFrom),
+      validTo: toDateOrNull(payload.valid_to || payload.validTo),
       storageProvider: toText(payload.storage_provider || payload.storageProvider) || 'local',
       storageBucket: toText(payload.storage_bucket || payload.storageBucket) || null,
       storageKey: toText(payload.storage_key || payload.storageKey) || null,
@@ -273,6 +275,8 @@ class EvidenceService {
       sourceVendor: row.source_vendor,
       reportingPeriodStart: row.reporting_period_start,
       reportingPeriodEnd: row.reporting_period_end,
+      validFrom: row.valid_from,
+      validTo: row.valid_to,
       storageProvider: row.storage_provider,
       storageBucket: row.storage_bucket,
       storageKey: row.storage_key,

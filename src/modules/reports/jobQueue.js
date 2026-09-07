@@ -1,7 +1,7 @@
 const os = require('os');
 const {
   EXPORT_JOB_CONCURRENCY, JOB_MAX_ATTEMPTS, JOB_POLL_INTERVAL_MS,
-  JOB_RETRY_BASE_MS, JOB_STALE_AFTER_MS, SHUTDOWN_GRACE_MS
+  JOB_RETRY_BASE_MS, JOB_RETENTION_DAYS, JOB_STALE_AFTER_MS, SHUTDOWN_GRACE_MS
 } = require('../shared/runtime');
 const logger = require('../shared/logger');
 const { getCorrelationId } = require('../shared/requestContext');
@@ -14,6 +14,7 @@ class ReportJobQueue {
     concurrency = EXPORT_JOB_CONCURRENCY,
     pollIntervalMs = JOB_POLL_INTERVAL_MS,
     retryBaseMs = JOB_RETRY_BASE_MS,
+    retentionDays = JOB_RETENTION_DAYS,
     staleAfterMs = JOB_STALE_AFTER_MS,
     maxAttempts = JOB_MAX_ATTEMPTS,
     shutdownGraceMs = SHUTDOWN_GRACE_MS,
@@ -21,6 +22,7 @@ class ReportJobQueue {
     log = logger,
     loadReportsService = () => require('./service'),
     loadExportMarketsService = () => require('../shared/exportMarkets'),
+    loadExportShipmentService = () => require('../shared/exportShipment'),
     loadEvidenceProcessor = () => require('../shared/evidenceProcessor'),
     loadProductsService = () => require('../shared/productsService')
   } = {}) {
@@ -28,6 +30,7 @@ class ReportJobQueue {
     this.concurrency = concurrency;
     this.pollIntervalMs = pollIntervalMs;
     this.retryBaseMs = retryBaseMs;
+    this.retentionDays = retentionDays;
     this.staleAfterMs = staleAfterMs;
     this.maxAttempts = maxAttempts;
     this.shutdownGraceMs = shutdownGraceMs;
@@ -35,6 +38,7 @@ class ReportJobQueue {
     this.log = log;
     this.loadReportsService = loadReportsService;
     this.loadExportMarketsService = loadExportMarketsService;
+    this.loadExportShipmentService = loadExportShipmentService;
     this.loadEvidenceProcessor = loadEvidenceProcessor;
     this.loadProductsService = loadProductsService;
     this.active = new Set();
@@ -57,7 +61,7 @@ class ReportJobQueue {
         datasetType: row.dataset_type, fileFormat: row.file_format
       };
     }
-    if (row.report_type === 'compliance' && row.file_format !== 'pdf') {
+    if (row.report_type === 'compliance' && row.target_market) {
       return { type: 'market_compliance_report', reportId: row.id, companyId: row.company_id };
     }
     return { type: 'manual_report', reportId: row.id, companyId: row.company_id };
@@ -67,6 +71,7 @@ class ReportJobQueue {
     if (!this.initPromise) {
       this.initPromise = (async () => {
         const recovered = await this.repository.recoverStale(this.staleAfterMs);
+        const pruned = await this.repository.pruneFinished(this.retentionDays);
         const [reports, evidence] = await Promise.all([
           this.repository.backfillReports(this.maxAttempts),
           this.repository.backfillEvidence(this.maxAttempts)
@@ -75,7 +80,7 @@ class ReportJobQueue {
         this.timer = setInterval(() => this._scheduleTick(), this.pollIntervalMs);
         this.timer.unref?.();
         this.log.info(
-          { recovered, backfilledReports: reports, backfilledEvidence: evidence },
+          { recovered, pruned, backfilledReports: reports, backfilledEvidence: evidence },
           '[job-queue] Durable worker initialized'
         );
         this._scheduleTick();
@@ -154,6 +159,11 @@ class ReportJobQueue {
     } catch (error) {
       const delayMs = this.retryBaseMs * (2 ** Math.max(0, Number(job.attempts) - 1));
       const status = await this.repository.fail(job, String(error?.message || error), delayMs);
+      if (status === 'dead' && task.type === 'shipment_export_document') {
+        await this.loadExportShipmentService().markDocumentFailed(
+          task.reportId, task.exportDocumentId, task.companyId, error
+        ).catch((markError) => this.log.error({ err: markError, jobId: job.id }, '[job-queue] Failed to mark export document dead'));
+      }
       metrics.increment('weavecarbon_jobs_failed_total', { kind: job.kind, status });
       this.log.error({
         err: error, jobId: job.id, kind: job.kind, attempts: job.attempts,
@@ -172,6 +182,10 @@ class ReportJobQueue {
       case 'market_compliance_report':
         await this.loadExportMarketsService()._simulateComplianceReport(task.reportId, task.companyId);
         return;
+      case 'shipment_export_document':
+        return this.loadExportShipmentService().generateDocumentFile(
+          task.reportId, task.exportDocumentId, task.companyId
+        );
       case 'evidence_process':
         await this.loadEvidenceProcessor().processStoredEvidence(task);
         return;

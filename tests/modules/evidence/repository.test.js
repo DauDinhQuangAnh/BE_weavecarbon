@@ -58,6 +58,8 @@ describe('evidenceRepository', () => {
       sourceVendor: 'Vendor',
       reportingPeriodStart: '2026-01-01',
       reportingPeriodEnd: '2026-01-31',
+      validFrom: '2026-01-01',
+      validTo: '2026-12-31',
       storageProvider: 'local',
       storageBucket: null,
       storageKey: 'evidence/company/2026/file.pdf',
@@ -72,7 +74,7 @@ describe('evidenceRepository', () => {
     await expect(repository.create(values)).resolves.toEqual({ id: 'evidence-1' });
     expect(database.query.mock.calls[0][1]).toEqual([
       'company-1', 'product-1', null, 'invoice', 'Invoice.pdf', 'LOOKUP-1',
-      'Vendor', '2026-01-01', '2026-01-31', 'local', null,
+      'Vendor', '2026-01-01', '2026-01-31', '2026-01-01', '2026-12-31', 'local', null,
       'evidence/company/2026/file.pdf', 'Invoice.pdf', 'application/pdf', 100,
       'abc', '{}', 'user-1'
     ]);
