@@ -23,7 +23,7 @@ jobs:
           fetch-depth: 0
 
       - name: Detect committed secrets
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
 
       - name: Scan source and lockfile
         uses: aquasecurity/trivy-action@v0.36.0
