@@ -2,6 +2,10 @@ const { Writable } = require('stream');
 const { createLogger } = require('../../src/utils/logger');
 
 describe('structured logger redaction', () => {
+  test('uses structured logs in staging without requiring pino-pretty', () => {
+    expect(() => createLogger({ environment: 'staging' })).not.toThrow();
+  });
+
   test('redacts credentials while retaining operational context', (done) => {
     let output = '';
     const destination = new Writable({
