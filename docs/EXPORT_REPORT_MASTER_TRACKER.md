@@ -30,6 +30,7 @@ This tracker separates four facts that must never be conflated:
 | Working branch in both repositories | `feat/shipment-export-workflow` |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
+| Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
 | Production site | `https://weavecarbon.com` |
 | Production state at 2026-09-08 | Healthy on the old `main`; the feature branch is not deployed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
@@ -110,7 +111,7 @@ Known overall checks at the baseline commits:
 | 11 | REACH/SVHC dossier | Conditional by substance/material/threshold | `PARTIAL` | Generic evidence/document records | Substance-level model, list version, thresholds, lab and safe-use output |
 | 12 | Product Carbon Footprint/ISO 14067 support | Buyer/tender/claim dependent | `INTERNAL_ONLY` | Server-authoritative partial PCF PDF/XLSX | Goal/scope, functional unit, DQ, allocation, uncertainty and assurance gate |
 | 13 | Corporate/facility GHG report | Buyer/ESG/assurance dependent | `INTERNAL_ONLY` | Electricity/fuel worksheet | Organisational boundary, full sources/gases, base year and exclusions |
-| 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` and unsafe for assurance | JSON/CSV preview | Remove fake evidence/lock, preserve raw AD x EF, immutable evidence bundle |
+| 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Production fails closed; demo/evidence/fake-lock risks contained | Preserve raw AD x EF and build immutable server evidence bundle |
 | 15 | Apparel & Footwear PEF/PEFCR | Voluntary or buyer-specific | `NOT_STARTED` | Climate-only partial PCF is not PEF | Full life cycle, EF datasets/impact categories and validation statement |
 | 16 | ESPR Digital Product Passport | When product delegated act applies | `BLOCKED_BY_LAW` | Guarded prototype only | Registry/service/access/version architecture; wait for final product schema |
 | 17 | Textile/footwear EPR reporting | Member-State implementation | `BLOCKED_BY_LAW` | Static requirement label only | Country registry, producer/PRO identity and placed-on-market ledger |
@@ -305,19 +306,25 @@ coverage where claimed; assurance.
 **Definition of Done:** boundary/source completeness and base-year logic exist; missing sources/exclusions are disclosed;
 all totals reproduce from evidence; report name accurately reflects its scope.
 
-### R14 — Audit/evidence pack — current P0
+### R14 — Audit/evidence pack — P0 containment complete, implementation incomplete
 
 **Required inputs/output:** signed assertion/criteria; data-management plan; roles/controls/retention; process map; calculation
 manifest; raw activity data + unit/period/source; factor provenance/version/geography/unit; immutable evidence files/hashes;
 QA/QC, approvals/exceptions; assumptions/allocation/uncertainty/change history; assurance record.
 
-**Confirmed blockers in current frontend source:**
+**P0 containment implemented:**
 
-- `lib/weave-v2/auditPackV2.ts` contains `FALLBACK_EVIDENCE` with sample EVN/material files.
-- The authoritative path converts aggregate stage CO2e into `activity` and sets `factor: 1`, so AD x EF is lost.
-- `buildAuditPackJsonV2` writes `locked: true` unconditionally.
-- `components/audit/AuditPackClient.tsx` falls back to `DEMO_PACK_V2[0]` when no real product exists.
-- The browser builds JSON/CSV but does not create an immutable server-side evidence bundle containing source files.
+- Production no longer falls back to `DEMO_PACK_V2` or sample EVN/material evidence; demo preview requires an explicit flag.
+- Aggregate stage CO2e is no longer represented as fake `activity × factor 1`; production download is blocked until raw
+  contribution rows are supplied.
+- Client JSON now states `locked: false`, `immutable: false`, `assuranceStatus: not_verified`.
+- Base64 query text is no longer presented as an HMAC-verified share token.
+- Only locked/third-party-verified, unexpired, stored evidence with a real file size and 64-character SHA-256 is displayed.
+- UI and report copy no longer claim ISO certification, independent verifier approval or a working signed share link.
+
+**Remaining:** expose immutable calculation contribution terms from the server (activity, activity unit, factor value/unit,
+factor identity/version/source/geography/period/allocation); bind approved source files; create a server-side checksummed
+manifest and downloadable bundle; add approval/issue/version lifecycle and an actually signed, expiring read-only link.
 
 **Definition of Done:** production fails closed without a real product/calculation/evidence; no sample fallback; raw AD x EF
 and units are preserved; lock/approval comes from backend state; server stores a checksummed manifest and evidence bundle;
@@ -538,3 +545,13 @@ Frontend core:
 
 - Frontend commits `00ffb8d` and `13aeea6` added weighted multi-material composition (must total 100%), manual distance,
   transport mode and tonne-kilometre calculation with tests. This is not itself a compliant PCF or export report.
+
+### 2026-09-08 — R14 production safety containment
+
+- Status remains `PARTIAL`; the unsafe preview path was removed but the immutable server bundle is not implemented.
+- Frontend commit `af54d39040edb2f514a4b86fad1fc05e36aab9f6` removes production demo/evidence fallback, fake
+  `activity × 1`, unconditional lock state and browser-only token verification claims.
+- Production export now fails closed without server-authoritative contribution rows and strictly eligible evidence.
+- Frontend 37 files/165 tests, check and production build passed; 18 unrelated pre-existing lint warnings remain.
+- Exact next action: add a tenant-scoped backend audit-bundle model/API backed by immutable calculation contribution terms
+  and evidence file hashes, then connect the disabled production download buttons to that job.
