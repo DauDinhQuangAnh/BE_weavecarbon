@@ -35,6 +35,12 @@ function numberOrNull(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
+function dateOnly(value) {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  const normalized = text(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
+}
 function sha256(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
 function sourceSnapshotSha256(snapshot) {
   return sha256(JSON.stringify({
@@ -68,10 +74,10 @@ function profileFromRow(row) {
     shipmentId: row.shipment_id,
     targetMarket: row.target_market,
     invoiceNumber: row.invoice_number || '',
-    invoiceDate: row.invoice_date || null,
+    invoiceDate: dateOnly(row.invoice_date),
     invoiceIssuePlace: row.invoice_issue_place || '',
     packingListNumber: row.packing_list_number || '',
-    packingListDate: row.packing_list_date || null,
+    packingListDate: dateOnly(row.packing_list_date),
     poContractId: row.po_contract_id || '',
     incotermCode: row.incoterm_code || '',
     incotermLocation: row.incoterm_location || '',

@@ -177,6 +177,28 @@ describe('shipment export persistence safety', () => {
   const lineId = '00000000-0000-4000-8000-000000000003';
   const userId = '00000000-0000-4000-8000-000000000004';
 
+  test('normalizes PostgreSQL DATE values before readiness validation', async () => {
+    const database = {
+      query: jest.fn()
+        .mockResolvedValueOnce({ rows: [{ id: shipmentId, reference_number: 'VN-EU-1' }] })
+        .mockResolvedValueOnce({ rows: [{
+          id: 'profile-1', shipment_id: shipmentId, target_market: 'EU',
+          invoice_date: new Date('2026-09-09T00:00:00.000Z'),
+          packing_list_date: new Date('2026-09-10T00:00:00.000Z')
+        }] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+    };
+    const service = createExportShipmentService({ database });
+
+    const snapshot = await service.getProfile(companyId, shipmentId);
+
+    expect(snapshot.profile.invoiceDate).toBe('2026-09-09');
+    expect(snapshot.profile.packingListDate).toBe('2026-09-10');
+  });
+
   test('profile upsert has a bound value for every SQL placeholder', async () => {
     const database = {
       query: jest.fn()
