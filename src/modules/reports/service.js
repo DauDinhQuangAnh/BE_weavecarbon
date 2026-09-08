@@ -48,7 +48,10 @@ const normalizeQaExceptions = (value) => {
 };
 
 const deriveAuditLifecycleStatus = (row) => {
-    if (row.has_newer_bundle) return 'superseded';
+    // A newer draft must not invalidate an already issued pack. Supersession is
+    // an external lifecycle event and therefore starts only when the replacement
+    // version has itself been issued.
+    if (row.has_newer_issued_bundle) return 'superseded';
     if (row.issuance_id) return 'issued';
     if (row.status === 'processing') return 'draft';
     if (row.status !== 'completed') return 'blocked';
@@ -594,10 +597,14 @@ class ReportsService {
                    issuance.id AS issuance_id, issuance.assertion_text, issuance.criteria,
                    issuance.issued_by, issuance.issued_at,
                    EXISTS (
-                     SELECT 1 FROM audit_bundles newer
+                     SELECT 1
+                     FROM audit_bundles newer
+                     INNER JOIN audit_bundle_issuances newer_issuance
+                       ON newer_issuance.company_id = newer.company_id
+                      AND newer_issuance.audit_bundle_id = newer.id
                      WHERE newer.company_id = ab.company_id AND newer.product_id = ab.product_id
                        AND newer.version > ab.version
-                   ) AS has_newer_bundle
+                   ) AS has_newer_issued_bundle
             FROM audit_bundles ab
             LEFT JOIN LATERAL (
               SELECT r.* FROM audit_bundle_reviews r
@@ -670,10 +677,14 @@ class ReportsService {
                          WHERE ai.company_id = ab.company_id AND ai.audit_bundle_id = ab.id
                        ) AS issued,
                        EXISTS (
-                         SELECT 1 FROM audit_bundles newer
+                         SELECT 1
+                         FROM audit_bundles newer
+                         INNER JOIN audit_bundle_issuances newer_issuance
+                           ON newer_issuance.company_id = newer.company_id
+                          AND newer_issuance.audit_bundle_id = newer.id
                          WHERE newer.company_id = ab.company_id AND newer.product_id = ab.product_id
                            AND newer.version > ab.version
-                       ) AS has_newer_bundle
+                       ) AS has_newer_issued_bundle
                 FROM audit_bundles ab
                 WHERE ab.id = $1 AND ab.company_id = $2
                 FOR SHARE
@@ -692,7 +703,7 @@ class ReportsService {
                     statusCode: 409, code: 'AUDIT_BUNDLE_ALREADY_ISSUED'
                 });
             }
-            if (bundle.has_newer_bundle) {
+            if (bundle.has_newer_issued_bundle) {
                 throw createAppError('A superseded Audit Pack cannot receive another review.', {
                     statusCode: 409, code: 'AUDIT_BUNDLE_SUPERSEDED'
                 });
@@ -744,8 +755,8 @@ class ReportsService {
                        EXISTS (
                          SELECT 1 FROM audit_bundles newer
                          WHERE newer.company_id = ab.company_id AND newer.product_id = ab.product_id
-                           AND newer.version > ab.version
-                       ) AS has_newer_bundle
+                           AND newer.version > ab.version AND newer.status = 'completed'
+                       ) AS has_newer_completed_bundle
                 FROM audit_bundles ab
                 LEFT JOIN LATERAL (
                   SELECT r.* FROM audit_bundle_reviews r
@@ -771,9 +782,9 @@ class ReportsService {
                     statusCode: 409, code: 'AUDIT_BUNDLE_ALREADY_ISSUED'
                 });
             }
-            if (bundle.has_newer_bundle) {
-                throw createAppError('A superseded Audit Pack cannot be issued.', {
-                    statusCode: 409, code: 'AUDIT_BUNDLE_SUPERSEDED'
+            if (bundle.has_newer_completed_bundle) {
+                throw createAppError('A newer completed Audit Pack exists; issue the latest version.', {
+                    statusCode: 409, code: 'AUDIT_BUNDLE_OUTDATED'
                 });
             }
             const manifest = typeof bundle.manifest === 'string' ? JSON.parse(bundle.manifest) : bundle.manifest;

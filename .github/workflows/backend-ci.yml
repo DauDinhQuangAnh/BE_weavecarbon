@@ -236,6 +236,22 @@ jobs:
       - name: Verify M4 durable queue recovery and dead-job retention
         run: npm run test:m4-operations
 
+      - name: Run isolated Audit Pack lifecycle pilot
+        env:
+          ALLOW_AUDIT_BUNDLE_PILOT: "1"
+          AUDIT_PILOT_CONFIRM_ISOLATED: I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA
+          AUDIT_PILOT_DATABASE: weavecarbon
+        run: npm run test:audit-bundle-pilot
+
+      - name: Upload Audit Pack pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-pack-pilot-${{ github.run_id }}
+          path: artifacts/audit-pilot/result.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Audit representative hot-query plans
         run: npm run db:audit-hot-queries
 

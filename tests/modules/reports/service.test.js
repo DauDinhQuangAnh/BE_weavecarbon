@@ -120,6 +120,28 @@ describe('ReportsService', () => {
       expect.stringContaining('WHERE ab.id = $1 AND ab.company_id = $2'),
       ['bundle-1', 'company-1']
     );
+    expect(database.query.mock.calls[0][0]).toContain('INNER JOIN audit_bundle_issuances newer_issuance');
+  });
+
+  test.each([
+    [false, 'issued'],
+    [true, 'superseded']
+  ])('supersedes an issued Audit Pack only after a newer issuance exists', async (
+    hasNewerIssuedBundle,
+    expectedLifecycle
+  ) => {
+    const database = { query: jest.fn().mockResolvedValue({ rows: [{
+      id: 'bundle-1', report_id: 'report-1', product_id: 'product-1',
+      calculation_snapshot_id: 'snapshot-1', version: '1', status: 'completed',
+      manifest: { termEvidenceCoverage: { status: 'complete' } },
+      assurance_status: 'not_verified', issuance_id: 'issuance-1',
+      has_newer_issued_bundle: hasNewerIssuedBundle
+    }] }) };
+    const service = createReportsService({ database });
+
+    await expect(service.getAuditBundle('company-1', 'bundle-1')).resolves.toEqual(
+      expect.objectContaining({ lifecycleStatus: expectedLifecycle })
+    );
   });
 
   test('records append-only human review with normalized QA exceptions', async () => {
@@ -151,7 +173,7 @@ describe('ReportsService', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{
-        id: 'bundle-1', status: 'completed', issuance_id: null, has_newer_bundle: false,
+        id: 'bundle-1', status: 'completed', issuance_id: null, has_newer_completed_bundle: false,
         review_decision: 'approved', review_qa_exceptions: [],
         manifest: { termEvidenceCoverage: { status: 'incomplete', missingTermCount: 1 } }
       }] })
@@ -171,7 +193,7 @@ describe('ReportsService', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{
-        id: 'bundle-1', status: 'completed', issuance_id: null, has_newer_bundle: false,
+        id: 'bundle-1', status: 'completed', issuance_id: null, has_newer_completed_bundle: false,
         manifest_sha256: 'a'.repeat(64), bundle_sha256: 'b'.repeat(64),
         review_decision: 'approved', review_qa_exceptions: [],
         manifest: { termEvidenceCoverage: { status: 'complete' } }
