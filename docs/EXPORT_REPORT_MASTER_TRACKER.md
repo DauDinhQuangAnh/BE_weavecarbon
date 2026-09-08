@@ -39,8 +39,12 @@ This tracker separates four facts that must never be conflated:
 | Frontend R14 evidence-review commit | `56f2bf07afa3f455473502808d324e85411ca890` |
 | Backend R14 isolated-pilot commit | `e2c03ad50e0ff9856d9c64cd4843bc175b0080d3` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
+| Frontend isolated-staging stack commit | `188fe3d` |
+| Backend R01/R02 staging-pilot commit | `002aea9` |
+| Backend PostgreSQL date-normalisation fix | `dab966c` |
 | Production site | `https://weavecarbon.com` |
 | Production state verified at 2026-09-09 | FE/BE containers healthy on `main`; R14 files are absent from both host checkouts and running images, so the feature branch is not deployed |
+| Isolated staging verified at 2026-09-09 | `/opt/weavecarbon-staging`; feature branches; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migrations 001-020 applied; DB/BE/FE healthy |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
 Never put server passwords, database credentials, tokens or `.env` values in this file.
@@ -97,12 +101,15 @@ The current feature branch completed the shared shipment-document foundation, no
 
 Known overall checks at the latest feature commits:
 
-- Backend: 94/94 suites and 582/582 tests passed; `npm run verify` passed.
+- Backend: 94/94 suites and 584/584 tests passed; `npm run verify` passed.
 - Frontend: 38/38 files and 167/167 tests passed; `npm run check` and production build passed.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
   retained by CI for 14 days. This proves the synthetic integration gate, not a human real-data staging approval.
+- On the isolated VPS staging database, the guarded Audit Pack pilot passed and the guarded R01/R02 pilot issued and
+  reopened a 25-line Commercial Invoice plus a 50-carton Packing List. These are synthetic technical pilots; neither is a
+  human trade/warehouse approval.
 
 ## 5. Master dossier matrix
 
@@ -504,7 +511,7 @@ Before merging or deploying this branch:
 10. Manually review document layout/meaning with an export operator/compliance owner.
 11. Merge through reviewed pull requests. Observe CI, deploy health, migration logs, worker jobs and file downloads.
 
-The feature branch is not running on the production VPS at the time of this update.
+The feature branch is running only in the isolated loopback staging stack. It is not running in the production stack.
 
 ## 10. Verification commands
 
@@ -693,3 +700,29 @@ Backend carbon trace core:
 - Production was not accessed, migrated, restarted or deployed during this increment.
 - Exact next action: obtain/confirm a non-production staging database, run the guarded pilot and migration/restore gates,
   then complete one real-evidence human review and record reviewer plus bundle checksum here.
+
+### 2026-09-09 — Isolated VPS staging and guarded R01/R02 pilot
+
+- Frontend commit `188fe3d` adds a separate `weavecarbon-staging` Compose project. It uses dedicated PostgreSQL/uploads
+  volumes and internal application/data networks; only its proxy joins an ingress bridge and binds to
+  `127.0.0.1:18080`. Production ports, containers, volumes, checkouts and database were not reused.
+- Backend commit `ce4873e` prevents deployed staging from loading the development-only `pino-pretty` package. Backend
+  commit `dab966c` fixes a real integration defect where PostgreSQL `DATE` objects were rejected by the ISO-date validator.
+- The staging database loaded the base schema and every migration through 020. DB, BE and FE health checks passed;
+  staging `/ready` and `/` returned HTTP 200. `https://weavecarbon.com/` also returned HTTP 200 after the work, and both
+  production checkouts remained clean on `main`.
+- The guarded R14 pilot passed on database `weavecarbon_staging`, including ZIP/checksum verification, exact evidence
+  coverage, tenant isolation, append-only review/issuance, immutability and two-version supersession. Its assurance status
+  remains `not_verified`; this is not external assurance.
+- Backend commit `002aea9` adds the guarded R01/R02 pilot and runbook. The staging run created 25 CN 61/62/64 lines and
+  50 cartons (25 full plus 25 partial), reconciled quantity/net/gross weight, returned `CBAM_NOT_APPLICABLE`, generated,
+  issued and reopened both XLSX files, and verified MIME, size, hash, tenant isolation, issued immutability and stale-snapshot blocking.
+- Commercial Invoice staging artifact SHA-256:
+  `d0f9e0dab8d852e1a3fddeee0af80cace69f1b2fb374bff3a5052f281def5ae7`.
+- Packing List staging artifact SHA-256:
+  `ab4af3d6b622816a28f342fc99256873e35ea94fee0b99c47a03262504b60653`.
+- R01 and R02 remain `READY_TO_PILOT`, not `READY_TO_ISSUE`: no export operator/warehouse reviewer has approved the
+  synthetic layout, PDF/print output is absent, and the current package model cannot represent a true multi-container
+  container-pallet-carton hierarchy.
+- Exact next action: add additive container/package hierarchy and stable PDF/print renderers for R01/R02, rerun the fixture
+  with at least two containers, then obtain named human export-operator and warehouse decisions on representative files.
