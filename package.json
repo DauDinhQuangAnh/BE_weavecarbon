@@ -12,6 +12,7 @@
     "test:m1-integrity": "node scripts/verify-m1-integrity.js",
     "test:m4-operations": "node scripts/test-operational-jobs.js",
     "test:audit-bundle-pilot": "node scripts/test-audit-bundle-pilot.js",
+    "test:export-documents-pilot": "node scripts/test-export-documents-pilot.js",
     "db:audit-hot-queries": "node scripts/audit-hot-queries.js",
     "analytics:flush": "node scripts/flush-analytics-outbox.js",
     "build:release": "node scripts/build-release.js",
