@@ -37,6 +37,7 @@ This tracker separates four facts that must never be conflated:
 | Frontend R14 immutable-bundle commit | `aeb19e31023b48dfcc4f5644e2a1119ad77ecdf4` |
 | Backend R14 evidence-review commit | `acec186b82ea7ff8691298e16af7c76793ddc6c7` |
 | Frontend R14 evidence-review commit | `56f2bf07afa3f455473502808d324e85411ca890` |
+| Backend R14 isolated-pilot commit | `e2c03ad50e0ff9856d9c64cd4843bc175b0080d3` |
 | Production site | `https://weavecarbon.com` |
 | Production state verified at 2026-09-09 | FE/BE containers healthy on `main`; R14 files are absent from both host checkouts and running images, so the feature branch is not deployed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
@@ -93,12 +94,13 @@ The current feature branch completed the shared shipment-document foundation, no
 - DPP production guardrails for valid GS1 GTIN, public HTTPS URL and explicit operator/facility identifiers.
 - Frontend shipment selection, profile/line/package editing, evidence approval and per-document readiness.
 
-Known overall checks at the baseline commits:
+Known overall checks at the latest feature commits:
 
-- Backend: 89/89 suites and 534/534 tests passed; `npm run verify` passed.
-- Frontend: 34/34 files and 156/156 tests passed; `npm run check` and production build passed.
+- Backend: 94/94 suites and 582/582 tests passed; `npm run verify` passed.
+- Frontend: 38/38 files and 167/167 tests passed; `npm run check` and production build passed.
 - Migration snapshot integration test was not executed because the legacy database fixture, Docker daemon and local
-  PostgreSQL client were unavailable. Static migration contract tests passed. Staging migration remains mandatory.
+  PostgreSQL client were unavailable. The guarded Audit Pack pilot is wired to CI's disposable PostgreSQL but has not yet
+  produced a result for this commit. Static migration contract tests passed. Staging migration remains mandatory.
 
 ## 5. Master dossier matrix
 
@@ -117,7 +119,7 @@ Known overall checks at the baseline commits:
 | 11 | REACH/SVHC dossier | Conditional by substance/material/threshold | `PARTIAL` | Generic evidence/document records | Substance-level model, list version, thresholds, lab and safe-use output |
 | 12 | Product Carbon Footprint/ISO 14067 support | Buyer/tender/claim dependent | `INTERNAL_ONLY` | Server-authoritative partial PCF PDF/XLSX | Goal/scope, functional unit, DQ, allocation, uncertainty and assurance gate |
 | 13 | Corporate/facility GHG report | Buyer/ESG/assurance dependent | `INTERNAL_ONLY` | Electricity/fuel worksheet | Organisational boundary, full sources/gases, base year and exclusions |
-| 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Server builds immutable internal-review ZIP with manifest, calculation and pinned evidence checksums | Map evidence to terms, approval/issue lifecycle and signed share link |
+| 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Immutable ZIP, exact term/factor evidence coverage, append-only review/internal issue, and isolated PostgreSQL pilot gate | Run human real-evidence staging review; signed share link and external assurance |
 | 15 | Apparel & Footwear PEF/PEFCR | Voluntary or buyer-specific | `NOT_STARTED` | Climate-only partial PCF is not PEF | Full life cycle, EF datasets/impact categories and validation statement |
 | 16 | ESPR Digital Product Passport | When product delegated act applies | `BLOCKED_BY_LAW` | Guarded prototype only | Registry/service/access/version architecture; wait for final product schema |
 | 17 | Textile/footwear EPR reporting | Member-State implementation | `BLOCKED_BY_LAW` | Static requirement label only | Country registry, producer/PRO identity and placed-on-market ledger |
@@ -368,9 +370,21 @@ QA/QC, approvals/exceptions; assumptions/allocation/uncertainty/change history; 
 - The Audit UI shows row numbers, per-row evidence gaps, latest lifecycle state and separate review/internal-issue controls.
   A completed ZIP remains downloadable for internal review even when issuance is blocked.
 
-**Remaining:** apply migrations 019/020 and run a real-evidence staging pilot; add an actually signed assertion and expiring
-read-only share link; add an external-assurance record/actor workflow. Structured QA exceptions are supported by the API but
-still need a dedicated multi-row frontend editor. No external assurance or legal usability is claimed.
+**Isolated-pilot increment implemented:**
+
+- CI now applies migrations 019/020 to disposable PostgreSQL and runs a guarded end-to-end pilot using synthetic data.
+- The pilot calculates a multi-stage product, persists the authoritative snapshot, creates period-bound activity/factor
+  evidence, builds and reopens two ZIP versions, rehashes every file, proves tenant isolation and database immutability,
+  exercises an unresolved QA blocker, review, internal issue and version supersession.
+- An issued bundle is no longer marked `superseded` merely because a newer draft exists. Supersession starts only after the
+  replacement version is issued; an older unissued version cannot be issued once a newer completed version exists.
+- The machine-readable result is uploaded as a CI artifact. See `docs/AUDIT_PACK_PILOT_RUNBOOK.md` for safety guards,
+  execution and interpretation.
+
+**Remaining:** run the same migrations and one real-evidence pilot on a confirmed non-production staging environment, then
+record its ZIP checksum and human reviewer decision; add an actually signed assertion and expiring read-only share link; add
+an external-assurance record/actor workflow. Structured QA exceptions are supported by the API but still need a dedicated
+multi-row frontend editor. No external assurance or legal usability is claimed.
 
 **Definition of Done:** production fails closed without a real product/calculation/evidence; no sample fallback; raw AD x EF
 and units are preserved; lock/approval comes from backend state; server stores a checksummed manifest and evidence bundle;
@@ -475,8 +489,9 @@ Do not mark an item complete based only on unit tests. Attach or record the stag
 Before merging or deploying this branch:
 
 1. Back up PostgreSQL and the uploads directory and verify restoration instructions.
-2. Apply `migrations/017_shipment_export_workflow.sql`, `018_export_invoice_packing_details.sql` and
-   `019_immutable_audit_bundles.sql` to staging cloned from a safe schema/data fixture.
+2. Apply `migrations/017_shipment_export_workflow.sql`, `018_export_invoice_packing_details.sql`,
+   `019_immutable_audit_bundles.sql` and `020_audit_bundle_review_lifecycle.sql` to staging cloned from a safe schema/data
+   fixture.
 3. Run migration rollback/forward compatibility checks appropriate to the environment.
 4. Create one real-like Vietnam-to-EU shipment with more than 20 lines and multiple/partial packages.
 5. Upload and approve a real-like carrier document; fill profile, package and carbon data without placeholders.
@@ -497,6 +512,7 @@ Backend:
 npm test -- --runInBand
 npm run verify
 npm run test:migration-snapshots
+npm run test:audit-bundle-pilot # isolated PostgreSQL only; see docs/AUDIT_PACK_PILOT_RUNBOOK.md
 git diff --check
 ```
 
@@ -659,3 +675,17 @@ Backend carbon trace core:
   was not migrated, restarted or otherwise mutated.
 - Exact next action: run both migrations on staging with backup/restore evidence, complete one real product through the new
   evidence matrix and manual ZIP review, then implement signed assertion/share delivery and external-assurance records.
+
+### 2026-09-09 — R14 guarded PostgreSQL lifecycle pilot
+
+- Status remains `PARTIAL`: the automated technical lifecycle now has a real-database gate, but no human real-evidence
+  staging review, signed share delivery or independent assurance has occurred.
+- Backend commit `e2c03ad50e0ff9856d9c64cd4843bc175b0080d3` adds the guarded pilot, its runbook and CI artifact. It validates contribution-term
+  coverage, exact ZIP contents/checksums, issue gates, append-only records, tenant isolation and two-version supersession.
+- Supersession semantics were corrected: a newer draft cannot invalidate an issued bundle; the older bundle becomes
+  `superseded` only when the replacement is issued. A newer completed version blocks issuance of the older unissued pack.
+- Local syntax, lint and unit checks can run without PostgreSQL. The end-to-end pilot is wired to CI's disposable PostgreSQL
+  service because Docker Desktop and a local PostgreSQL client are unavailable on this workstation.
+- Production was not accessed, migrated, restarted or deployed during this increment.
+- Exact next action: obtain/confirm a non-production staging database, run the guarded pilot and migration/restore gates,
+  then complete one real-evidence human review and record reviewer plus bundle checksum here.
