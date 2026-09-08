@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - feat/shipment-export-workflow
 
 concurrency:
   group: backend-ci-${{ github.ref }}
