@@ -16,6 +16,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      pull-requests: read
     steps:
       - name: Checkout full history for secret scanning
         uses: actions/checkout@v4
@@ -23,7 +24,9 @@ jobs:
           fetch-depth: 0
 
       - name: Detect committed secrets
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Scan source and lockfile
         uses: aquasecurity/trivy-action@v0.36.0
