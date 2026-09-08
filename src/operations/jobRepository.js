@@ -58,6 +58,7 @@ function createJobRepository({ database = pool } = {}) {
          )
          SELECT gen_random_uuid(), r.company_id,
                 CASE
+                  WHEN COALESCE(r.metadata->>'audit_bundle_id', '') <> '' THEN 'audit_bundle'
                   WHEN COALESCE(r.metadata->>'export_document_id', '') <> '' THEN 'shipment_export_document'
                   WHEN r.report_type = 'dataset_export' THEN 'dataset_export'
                   WHEN r.report_type = 'compliance' AND COALESCE(r.target_market, '') <> '' THEN 'market_compliance_report'
@@ -66,6 +67,7 @@ function createJobRepository({ database = pool } = {}) {
                 'report:' || r.id::text,
                 jsonb_strip_nulls(jsonb_build_object(
                   'type', CASE
+                    WHEN COALESCE(r.metadata->>'audit_bundle_id', '') <> '' THEN 'audit_bundle'
                     WHEN COALESCE(r.metadata->>'export_document_id', '') <> '' THEN 'shipment_export_document'
                     WHEN r.report_type = 'dataset_export' THEN 'dataset_export'
                     WHEN r.report_type = 'compliance' AND COALESCE(r.target_market, '') <> '' THEN 'market_compliance_report'
@@ -75,6 +77,7 @@ function createJobRepository({ database = pool } = {}) {
                   'companyId', r.company_id,
                   'datasetType', r.dataset_type,
                   'fileFormat', r.file_format,
+                  'auditBundleId', r.metadata->>'audit_bundle_id',
                   'exportDocumentId', r.metadata->>'export_document_id',
                   'shipmentId', r.metadata->>'shipment_id',
                   'documentType', r.metadata->>'document_type'

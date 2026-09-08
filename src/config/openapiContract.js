@@ -158,6 +158,14 @@ const REQUEST_BODY_OVERRIDES = {
     },
     additionalProperties: true
   },
+  'POST /reports/v2/audit-packs': {
+    type: 'object',
+    required: ['productId'],
+    properties: {
+      productId: { type: 'string', format: 'uuid' }
+    },
+    additionalProperties: false
+  },
   'POST /export/dpp-locks': {
     type: 'object',
     properties: {

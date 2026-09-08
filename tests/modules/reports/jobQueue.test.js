@@ -33,6 +33,13 @@ describe('durable operational queue', () => {
     expect(queue._rowToTask({
       id: 'pdf-id', company_id: 'company-id', report_type: 'compliance', file_format: 'pdf'
     })).toEqual({ type: 'manual_report', reportId: 'pdf-id', companyId: 'company-id' });
+    expect(queue._rowToTask({
+      id: 'audit-id', company_id: 'company-id', report_type: 'carbon_audit',
+      metadata: { audit_bundle_id: 'bundle-id' }
+    })).toEqual({
+      type: 'audit_bundle', reportId: 'audit-id', companyId: 'company-id',
+      auditBundleId: 'bundle-id'
+    });
   });
 
   test('uses a stable idempotency key for duplicate enqueue requests', async () => {
@@ -113,6 +120,19 @@ describe('durable operational queue', () => {
     expect(generate).toHaveBeenCalledWith('report-1', 'company-1');
     expect(repository.complete).toHaveBeenCalledWith('job-1', undefined);
     await queue.stop();
+  });
+
+  test('dispatches Audit Pack work through the existing durable queue', async () => {
+    const generate = jest.fn().mockResolvedValue({ bundleSha256: 'a'.repeat(64) });
+    const queue = createReportJobQueue({
+      repository: repositoryStub(),
+      loadReportsService: () => ({ _generateAuditBundle: generate })
+    });
+
+    await expect(queue._runTask({
+      type: 'audit_bundle', reportId: 'report-1', auditBundleId: 'bundle-1', companyId: 'company-1'
+    })).resolves.toEqual({ bundleSha256: 'a'.repeat(64) });
+    expect(generate).toHaveBeenCalledWith('report-1', 'bundle-1', 'company-1');
   });
 
   test('marks a shipment export document failed when retries are exhausted', async () => {

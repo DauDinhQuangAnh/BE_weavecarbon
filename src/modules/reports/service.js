@@ -9,6 +9,12 @@ const pdfReportService = require('./pdfService');
 const { createAppError } = require('../shared/errors');
 const { requireAuthoritativeProductCarbon } = require('../carbon');
 const { buildOfficialReportPayload } = require('./officialCarbonPayload');
+const {
+    buildAuditBundleArchive,
+    CONTRIBUTION_SCHEMA,
+    safeFilename,
+    sha256
+} = require('./auditBundle');
 
 const PDF_REPORT_TYPES = new Set(['product_carbon', 'batch_export', 'facility_emission', 'compliance']);
 
@@ -377,6 +383,291 @@ class ReportsService {
             };
         } catch (error) {
             await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    async createAuditBundle(companyId, userId, productId) {
+        const normalizedProductId = normalizeUuid(productId);
+        if (!normalizedProductId) {
+            throw createAppError('A valid productId is required.', {
+                statusCode: 400,
+                code: 'PRODUCT_ID_REQUIRED'
+            });
+        }
+        const client = await this.database.connect();
+        try {
+            await client.query('BEGIN');
+            const snapshotResult = await client.query(`
+                SELECT p.id AS product_id, p.sku, p.name,
+                       ps.id AS snapshot_id, ps.version AS snapshot_version, ps.payload,
+                       ps.calculated_at, ps.engine_version, ps.methodology_version,
+                       ps.factor_registry_version, ps.gwp_basis, ps.canonical_input_hash, ps.is_legacy
+                FROM products p
+                INNER JOIN latest_product_assessment_snapshots ps
+                  ON ps.product_id = p.id AND ps.company_id = p.company_id
+                WHERE p.id = $1 AND p.company_id = $2 AND p.status <> 'archived'
+            `, [normalizedProductId, companyId]);
+            if (snapshotResult.rows.length === 0) {
+                throw createAppError('Product or authoritative calculation snapshot not found.', {
+                    statusCode: 404,
+                    code: 'AUDIT_CALCULATION_NOT_FOUND'
+                });
+            }
+            const snapshot = snapshotResult.rows[0];
+            const payload = typeof snapshot.payload === 'string' ? JSON.parse(snapshot.payload) : snapshot.payload;
+            const carbonResults = payload?.carbonResults || payload?.carbon_results;
+            if (snapshot.is_legacy || carbonResults?.calculationTermsSchemaVersion !== CONTRIBUTION_SCHEMA ||
+                !Array.isArray(carbonResults?.calculationTerms) || carbonResults.calculationTerms.length === 0) {
+                throw createAppError('Recalculate the product before creating an Audit Pack.', {
+                    statusCode: 409,
+                    code: 'AUDIT_CALCULATION_TERMS_REQUIRED'
+                });
+            }
+            const evidenceResult = await client.query(`
+                SELECT id, evidence_type, storage_provider, storage_key, original_filename,
+                       mime_type, file_size_bytes, checksum_sha256,
+                       reporting_period_start, reporting_period_end
+                FROM evidence_documents
+                WHERE company_id = $1 AND product_id = $2
+                  AND status IN ('locked', 'third_party_verified')
+                  AND storage_key IS NOT NULL AND file_size_bytes > 0
+                  AND checksum_sha256 ~* '^[a-f0-9]{64}$'
+                  AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
+                ORDER BY created_at, id
+            `, [companyId, normalizedProductId]);
+            if (evidenceResult.rows.length === 0) {
+                throw createAppError('At least one current, locked evidence file with SHA-256 is required.', {
+                    statusCode: 409,
+                    code: 'AUDIT_EVIDENCE_REQUIRED'
+                });
+            }
+            const reportResult = await client.query(`
+                INSERT INTO reports (
+                    company_id, report_type, title, description, file_format,
+                    status, records, created_by, metadata
+                ) VALUES ($1, 'carbon_audit', $2, $3, 'zip', 'processing', $4, $5, $6::jsonb)
+                RETURNING id
+            `, [
+                companyId,
+                `Internal Audit Pack - ${snapshot.sku}`,
+                'Server-generated immutable calculation and evidence bundle; not independently verified.',
+                evidenceResult.rows.length,
+                userId,
+                JSON.stringify({ product_id: normalizedProductId, assurance_status: 'not_verified' })
+            ]);
+            const reportId = reportResult.rows[0].id;
+            const bundleResult = await client.query(`
+                INSERT INTO audit_bundles (
+                    company_id, product_id, calculation_snapshot_id, report_id, version,
+                    status, assurance_status, supersedes_id, created_by
+                )
+                SELECT $1, $2, $3, $4,
+                       COALESCE(MAX(version), 0) + 1,
+                       'processing', 'not_verified',
+                       (ARRAY_AGG(id ORDER BY version DESC))[1], $5
+                FROM audit_bundles
+                WHERE product_id = $2 AND company_id = $1
+                RETURNING id, version, status, assurance_status, created_at
+            `, [companyId, normalizedProductId, snapshot.snapshot_id, reportId, userId]);
+            const bundle = bundleResult.rows[0];
+            await client.query(`
+                UPDATE reports
+                SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+                WHERE id = $2 AND company_id = $3
+            `, [JSON.stringify({ audit_bundle_id: bundle.id }), reportId, companyId]);
+            for (const evidence of evidenceResult.rows) {
+                await client.query(`
+                    INSERT INTO audit_bundle_evidence (
+                        audit_bundle_id, evidence_document_id, checksum_sha256, storage_provider,
+                        storage_key, original_filename, mime_type, file_size_bytes, evidence_type,
+                        reporting_period_start, reporting_period_end
+                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                `, [
+                    bundle.id, evidence.id, evidence.checksum_sha256.toLowerCase(),
+                    evidence.storage_provider, evidence.storage_key,
+                    evidence.original_filename || `${evidence.id}.bin`, evidence.mime_type,
+                    evidence.file_size_bytes, evidence.evidence_type,
+                    evidence.reporting_period_start, evidence.reporting_period_end
+                ]);
+            }
+            await client.query('COMMIT');
+            await this.jobQueue.enqueue({
+                type: 'audit_bundle', reportId, auditBundleId: bundle.id, companyId
+            });
+            return {
+                id: bundle.id,
+                reportId,
+                version: Number(bundle.version),
+                status: bundle.status,
+                assuranceStatus: bundle.assurance_status,
+                downloadUrl: null,
+                createdAt: bundle.created_at
+            };
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    async getAuditBundle(companyId, auditBundleId) {
+        const result = await this.database.query(`
+            SELECT id, report_id, product_id, calculation_snapshot_id, version, status,
+                   assurance_status, manifest_sha256, bundle_sha256, file_size_bytes,
+                   original_filename, error_message, completed_at, created_at
+            FROM audit_bundles
+            WHERE id = $1 AND company_id = $2
+        `, [auditBundleId, companyId]);
+        const row = result.rows[0];
+        if (!row) return null;
+        return {
+            id: row.id,
+            reportId: row.report_id,
+            productId: row.product_id,
+            calculationSnapshotId: row.calculation_snapshot_id,
+            version: Number(row.version),
+            status: row.status,
+            assuranceStatus: row.assurance_status,
+            manifestSha256: row.manifest_sha256,
+            bundleSha256: row.bundle_sha256,
+            fileSizeBytes: Number(row.file_size_bytes || 0),
+            filename: row.original_filename,
+            errorMessage: row.error_message,
+            downloadUrl: row.status === 'completed' ? `/api/reports/${row.report_id}/download` : null,
+            completedAt: row.completed_at,
+            createdAt: row.created_at
+        };
+    }
+
+    async verifyAuditBundleFile(reportId, companyId, filePath) {
+        const result = await this.database.query(`
+            SELECT bundle_sha256, file_size_bytes
+            FROM audit_bundles
+            WHERE report_id = $1 AND company_id = $2 AND status = 'completed'
+        `, [reportId, companyId]);
+        const row = result.rows[0];
+        if (!row || !/^[a-f0-9]{64}$/i.test(row.bundle_sha256 || '')) return false;
+        const buffer = await fs.promises.readFile(filePath);
+        return buffer.length === Number(row.file_size_bytes) &&
+            sha256(buffer) === row.bundle_sha256.toLowerCase();
+    }
+
+    async _generateAuditBundle(reportId, auditBundleId, companyId) {
+        const client = await this.database.connect();
+        let temporaryPath;
+        try {
+            const bundleResult = await client.query(`
+                SELECT ab.*, p.sku, p.name,
+                       ps.version AS snapshot_version, ps.payload AS snapshot_payload,
+                       ps.calculated_at, ps.engine_version, ps.methodology_version,
+                       ps.factor_registry_version, ps.gwp_basis, ps.canonical_input_hash
+                FROM audit_bundles ab
+                INNER JOIN products p ON p.id = ab.product_id AND p.company_id = ab.company_id
+                INNER JOIN product_assessment_snapshots ps
+                  ON ps.id = ab.calculation_snapshot_id AND ps.company_id = ab.company_id
+                WHERE ab.id = $1 AND ab.report_id = $2 AND ab.company_id = $3
+            `, [auditBundleId, reportId, companyId]);
+            if (bundleResult.rows.length === 0) throw new Error('Audit bundle not found');
+            const row = bundleResult.rows[0];
+            if (row.status === 'completed') {
+                const completedPath = path.resolve(this.uploadsRoot, row.storage_key || '');
+                const completedRelative = path.relative(this.uploadsRoot, completedPath);
+                if (!row.storage_key || completedRelative.startsWith('..') || path.isAbsolute(completedRelative)) {
+                    throw new Error('Completed Audit Pack has an invalid storage path');
+                }
+                const completedFile = await fs.promises.readFile(completedPath);
+                if (completedFile.length !== Number(row.file_size_bytes) ||
+                    sha256(completedFile) !== String(row.bundle_sha256 || '').toLowerCase()) {
+                    throw new Error('Completed Audit Pack failed its immutable checksum');
+                }
+                return { auditBundleId, reportId, bundleSha256: row.bundle_sha256 };
+            }
+            const evidenceResult = await client.query(`
+                SELECT * FROM audit_bundle_evidence
+                WHERE audit_bundle_id = $1 ORDER BY evidence_document_id
+            `, [auditBundleId]);
+            const evidenceFiles = [];
+            for (const evidence of evidenceResult.rows) {
+                if (evidence.storage_provider !== 'local') {
+                    throw new Error(`Unsupported evidence storage provider: ${evidence.storage_provider}`);
+                }
+                const evidencePath = path.resolve(this.uploadsRoot, evidence.storage_key);
+                const relative = path.relative(this.uploadsRoot, evidencePath);
+                if (relative.startsWith('..') || path.isAbsolute(relative)) {
+                    throw new Error('Invalid evidence storage path');
+                }
+                evidenceFiles.push({ ...evidence, buffer: await fs.promises.readFile(evidencePath) });
+            }
+            const payload = typeof row.snapshot_payload === 'string'
+                ? JSON.parse(row.snapshot_payload) : row.snapshot_payload;
+            const archive = await buildAuditBundleArchive({
+                bundle: row,
+                product: { id: row.product_id, sku: row.sku, name: row.name },
+                snapshot: {
+                    id: row.calculation_snapshot_id,
+                    version: row.snapshot_version,
+                    payload,
+                    calculated_at: row.calculated_at,
+                    engine_version: row.engine_version,
+                    methodology_version: row.methodology_version,
+                    factor_registry_version: row.factor_registry_version,
+                    gwp_basis: row.gwp_basis,
+                    canonical_input_hash: row.canonical_input_hash
+                },
+                evidenceFiles,
+                createdAt: row.created_at
+            });
+            const storageKey = `reports/${companyId}/${new Date().getFullYear()}/${auditBundleId}.zip`;
+            const filePath = path.resolve(this.uploadsRoot, storageKey);
+            const relative = path.relative(this.uploadsRoot, filePath);
+            if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Invalid bundle storage path');
+            await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+            temporaryPath = `${filePath}.tmp-${process.pid}`;
+            await fs.promises.writeFile(temporaryPath, archive.buffer);
+            const stored = await fs.promises.readFile(temporaryPath);
+            if (stored.length !== archive.buffer.length || sha256(stored) !== archive.bundleSha256) {
+                throw new Error('Stored Audit Pack verification failed');
+            }
+            await fs.promises.rename(temporaryPath, filePath);
+            temporaryPath = null;
+            const filename = safeFilename(`AuditPack_${row.sku}_v${row.version}.zip`, `AuditPack_${row.id}.zip`);
+            await client.query('BEGIN');
+            await client.query(`
+                UPDATE audit_bundles
+                SET status = 'completed', manifest = $1::jsonb, manifest_sha256 = $2,
+                    bundle_sha256 = $3, storage_provider = 'local', storage_key = $4,
+                    original_filename = $5, mime_type = 'application/zip', file_size_bytes = $6,
+                    error_message = NULL, completed_at = now(), updated_at = now()
+                WHERE id = $7 AND company_id = $8 AND status IN ('processing', 'failed')
+            `, [JSON.stringify(archive.manifest), archive.manifestSha256, archive.bundleSha256,
+                storageKey, filename, archive.buffer.length, auditBundleId, companyId]);
+            await client.query(`
+                UPDATE reports
+                SET status = 'completed', storage_provider = 'local', storage_key = $1,
+                    original_filename = $2, download_url = $3, file_size_bytes = $4,
+                    file_format = 'zip', generated_at = now(), updated_at = now(),
+                    metadata = COALESCE(metadata, '{}'::jsonb) || $5::jsonb
+                WHERE id = $6 AND company_id = $7
+            `, [storageKey, filename, `/api/reports/${reportId}/download`, archive.buffer.length,
+                JSON.stringify({ manifest_sha256: archive.manifestSha256, bundle_sha256: archive.bundleSha256 }),
+                reportId, companyId]);
+            await client.query('COMMIT');
+            return { auditBundleId, reportId, bundleSha256: archive.bundleSha256 };
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            if (temporaryPath) await fs.promises.unlink(temporaryPath).catch(() => {});
+            await client.query(`
+                UPDATE audit_bundles SET status = 'failed', error_message = $1, updated_at = now()
+                WHERE id = $2 AND company_id = $3 AND status <> 'completed'
+            `, [String(error.message || error), auditBundleId, companyId]).catch(() => {});
+            await client.query(`
+                UPDATE reports SET status = 'failed', error_message = $1, updated_at = now()
+                WHERE id = $2 AND company_id = $3 AND status <> 'completed'
+            `, [String(error.message || error), reportId, companyId]).catch(() => {});
             throw error;
         } finally {
             client.release();

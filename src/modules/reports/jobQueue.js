@@ -55,6 +55,13 @@ class ReportJobQueue {
   }
 
   _rowToTask(row) {
+    const metadata = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : (row.metadata || {});
+    if (metadata.audit_bundle_id) {
+      return {
+        type: 'audit_bundle', reportId: row.id, companyId: row.company_id,
+        auditBundleId: metadata.audit_bundle_id
+      };
+    }
     if (row.report_type === 'dataset_export') {
       return {
         type: 'dataset_export', reportId: row.id, companyId: row.company_id,
@@ -185,6 +192,10 @@ class ReportJobQueue {
       case 'shipment_export_document':
         return this.loadExportShipmentService().generateDocumentFile(
           task.reportId, task.exportDocumentId, task.companyId
+        );
+      case 'audit_bundle':
+        return this.loadReportsService()._generateAuditBundle(
+          task.reportId, task.auditBundleId, task.companyId
         );
       case 'evidence_process':
         await this.loadEvidenceProcessor().processStoredEvidence(task);

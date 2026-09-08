@@ -441,6 +441,65 @@ router.post(
     }
 );
 
+router.post(
+    '/v2/audit-packs',
+    authenticate,
+    requireRole('b2b'),
+    async (req, res, next) => {
+        try {
+            if (!req.companyId) {
+                return res.status(404).json({
+                    success: false,
+                    error: { code: 'NO_COMPANY', message: 'No company associated with this user' }
+                });
+            }
+            const bundle = await reportsService.createAuditBundle(
+                req.companyId,
+                req.userId,
+                req.body?.productId || req.body?.product_id
+            );
+            await logAuditTrail({
+                companyId: req.companyId,
+                userId: req.userId,
+                dataGroup: 'reports',
+                changedField: 'audit_bundle.created',
+                newValue: bundle.id,
+                reason: 'audit_bundle.create',
+                notes: `Created internal-review Audit Pack v${bundle.version}`
+            });
+            return res.status(202).json({ success: true, data: bundle });
+        } catch (error) {
+            next(error);
+        }
+    }
+);
+
+router.get(
+    '/v2/audit-packs/:id',
+    authenticate,
+    requireRole('b2b'),
+    async (req, res, next) => {
+        try {
+            if (!req.companyId) {
+                return res.status(404).json({
+                    success: false,
+                    error: { code: 'NO_COMPANY', message: 'No company associated with this user' }
+                });
+            }
+            const bundle = await reportsService.getAuditBundle(req.companyId, req.params.id);
+            if (!bundle) {
+                return res.status(404).json({
+                    success: false,
+                    error: { code: 'AUDIT_BUNDLE_NOT_FOUND', message: 'Audit Pack not found' }
+                });
+            }
+            return res.status(200).json({ success: true, data: bundle });
+        } catch (error) {
+            next(error);
+        }
+    }
+);
+
 /**
  * GET /api/reports/:id
  * Get report detail
@@ -592,7 +651,8 @@ router.get(
                 'pdf': 'application/pdf',
                 'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 'csv': 'text/csv',
-                'json': 'application/json'
+                'json': 'application/json',
+                'zip': 'application/zip'
             };
 
             const storageProvider = fileStatus.storage_provider || 'local';
@@ -655,6 +715,17 @@ router.get(
                             }
                         });
                     }
+                }
+
+                if (fileStatus.file_format === 'zip' &&
+                    !(await reportsService.verifyAuditBundleFile(reportId, companyId, filePath))) {
+                    return res.status(409).json({
+                        success: false,
+                        error: {
+                            code: 'REPORT_INTEGRITY_CHECK_FAILED',
+                            message: 'The Audit Pack file no longer matches its immutable checksum.'
+                        }
+                    });
                 }
 
                 res.setHeader('Content-Type', mimeType);

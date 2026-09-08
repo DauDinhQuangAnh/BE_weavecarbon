@@ -48,6 +48,8 @@ describe('reports compatibility entrypoints', () => {
       'GET /export-data/:type',
       'GET /v2/template',
       'POST /v2/snapshots',
+      'POST /v2/audit-packs',
+      'GET /v2/audit-packs/:id',
       'GET /:id',
       'GET /:id/status',
       'GET /:id/download',
