@@ -31,6 +31,8 @@ This tracker separates four facts that must never be conflated:
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
+| Backend R14 contribution-term commit | `715df83c9c082827ac9de26778b82b9e68cdd58e` |
+| Frontend R14 contribution-term commit | `cf19cd5ce037d088c692e370ec1460e14c861543` |
 | Production site | `https://weavecarbon.com` |
 | Production state at 2026-09-08 | Healthy on the old `main`; the feature branch is not deployed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
@@ -111,7 +113,7 @@ Known overall checks at the baseline commits:
 | 11 | REACH/SVHC dossier | Conditional by substance/material/threshold | `PARTIAL` | Generic evidence/document records | Substance-level model, list version, thresholds, lab and safe-use output |
 | 12 | Product Carbon Footprint/ISO 14067 support | Buyer/tender/claim dependent | `INTERNAL_ONLY` | Server-authoritative partial PCF PDF/XLSX | Goal/scope, functional unit, DQ, allocation, uncertainty and assurance gate |
 | 13 | Corporate/facility GHG report | Buyer/ESG/assurance dependent | `INTERNAL_ONLY` | Electricity/fuel worksheet | Organisational boundary, full sources/gases, base year and exclusions |
-| 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Production fails closed; demo/evidence/fake-lock risks contained | Preserve raw AD x EF and build immutable server evidence bundle |
+| 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Production fails closed; new calculations preserve versioned AD × EF contribution terms | Bind evidence and build immutable server manifest/bundle |
 | 15 | Apparel & Footwear PEF/PEFCR | Voluntary or buyer-specific | `NOT_STARTED` | Climate-only partial PCF is not PEF | Full life cycle, EF datasets/impact categories and validation statement |
 | 16 | ESPR Digital Product Passport | When product delegated act applies | `BLOCKED_BY_LAW` | Guarded prototype only | Registry/service/access/version architecture; wait for final product schema |
 | 17 | Textile/footwear EPR reporting | Member-State implementation | `BLOCKED_BY_LAW` | Static requirement label only | Country registry, producer/PRO identity and placed-on-market ledger |
@@ -322,9 +324,22 @@ QA/QC, approvals/exceptions; assumptions/allocation/uncertainty/change history; 
 - Only locked/third-party-verified, unexpired, stored evidence with a real file size and 64-character SHA-256 is displayed.
 - UI and report copy no longer claim ISO certification, independent verifier approval or a working signed share link.
 
-**Remaining:** expose immutable calculation contribution terms from the server (activity, activity unit, factor value/unit,
-factor identity/version/source/geography/period/allocation); bind approved source files; create a server-side checksummed
-manifest and downloadable bundle; add approval/issue/version lifecycle and an actually signed, expiring read-only link.
+**Contribution-term increment implemented:**
+
+- New server calculations emit `carbon-contribution-terms-v1` rows for materials, accessories, packaging, manufacturing
+  energy and transport, with activity/unit, factor identity/version/value/unit/source/year/geography, GWP/boundary/proxy
+  metadata, exact kg CO2e and allocation assumptions.
+- The complete result is canonicalised into the existing immutable product assessment snapshot; a persistence test verifies
+  contribution terms survive the authoritative create flow.
+- Frontend response normalisation preserves the terms and rejects rows missing factor identity/version or units.
+- The production Audit Pack reads only these authoritative rows. It does not permit caller-supplied or demo rows, and its
+  CSV schema carries factor provenance and allocation metadata.
+- Existing snapshots created before this change do not contain contribution terms. They remain blocked and must be
+  recalculated to create a new snapshot; no legacy term is fabricated.
+
+**Remaining:** bind each activity/factor claim to approved source files and reporting periods; create a tenant-scoped,
+server-side checksummed manifest and downloadable bundle; add approval/issue/version lifecycle and an actually signed,
+expiring read-only link. Production download buttons remain disabled until that server bundle exists.
 
 **Definition of Done:** production fails closed without a real product/calculation/evidence; no sample fallback; raw AD x EF
 and units are preserved; lock/approval comes from backend state; server stores a checksummed manifest and evidence bundle;
@@ -511,6 +526,14 @@ Frontend core:
 - `lib/weave-v2/auditPackV2.ts`
 - `lib/reports/productCarbonTemplate.ts`
 - `lib/reports/cbamTemplate.ts`
+- `lib/carbon/types.ts`
+
+Backend carbon trace core:
+
+- `src/modules/carbon/core/engine.js`
+- `src/modules/carbon/core/stages.js`
+- `src/modules/carbon/calculationSnapshot.js`
+- `tests/modules/carbon/core/calculationTerms.test.js`
 
 ## 13. Change log
 
@@ -555,3 +578,18 @@ Frontend core:
 - Frontend 37 files/165 tests, check and production build passed; 18 unrelated pre-existing lint warnings remain.
 - Exact next action: add a tenant-scoped backend audit-bundle model/API backed by immutable calculation contribution terms
   and evidence file hashes, then connect the disabled production download buttons to that job.
+
+### 2026-09-08 — R14 authoritative contribution terms
+
+- Status remains `PARTIAL`; this increment completes the raw AD × EF preservation prerequisite but does not create an
+  issued, assured or downloadable Audit Pack.
+- Backend commit `715df83c9c082827ac9de26778b82b9e68cdd58e` records versioned contribution terms in every new authoritative
+  calculation and immutable product assessment snapshot.
+- Frontend commit `cf19cd5ce037d088c692e370ec1460e14c861543` normalises and displays only those server terms, enriches the internal
+  CSV schema, and keeps production downloads disabled pending a server-created immutable bundle.
+- Automated checks passed locally: backend 91 suites/561 tests plus verify; frontend 37 files/165 tests plus check,
+  typecheck and production build. The 18 frontend lint warnings are pre-existing and unrelated to this increment.
+- Existing snapshots require recalculation to obtain `carbon-contribution-terms-v1`; they fail closed rather than receiving
+  reconstructed or placeholder rows.
+- Exact next action: add the tenant-scoped audit bundle tables/API/job, bind approved evidence hashes to its manifest, then
+  verify immutability, tenant isolation, download checksum/MIME and issue/supersede behavior.
