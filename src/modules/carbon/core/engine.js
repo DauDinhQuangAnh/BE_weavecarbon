@@ -153,6 +153,13 @@ const calculateCarbonFootprint = (rawInput) => {
         : []),
       ...notes
     ]),
+    calculationTermsSchemaVersion: 'carbon-contribution-terms-v1',
+    calculationTerms: [
+      ...materials.calculationTerms,
+      ...packaging.calculationTerms,
+      ...manufacturing.calculationTerms,
+      ...transport.calculationTerms
+    ],
     factorSourceSummary: aggregation.factorSourceSummary,
     dataQualityBreakdown: quality.dataQualityBreakdown,
     stageBreakdown: aggregation.stageBreakdown

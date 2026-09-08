@@ -93,16 +93,29 @@ describe('product assessment authoritative carbon persistence', () => {
     expect(snapshot.carbonResults).toMatchObject({
       perProduct: { total: 0.21 },
       confidenceScore: 15,
+      calculationTermsSchemaVersion: 'carbon-contribution-terms-v1',
       trace: {
         calculationGraphVersion: 'textile-pcf-2.1.0',
         ruleEngineVersion: 'scope-quality-rss-1.0.0'
       }
     });
+    expect(snapshot.carbonResults.calculationTerms).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: 'finished_goods_manufacturing',
+        activityUnit: 'kWh',
+        factorId: expect.any(String),
+        factorVersionId: expect.any(String),
+        factorUnit: expect.any(String),
+        kgCo2e: expect.any(Number)
+      })
+    ]));
     expect(snapshot.carbonInput).toMatchObject({ unitMassKg: 0.2, quantity: 10 });
     expect(snapshot).not.toHaveProperty('carbon_results');
     expect(snapshot).not.toHaveProperty('total_co2e');
     expect(snapshot).not.toHaveProperty('scope3');
     expect(response.carbonResults.perProduct.total).toBe(0.21);
+    expect(response.carbonResults.calculationTermsSchemaVersion)
+      .toBe('carbon-contribution-terms-v1');
     expect(response.carbonAuthority).toMatchObject({
       calculationId: 'snapshot-1',
       calculationVersion: 1,

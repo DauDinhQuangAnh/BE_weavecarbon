@@ -12,11 +12,33 @@ const {
   maxQuality
 } = require('./stageModel');
 
+const buildCalculationTerm = ({ stage, detail, activity, activityUnit, factor, kgCo2e, allocation }) => ({
+  stage,
+  detail,
+  activity,
+  activityUnit,
+  factorId: factor.id,
+  factorVersionId: factor.factorVersionId,
+  factorValue: factor.value,
+  factorUnit: factor.unit,
+  source: factor.source,
+  sourceUrl: factor.sourceUrl,
+  sourceYear: factor.year ?? null,
+  geography: factor.geography,
+  boundaryType: factor.boundaryType,
+  gwpBasis: factor.gwpBasis,
+  factorClass: factor.factorClass,
+  isProxy: Boolean(factor.isProxy),
+  kgCo2e,
+  allocation: allocation || null
+});
+
 const calculateMaterials = ({ input, unitMassKg, methodology }) => {
   const stage = createStageAccumulator();
   const notes = [];
   const warnings = [];
   const contributionTerms = [];
+  const calculationTerms = [];
   let scope3Amount = 0;
   let biogenicCarbonKgCO2e = 0;
 
@@ -55,12 +77,18 @@ const calculateMaterials = ({ input, unitMassKg, methodology }) => {
     const yieldToProduct = isFiniteNumber(material.yieldToProduct) && material.yieldToProduct > 0
       ? clamp(material.yieldToProduct, 0.01, 1)
       : 1;
-    const amount = (materialBaseMassKg * (percentage / 100) / yieldToProduct) * factor.value;
+    const materialMassKg = materialBaseMassKg * (percentage / 100) / yieldToProduct;
+    const amount = materialMassKg * factor.value;
 
     if (amount > 0) {
       stage.amount += amount;
       addFactorSummary(stage, 'materials', factor);
       contributionTerms.push({ amount, factor });
+      calculationTerms.push(buildCalculationTerm({
+        stage: 'materials', detail: material.name || material.type || factor.label,
+        activity: materialMassKg, activityUnit: 'kg', factor, kgCo2e: amount,
+        allocation: { percentage, yieldToProduct }
+      }));
       scope3Amount += amount;
     }
 
@@ -101,6 +129,11 @@ const calculateMaterials = ({ input, unitMassKg, methodology }) => {
     stage.amount += amount;
     addFactorSummary(stage, 'materials', factor);
     contributionTerms.push({ amount, factor });
+    calculationTerms.push(buildCalculationTerm({
+      stage: 'materials', detail: accessory.name || accessory.type || factor.label,
+      activity: accessory.weightKg, activityUnit: 'kg', factor, kgCo2e: amount,
+      allocation: { kind: 'accessory' }
+    }));
     scope3Amount += amount;
   }
 
@@ -109,6 +142,7 @@ const calculateMaterials = ({ input, unitMassKg, methodology }) => {
     notes,
     warnings,
     contributionTerms,
+    calculationTerms,
     scope3Amount,
     biogenicCarbonKgCO2e,
     bomCoverage,
@@ -120,6 +154,7 @@ const calculatePackaging = ({ input }) => {
   const stage = createStageAccumulator();
   const notes = [];
   const contributionTerms = [];
+  const calculationTerms = [];
   let packagingMassKg = 0;
   let scope3Amount = 0;
 
@@ -137,6 +172,11 @@ const calculatePackaging = ({ input }) => {
     stage.amount += amount;
     addFactorSummary(stage, 'packaging', factor);
     contributionTerms.push({ amount, factor });
+    calculationTerms.push(buildCalculationTerm({
+      stage: 'packaging', detail: input.packaging.label || factor.label,
+      activity: packagingMassKg, activityUnit: 'kg', factor, kgCo2e: amount,
+      allocation: { yieldToProduct: packagingYield }
+    }));
     scope3Amount += amount;
   } else {
     if (input.includePackagingFallbackNote ?? true) {
@@ -145,13 +185,14 @@ const calculatePackaging = ({ input }) => {
     stage.quality = maxQuality(stage.quality, 'market_default_or_missing');
   }
 
-  return { stage, notes, contributionTerms, packagingMassKg, scope3Amount };
+  return { stage, notes, contributionTerms, calculationTerms, packagingMassKg, scope3Amount };
 };
 
 const calculateManufacturing = ({ input, unitMassKg, methodology, reportingActorRole }) => {
   const stage = createStageAccumulator();
   const notes = [];
   const contributionTerms = [];
+  const calculationTerms = [];
   const energyBreakdown = [];
   const scopes = { scope1: 0, scope2: 0, scope3: 0 };
   const processFactorIds = input.processFactorIds.length > 0
@@ -204,7 +245,8 @@ const calculateManufacturing = ({ input, unitMassKg, methodology, reportingActor
     const factor = resolveEnergyFactor(entry.factorId, entry.geography || manufacturingGeography);
     addFactorSummary(stage, 'finished_goods_manufacturing', factor);
     const normalizedShare = Math.max(0, entry.percentage || 0) / normalizedEnergyDenominator;
-    const scopedAmount = unitMassKg * processIntensityKwhPerKg * factor.value * normalizedShare;
+    const activityKwh = unitMassKg * processIntensityKwhPerKg * normalizedShare;
+    const scopedAmount = activityKwh * factor.value;
     const scopeKey = resolveEnergyScope(factor, reportingActorRole);
     scopes[scopeKey] += scopedAmount;
     energyBreakdown.push({
@@ -213,6 +255,13 @@ const calculateManufacturing = ({ input, unitMassKg, methodology, reportingActor
       amount: roundPerProduct(scopedAmount),
       scope: scopeKey
     });
+    if (scopedAmount > 0) {
+      calculationTerms.push(buildCalculationTerm({
+        stage: 'finished_goods_manufacturing', detail: factor.label,
+        activity: activityKwh, activityUnit: 'kWh', factor, kgCo2e: scopedAmount,
+        allocation: { normalizedEnergyShare: normalizedShare, processFactorIds }
+      }));
+    }
     return sum + factor.value * normalizedShare;
   }, 0);
 
@@ -236,6 +285,7 @@ const calculateManufacturing = ({ input, unitMassKg, methodology, reportingActor
     stage,
     notes,
     contributionTerms,
+    calculationTerms,
     energyBreakdown,
     scopes,
     processFactorIds,
@@ -248,6 +298,7 @@ const calculateTransport = ({ input, unitMassKg, packagingMassKg }) => {
   const stage = createStageAccumulator();
   const notes = [];
   const contributionTerms = [];
+  const calculationTerms = [];
   let scope3Amount = 0;
   const transportEntries = input.transport;
   const shippedMassTonne = (unitMassKg + packagingMassKg) / 1000;
@@ -282,6 +333,11 @@ const calculateTransport = ({ input, unitMassKg, packagingMassKg }) => {
     stage.amount += amount;
     addFactorSummary(stage, 'logistics_and_storage', factor);
     contributionTerms.push({ amount, factor });
+    calculationTerms.push(buildCalculationTerm({
+      stage: 'logistics_and_storage', detail: transport.mode || factor.label,
+      activity: shippedMassTonne * distanceKm, activityUnit: 'tonne.km', factor, kgCo2e: amount,
+      allocation: { distanceKm, shippedMassTonne, usedDefaultDistance: !explicitDistanceKm }
+    }));
     scope3Amount += amount;
   }
 
@@ -290,12 +346,13 @@ const calculateTransport = ({ input, unitMassKg, packagingMassKg }) => {
     stage.quality = maxQuality(stage.quality, 'market_default_or_missing');
   }
 
-  return { stage, notes, contributionTerms, scope3Amount, transportEntries };
+  return { stage, notes, contributionTerms, calculationTerms, scope3Amount, transportEntries };
 };
 
 module.exports = {
   calculateManufacturing,
   calculateMaterials,
   calculatePackaging,
-  calculateTransport
+  calculateTransport,
+  buildCalculationTerm
 };
