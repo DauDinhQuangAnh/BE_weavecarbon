@@ -38,6 +38,7 @@ This tracker separates four facts that must never be conflated:
 | Backend R14 evidence-review commit | `acec186b82ea7ff8691298e16af7c76793ddc6c7` |
 | Frontend R14 evidence-review commit | `56f2bf07afa3f455473502808d324e85411ca890` |
 | Backend R14 isolated-pilot commit | `e2c03ad50e0ff9856d9c64cd4843bc175b0080d3` |
+| Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Production site | `https://weavecarbon.com` |
 | Production state verified at 2026-09-09 | FE/BE containers healthy on `main`; R14 files are absent from both host checkouts and running images, so the feature branch is not deployed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
@@ -98,9 +99,10 @@ Known overall checks at the latest feature commits:
 
 - Backend: 94/94 suites and 582/582 tests passed; `npm run verify` passed.
 - Frontend: 38/38 files and 167/167 tests passed; `npm run check` and production build passed.
-- Migration snapshot integration test was not executed because the legacy database fixture, Docker daemon and local
-  PostgreSQL client were unavailable. The guarded Audit Pack pilot is wired to CI's disposable PostgreSQL but has not yet
-  produced a result for this commit. Static migration contract tests passed. Staging migration remains mandatory.
+- Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
+  fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
+  pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
+  retained by CI for 14 days. This proves the synthetic integration gate, not a human real-data staging approval.
 
 ## 5. Master dossier matrix
 
@@ -685,7 +687,9 @@ Backend carbon trace core:
 - Supersession semantics were corrected: a newer draft cannot invalidate an issued bundle; the older bundle becomes
   `superseded` only when the replacement is issued. A newer completed version blocks issuance of the older unissued pack.
 - Local syntax, lint and unit checks can run without PostgreSQL. The end-to-end pilot is wired to CI's disposable PostgreSQL
-  service because Docker Desktop and a local PostgreSQL client are unavailable on this workstation.
+  service because Docker Desktop and a local PostgreSQL client are unavailable on this workstation. CI run
+  `34289284974` passed all jobs, including migrations, the Audit Pack pilot, restore drill and API integration; its
+  `audit-pack-pilot-34289284974` artifact is retained for 14 days.
 - Production was not accessed, migrated, restarted or deployed during this increment.
 - Exact next action: obtain/confirm a non-production staging database, run the guarded pilot and migration/restore gates,
   then complete one real-evidence human review and record reviewer plus bundle checksum here.
