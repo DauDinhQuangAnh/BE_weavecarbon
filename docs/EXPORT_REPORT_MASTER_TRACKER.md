@@ -36,7 +36,7 @@ This tracker separates four facts that must never be conflated:
 | Backend R14 immutable-bundle commit | `f973ab101fa5fbf5149bc4a006405606218be198` |
 | Frontend R14 immutable-bundle commit | `aeb19e31023b48dfcc4f5644e2a1119ad77ecdf4` |
 | Production site | `https://weavecarbon.com` |
-| Production state at 2026-09-08 | Healthy on the old `main`; the feature branch is not deployed |
+| Production state verified at 2026-09-09 | FE/BE containers healthy on `main`; R14 files are absent from both host checkouts and running images, so the feature branch is not deployed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
 Never put server passwords, database credentials, tokens or `.env` values in this file.
@@ -623,5 +623,9 @@ Backend carbon trace core:
   OpenAPI contract sync, typecheck and production build. The 18 frontend lint warnings remain pre-existing.
 - The legacy migration snapshot command still reports its missing legacy fixture and therefore does not prove migration 019
   on a real database. No production database or upload directory was mutated.
+- A read-only VPS inspection on `obk-vm-ext-1` confirmed both production checkouts are clean on `main`, the FE/BE
+  containers are healthy, and neither the host checkouts nor running images contain the R14 bundle modules. Remote
+  `feat/shipment-export-workflow` points to backend tracker commit `a54cd9a695d4175ea0b124760bbe48caa5b7ed86`
+  and frontend commit `aeb19e31023b48dfcc4f5644e2a1119ad77ecdf4`; pushing the feature branch did not affect production.
 - Exact next action: apply migration 019 to staging, create a recalculated product with locked evidence, download/open/check
   its ZIP, then implement term-to-evidence mapping and reviewer issue/supersede controls.
