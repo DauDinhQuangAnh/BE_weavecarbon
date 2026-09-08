@@ -35,6 +35,8 @@ This tracker separates four facts that must never be conflated:
 | Frontend R14 contribution-term commit | `cf19cd5ce037d088c692e370ec1460e14c861543` |
 | Backend R14 immutable-bundle commit | `f973ab101fa5fbf5149bc4a006405606218be198` |
 | Frontend R14 immutable-bundle commit | `aeb19e31023b48dfcc4f5644e2a1119ad77ecdf4` |
+| Backend R14 evidence-review commit | `acec186b82ea7ff8691298e16af7c76793ddc6c7` |
+| Frontend R14 evidence-review commit | `56f2bf07afa3f455473502808d324e85411ca890` |
 | Production site | `https://weavecarbon.com` |
 | Production state verified at 2026-09-09 | FE/BE containers healthy on `main`; R14 files are absent from both host checkouts and running images, so the feature branch is not deployed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
@@ -352,9 +354,23 @@ QA/QC, approvals/exceptions; assumptions/allocation/uncertainty/change history; 
 - The frontend creates, polls and downloads only the server bundle. Browser-generated production JSON/CSV was removed.
 - Output remains explicitly `internal_review` and `not_verified`; this is not an assurance statement or authority filing.
 
-**Remaining:** bind each activity/factor claim to specific approved source files and reporting periods; add QA/QC exceptions,
-reviewer approval and issue/supersede lifecycle; add an actually signed, expiring read-only link and external assurance
-record. Production/staging migration and a real evidence pilot remain mandatory.
+**Evidence-review increment implemented:**
+
+- Every calculation term now receives a deterministic term key and an immutable coverage row in the ZIP manifest. Activity
+  evidence must declare the exact one-based calculation-row number, match an allowed stage-specific document type and carry
+  a valid reporting-period range. Factor evidence must declare the exact `factorVersionId` and a reporting period.
+- Evidence upload can be assigned to a real product and can record the calculation-row numbers and factor-version IDs it
+  supports. These user-declared audit claims are preserved when later OCR results are merged; they are never inferred from
+  document presence alone.
+- Migration 020 adds tenant-bound, append-only human review and internal issuance records. Issuance is blocked unless the
+  immutable bundle is complete, every term is covered, the latest review approves it, no blocking QA exception remains and
+  no newer bundle supersedes it. Issuance does not change `assuranceStatus: not_verified`.
+- The Audit UI shows row numbers, per-row evidence gaps, latest lifecycle state and separate review/internal-issue controls.
+  A completed ZIP remains downloadable for internal review even when issuance is blocked.
+
+**Remaining:** apply migrations 019/020 and run a real-evidence staging pilot; add an actually signed assertion and expiring
+read-only share link; add an external-assurance record/actor workflow. Structured QA exceptions are supported by the API but
+still need a dedicated multi-row frontend editor. No external assurance or legal usability is claimed.
 
 **Definition of Done:** production fails closed without a real product/calculation/evidence; no sample fallback; raw AD x EF
 and units are preserved; lock/approval comes from backend state; server stores a checksummed manifest and evidence bundle;
@@ -629,3 +645,17 @@ Backend carbon trace core:
   and frontend commit `aeb19e31023b48dfcc4f5644e2a1119ad77ecdf4`; pushing the feature branch did not affect production.
 - Exact next action: apply migration 019 to staging, create a recalculated product with locked evidence, download/open/check
   its ZIP, then implement term-to-evidence mapping and reviewer issue/supersede controls.
+
+### 2026-09-09 — R14 explicit evidence coverage and internal review lifecycle
+
+- Status remains `PARTIAL`. Backend commit `acec186b82ea7ff8691298e16af7c76793ddc6c7` adds migration 020, deterministic term-to-evidence coverage, explicit
+  activity-row and factor-version claims, reporting-period gates, append-only human reviews, blocking QA exceptions and an
+  internal issue/supersede lifecycle. Tenant identity is enforced both in service queries and composite foreign keys.
+- Frontend commit `56f2bf07afa3f455473502808d324e85411ca890` adds product-scoped evidence upload metadata, displays calculation row numbers and exact gaps,
+  and exposes review/internal-issue controls without changing the `not_verified` assurance label.
+- Automated checks passed locally: backend verify plus 94 suites/580 tests; frontend check plus 38 files/167 tests and a
+  production build. The 18 frontend lint warnings remain pre-existing and unrelated to this increment.
+- Migrations 019/020 are still unproven against a fixed legacy staging fixture. Production remains healthy on old `main` and
+  was not migrated, restarted or otherwise mutated.
+- Exact next action: run both migrations on staging with backup/restore evidence, complete one real product through the new
+  evidence matrix and manual ZIP review, then implement signed assertion/share delivery and external-assurance records.
