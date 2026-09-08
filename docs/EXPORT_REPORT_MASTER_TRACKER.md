@@ -28,8 +28,8 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Working branch in both repositories | `feat/shipment-export-workflow` |
-| Backend baseline on this branch | `c927d6b19565ca690208424b22fad0a81af91088` |
-| Frontend baseline on this branch | `13aeea6fbb341de7d3d4bf100bd085946112692b` |
+| Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
+| Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Production site | `https://weavecarbon.com` |
 | Production state at 2026-09-08 | Healthy on the old `main`; the feature branch is not deployed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
@@ -529,6 +529,12 @@ Frontend core:
 - Automated checks passed locally: backend 90 suites/555 tests plus verify; frontend 36 files/161 tests plus check and
   production build. The legacy migration snapshot script could not validate this change because its required fixed
   `00000000-0000-4000-8000-000000000052` fixture is absent; staging migration remains open.
-- Implementation commit hashes must be recorded here after push.
+- Implementation commits: backend `32afddaeb088ffe2afab0af57bd0d238d849bd18`; frontend
+  `4f51dc9e372fcbf31e8228174281d5efe53617b8`.
 - Remaining gate: migration on staging, a >20-line multi-container/partial-carton fixture, PDF/print layout and operator
   review. No production deployment was performed.
+
+### 2026-09-08 — Completed calculator side change
+
+- Frontend commits `00ffb8d` and `13aeea6` added weighted multi-material composition (must total 100%), manual distance,
+  transport mode and tonne-kilometre calculation with tests. This is not itself a compliant PCF or export report.
