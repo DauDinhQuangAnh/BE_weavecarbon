@@ -33,6 +33,8 @@ This tracker separates four facts that must never be conflated:
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
 | Backend R14 contribution-term commit | `715df83c9c082827ac9de26778b82b9e68cdd58e` |
 | Frontend R14 contribution-term commit | `cf19cd5ce037d088c692e370ec1460e14c861543` |
+| Backend R14 immutable-bundle commit | `f973ab101fa5fbf5149bc4a006405606218be198` |
+| Frontend R14 immutable-bundle commit | `aeb19e31023b48dfcc4f5644e2a1119ad77ecdf4` |
 | Production site | `https://weavecarbon.com` |
 | Production state at 2026-09-08 | Healthy on the old `main`; the feature branch is not deployed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
@@ -113,7 +115,7 @@ Known overall checks at the baseline commits:
 | 11 | REACH/SVHC dossier | Conditional by substance/material/threshold | `PARTIAL` | Generic evidence/document records | Substance-level model, list version, thresholds, lab and safe-use output |
 | 12 | Product Carbon Footprint/ISO 14067 support | Buyer/tender/claim dependent | `INTERNAL_ONLY` | Server-authoritative partial PCF PDF/XLSX | Goal/scope, functional unit, DQ, allocation, uncertainty and assurance gate |
 | 13 | Corporate/facility GHG report | Buyer/ESG/assurance dependent | `INTERNAL_ONLY` | Electricity/fuel worksheet | Organisational boundary, full sources/gases, base year and exclusions |
-| 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Production fails closed; new calculations preserve versioned AD × EF contribution terms | Bind evidence and build immutable server manifest/bundle |
+| 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Server builds immutable internal-review ZIP with manifest, calculation and pinned evidence checksums | Map evidence to terms, approval/issue lifecycle and signed share link |
 | 15 | Apparel & Footwear PEF/PEFCR | Voluntary or buyer-specific | `NOT_STARTED` | Climate-only partial PCF is not PEF | Full life cycle, EF datasets/impact categories and validation statement |
 | 16 | ESPR Digital Product Passport | When product delegated act applies | `BLOCKED_BY_LAW` | Guarded prototype only | Registry/service/access/version architecture; wait for final product schema |
 | 17 | Textile/footwear EPR reporting | Member-State implementation | `BLOCKED_BY_LAW` | Static requirement label only | Country registry, producer/PRO identity and placed-on-market ledger |
@@ -337,9 +339,22 @@ QA/QC, approvals/exceptions; assumptions/allocation/uncertainty/change history; 
 - Existing snapshots created before this change do not contain contribution terms. They remain blocked and must be
   recalculated to create a new snapshot; no legacy term is fabricated.
 
-**Remaining:** bind each activity/factor claim to approved source files and reporting periods; create a tenant-scoped,
-server-side checksummed manifest and downloadable bundle; add approval/issue/version lifecycle and an actually signed,
-expiring read-only link. Production download buttons remain disabled until that server bundle exists.
+**Immutable-bundle increment implemented:**
+
+- Migration 019 adds tenant-scoped, versioned `audit_bundles` and pinned `audit_bundle_evidence` records. Database triggers
+  prevent mutation/deletion of completed bundles and prevent adding, changing or removing their pinned evidence rows.
+- `POST /api/reports/v2/audit-packs` selects the tenant's latest authoritative calculation and only current locked or
+  third-party-verified product evidence with a stored file, positive size and real SHA-256.
+- The existing durable report worker creates a deterministic ZIP containing `manifest.json`, `calculation.json`, an
+  evidence index and the exact evidence bytes. It verifies evidence hashes/sizes before completion and records both
+  manifest and bundle SHA-256 values.
+- `GET /api/reports/v2/audit-packs/:id` is company-scoped. Download rechecks stored bundle size and SHA-256 before streaming.
+- The frontend creates, polls and downloads only the server bundle. Browser-generated production JSON/CSV was removed.
+- Output remains explicitly `internal_review` and `not_verified`; this is not an assurance statement or authority filing.
+
+**Remaining:** bind each activity/factor claim to specific approved source files and reporting periods; add QA/QC exceptions,
+reviewer approval and issue/supersede lifecycle; add an actually signed, expiring read-only link and external assurance
+record. Production/staging migration and a real evidence pilot remain mandatory.
 
 **Definition of Done:** production fails closed without a real product/calculation/evidence; no sample fallback; raw AD x EF
 and units are preserved; lock/approval comes from backend state; server stores a checksummed manifest and evidence bundle;
@@ -444,8 +459,8 @@ Do not mark an item complete based only on unit tests. Attach or record the stag
 Before merging or deploying this branch:
 
 1. Back up PostgreSQL and the uploads directory and verify restoration instructions.
-2. Apply `migrations/017_shipment_export_workflow.sql` and `018_export_invoice_packing_details.sql` to staging cloned from
-   a safe schema/data fixture.
+2. Apply `migrations/017_shipment_export_workflow.sql`, `018_export_invoice_packing_details.sql` and
+   `019_immutable_audit_bundles.sql` to staging cloned from a safe schema/data fixture.
 3. Run migration rollback/forward compatibility checks appropriate to the environment.
 4. Create one real-like Vietnam-to-EU shipment with more than 20 lines and multiple/partial packages.
 5. Upload and approve a real-like carrier document; fill profile, package and carbon data without placeholders.
@@ -506,6 +521,7 @@ Backend core:
 
 - `migrations/017_shipment_export_workflow.sql`
 - `migrations/018_export_invoice_packing_details.sql`
+- `migrations/019_immutable_audit_bundles.sql`
 - `src/services/exportShipmentService.js`
 - `src/routes/exportV2.js`
 - `src/utils/simpleXlsx.js`
@@ -524,6 +540,7 @@ Frontend core:
 - `lib/cbam/applicability.ts`
 - `components/audit/AuditPackClient.tsx`
 - `lib/weave-v2/auditPackV2.ts`
+- `lib/weave-v2/auditBundleApi.ts`
 - `lib/reports/productCarbonTemplate.ts`
 - `lib/reports/cbamTemplate.ts`
 - `lib/carbon/types.ts`
@@ -593,3 +610,18 @@ Backend carbon trace core:
   reconstructed or placeholder rows.
 - Exact next action: add the tenant-scoped audit bundle tables/API/job, bind approved evidence hashes to its manifest, then
   verify immutability, tenant isolation, download checksum/MIME and issue/supersede behavior.
+
+### 2026-09-09 — R14 immutable server bundle
+
+- Status remains `PARTIAL`: a downloadable internal-review pack now exists, but term-to-evidence mapping, human approval,
+  issue/supersede state, signed sharing and independent assurance are not complete.
+- Backend commit `f973ab101fa5fbf5149bc4a006405606218be198` adds migration 019, tenant-scoped APIs, existing-queue worker
+  integration, deterministic ZIP generation, manifest/bundle SHA-256 and download-time integrity verification.
+- Frontend commit `aeb19e31023b48dfcc4f5644e2a1119ad77ecdf4` replaces client-generated production downloads with create/poll/download
+  of the server ZIP and shows the immutable bundle checksum without claiming verification.
+- Automated checks passed locally: backend 93 suites/572 tests plus verify; frontend 38 files/166 tests plus check,
+  OpenAPI contract sync, typecheck and production build. The 18 frontend lint warnings remain pre-existing.
+- The legacy migration snapshot command still reports its missing legacy fixture and therefore does not prove migration 019
+  on a real database. No production database or upload directory was mutated.
+- Exact next action: apply migration 019 to staging, create a recalculated product with locked evidence, download/open/check
+  its ZIP, then implement term-to-evidence mapping and reviewer issue/supersede controls.
