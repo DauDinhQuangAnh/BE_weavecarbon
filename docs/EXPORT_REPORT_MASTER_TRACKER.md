@@ -29,7 +29,7 @@ This tracker separates four facts that must never be conflated:
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Working branch in both repositories | `feat/shipment-export-workflow` |
 | Backend baseline on this branch | `c927d6b19565ca690208424b22fad0a81af91088` |
-| Frontend baseline on this branch | `96145b18bb82a0ce764366e9dee430906329cdba` |
+| Frontend baseline on this branch | `13aeea6fbb341de7d3d4bf100bd085946112692b` |
 | Production site | `https://weavecarbon.com` |
 | Production state at 2026-09-08 | Healthy on the old `main`; the feature branch is not deployed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
@@ -97,8 +97,8 @@ Known overall checks at the baseline commits:
 
 | # | Report/document | Applicability | Current status | Current capability | Next gate |
 |---:|---|---|---|---|---|
-| 1 | Commercial Invoice | Almost every sale shipment | `READY_TO_PILOT` | Shipment XLSX, validation, version/issue | Staging pilot and semantic/print review |
-| 2 | Packing List | Normal customs/transport practice | `READY_TO_PILOT` | Package XLSX and quantity/net-weight reconciliation | Add remaining totals/identity fields; staging physical-pack test |
+| 1 | Commercial Invoice | Almost every sale shipment | `READY_TO_PILOT` | Shipment XLSX, invoice identity/place, party/contact, HS confirmation, adjustments and immutable issue | PDF/print form and staging operator review |
+| 2 | Packing List | Normal customs/transport practice | `READY_TO_PILOT` | Dedicated identity/date, package XLSX, CBM and quantity/net/gross reconciliation | Package hierarchy and staging physical-pack test |
 | 3 | B/L, AWB, CMR or FBL | Depends on transport mode | `EXTERNAL_DOCUMENT` | Upload, link and approve carrier evidence; WeaveCarbon generates only Carbon Annex | Carrier metadata validation and real document pilot |
 | 4 | Vietnam export declaration/VNACCS | Normally mandatory | `NOT_STARTED` | Stores declaration number only | Build broker/VNACCS support dataset and response lifecycle |
 | 5 | EU import declaration/SAD/EUCDM | Importer/declarant responsibility | `NOT_STARTED` | No declaration dataset | Build declarant handoff dataset; never label it customs-accepted |
@@ -135,12 +135,14 @@ EORI/VAT where applicable; PO/contract; shipment; Incoterm 2020 plus named place
 SKU/style, confirmed HS/CN, origin, quantity/unit, unit price/value; currency; discounts/surcharges; conditional freight
 and insurance; totals; transport/ports; linked packing/carrier/origin/customs references; approver and version.
 
-**Implemented:** shipment profile/lines, core parties, invoice/date, PO, Incoterm/location, currency/payment, exporter tax,
-conditional freight/insurance, line values, totals, XLSX, no line cap, immutable issue and stale-snapshot block.
+**Implemented:** shipment profile/lines; parties with country/contact; invoice number/date/place; PO; Incoterm/location;
+currency/payment; exporter tax; conditional freight/insurance; discount/surcharge; transport/ports; line values and totals;
+style/size/colour/lot; explicit HS confirmation with reviewer/time and automatic invalidation when the HS code changes; XLSX;
+no line cap; immutable issue and stale-snapshot block.
 
-**Remaining:** invoice place/contact/VAT model; explicit discount/surcharge; conditional consignee; HS reviewer/effective
-date; PDF/print form; cross-document invoice-total assertions; optional signature rules; staging review against one actual
-invoice and destination/buyer requirements.
+**Remaining:** destination-specific VAT/EORI and conditional consignee rules; HS classification source/ruleset/effective
+date; PDF/print form; booked/customs-value reconciliation beyond the calculated invoice total; optional signature rules;
+staging review against one actual invoice and destination/buyer requirements.
 
 **Definition of Done:** every required/conditional field is rule-tested; semantic XLSX/PDF tests verify labels and values;
 totals and currency reconcile; no placeholder; shipment over 20 lines works; a trade operator manually signs off one
@@ -154,12 +156,13 @@ real VN-to-EU pilot; only then mark `READY_TO_ISSUE`.
 pallet/carton IDs and types; marks/numbers; exact item allocation; SKU/style/size/colour/lot when needed; quantity; per-unit
 and total net/gross weight; dimensions/CBM; container/seal; total packages/quantity/net/gross/CBM; preparer/approver/version.
 
-**Implemented:** flat packages, marks, dimensions, weights, contents allocation, totals, XLSX, exact line allocation check,
-gross >= net checks and net line/package reconciliation.
+**Implemented:** dedicated number/date; transport reference; flat packages; marks; dimensions; calculated row and document
+CBM; style/size/colour/lot; package contents allocation; package/quantity/net/gross/CBM totals; XLSX; exact line allocation;
+gross >= net checks; net and gross line/package reconciliation.
 
-**Remaining:** dedicated packing-list number/date; explicit container-pallet-carton hierarchy; CBM field/calculation and
-total; style/size/colour/lot; gross-weight reconciliation between lines/packages; carrier/transport company display;
-semantic print test with a partially filled final carton.
+**Remaining:** explicit container-pallet-carton hierarchy; distinguish per-unit package weight/dimensions from grouped
+totals in the stored model; carrier/transport company display; PDF/print form; semantic test with a partially filled final
+carton and a multi-container shipment; real warehouse pilot.
 
 **Definition of Done:** physical package ledger exactly reconciles quantity/net/gross/CBM to invoice and booking; final
 partial package is represented correctly; over-20-line and multiple-container fixtures pass; real warehouse pilot passes.
@@ -419,7 +422,8 @@ Do not mark an item complete based only on unit tests. Attach or record the stag
 Before merging or deploying this branch:
 
 1. Back up PostgreSQL and the uploads directory and verify restoration instructions.
-2. Apply `migrations/017_shipment_export_workflow.sql` to staging cloned from a safe schema/data fixture.
+2. Apply `migrations/017_shipment_export_workflow.sql` and `018_export_invoice_packing_details.sql` to staging cloned from
+   a safe schema/data fixture.
 3. Run migration rollback/forward compatibility checks appropriate to the environment.
 4. Create one real-like Vietnam-to-EU shipment with more than 20 lines and multiple/partial packages.
 5. Upload and approve a real-like carrier document; fill profile, package and carbon data without placeholders.
@@ -479,6 +483,7 @@ Official sources define legal requirements; this tracker is an engineering contr
 Backend core:
 
 - `migrations/017_shipment_export_workflow.sql`
+- `migrations/018_export_invoice_packing_details.sql`
 - `src/services/exportShipmentService.js`
 - `src/routes/exportV2.js`
 - `src/utils/simpleXlsx.js`
@@ -509,3 +514,21 @@ Frontend core:
 - Identified R14 Audit/evidence pack as an unresolved production-safety issue.
 - Recorded current branch hashes, tests, deployment state, report order and release gates.
 
+### 2026-09-08 — R01/R02 completeness increment
+
+- Status remains `READY_TO_PILOT`; this increment does not claim legal or production readiness.
+- Added migration 018 for invoice place, packing-list identity/date, monetary adjustments, transport mode,
+  style/size/colour/lot and auditable HS confirmation.
+- Advanced the engineering ruleset to `VN-EU-TEXTILE-2026.09.1`; this is an internal validation version, not a legal
+  certification or customs schema version.
+- Added backend readiness gates, ISO country/currency and date/code-format checks, gross-weight and invoice-total checks,
+  report-specific metadata/columns and CBM totals.
+- Added frontend inputs for the same fields, party country/contact, HS confirmation and CBM preview.
+- Added tests for migration additivity, SQL parameter binding, authenticated HS approval, approval invalidation after a code
+  change, document blocking, totals/reconciliation and semantic XLSX labels.
+- Automated checks passed locally: backend 90 suites/555 tests plus verify; frontend 36 files/161 tests plus check and
+  production build. The legacy migration snapshot script could not validate this change because its required fixed
+  `00000000-0000-4000-8000-000000000052` fixture is absent; staging migration remains open.
+- Implementation commit hashes must be recorded here after push.
+- Remaining gate: migration on staging, a >20-line multi-container/partial-carton fixture, PDF/print layout and operator
+  review. No production deployment was performed.

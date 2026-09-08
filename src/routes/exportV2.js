@@ -143,7 +143,7 @@ router.post('/shipments/:shipmentId/lines/sync', asyncHandler(async (req, res) =
 router.post('/shipments/:shipmentId/lines', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
-  const data = await exportShipmentService.createLine(companyId, req.params.shipmentId, req.body || {});
+  const data = await exportShipmentService.createLine(companyId, req.params.shipmentId, req.body || {}, req.userId);
   if (!data) return sendNotFound(res);
   return sendSuccess(res, { status: 201, data });
 }));
@@ -151,7 +151,7 @@ router.post('/shipments/:shipmentId/lines', asyncHandler(async (req, res) => {
 router.patch('/shipments/:shipmentId/lines/:lineId', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
-  const data = await exportShipmentService.updateLine(companyId, req.params.shipmentId, req.params.lineId, req.body || {});
+  const data = await exportShipmentService.updateLine(companyId, req.params.shipmentId, req.params.lineId, req.body || {}, req.userId);
   if (!data) return sendError(res, { status: 404, code: 'EXPORT_LINE_NOT_FOUND', message: 'Export line not found.' });
   return sendSuccess(res, { data });
 }));

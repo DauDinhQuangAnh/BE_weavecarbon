@@ -5,12 +5,14 @@ const pool = require('../config/database');
 const { UPLOADS_ROOT } = require('../config/runtime');
 const { buildSimpleXlsx } = require('../utils/simpleXlsx');
 
-const RULESET_VERSION = 'VN-EU-TEXTILE-2026.09';
+const RULESET_VERSION = 'VN-EU-TEXTILE-2026.09.1';
 const DOCUMENT_TYPES = new Set([
   'commercial_invoice', 'packing_list', 'carbon_annex', 'origin_workbook', 'ics2_dataset'
 ]);
 const CORE_DOCUMENT_TYPES = ['commercial_invoice', 'packing_list', 'carbon_annex', 'ics2_dataset'];
 const CARRIER_EVIDENCE_TYPES = ['bill_of_lading', 'carrier_bill_of_lading', 'air_waybill', 'awb', 'cmr'];
+const INCOTERMS_2020 = new Set(['EXW', 'FCA', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP', 'FAS', 'FOB', 'CFR', 'CIF']);
+const TRANSPORT_MODES = new Set(['sea', 'air', 'road', 'rail', 'multimodal']);
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Versioned, conservative heading-level gate. It deliberately excludes textile/apparel/footwear
@@ -44,6 +46,12 @@ function sourceSnapshotSha256(snapshot) {
   }));
 }
 function normalizeHsCode(value) { return text(value).replace(/[^0-9]/g, ''); }
+function isIsoDate(value) {
+  const normalized = text(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return false;
+  const date = new Date(`${normalized}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === normalized;
+}
 function isCbamApplicable(hsCode) {
   const normalized = normalizeHsCode(hsCode);
   return Boolean(normalized && CBAM_RULESET.prefixes.some((prefix) => normalized.startsWith(prefix)));
@@ -61,6 +69,9 @@ function profileFromRow(row) {
     targetMarket: row.target_market,
     invoiceNumber: row.invoice_number || '',
     invoiceDate: row.invoice_date || null,
+    invoiceIssuePlace: row.invoice_issue_place || '',
+    packingListNumber: row.packing_list_number || '',
+    packingListDate: row.packing_list_date || null,
     poContractId: row.po_contract_id || '',
     incotermCode: row.incoterm_code || '',
     incotermLocation: row.incoterm_location || '',
@@ -84,6 +95,9 @@ function profileFromRow(row) {
     customsDeclarationNo: row.customs_declaration_no || '',
     freightAmount: numberOrNull(row.freight_amount),
     insuranceAmount: numberOrNull(row.insurance_amount),
+    discountAmount: numberOrNull(row.discount_amount),
+    surchargeAmount: numberOrNull(row.surcharge_amount),
+    transportMode: row.transport_mode || '',
     preferentialOriginClaim: row.preferential_origin_claim === true,
     metadata: row.metadata || {},
     updatedAt: row.updated_at
@@ -95,6 +109,9 @@ function lineFromRow(row) {
     id: row.id, shipmentId: row.shipment_id, sourceProductId: row.source_product_id,
     lineNumber: Number(row.line_number), sku: row.sku, goodsDescription: row.goods_description,
     hsCode: row.hs_code, originCountry: row.origin_country, quantity: Number(row.quantity),
+    styleCode: row.style_code || '', sizeLabel: row.size_label || '', colorLabel: row.color_label || '',
+    lotNumber: row.lot_number || '', hsCodeConfirmed: row.hs_code_confirmed === true,
+    hsCodeConfirmedBy: row.hs_code_confirmed_by || null, hsCodeConfirmedAt: row.hs_code_confirmed_at || null,
     unit: row.unit, unitPrice: numberOrNull(row.unit_price), currency: row.currency || '',
     netWeightKg: numberOrNull(row.net_weight_kg), grossWeightKg: numberOrNull(row.gross_weight_kg),
     embeddedCo2eKg: numberOrNull(row.embedded_co2e_kg), packageRefs: row.package_refs || [],
@@ -181,17 +198,21 @@ class ExportShipmentService {
     const value = (camel, snake = camel) => input[camel] ?? input[snake] ?? null;
     const result = await this.database.query(
       `INSERT INTO shipment_export_profiles (
-         company_id, shipment_id, target_market, invoice_number, invoice_date, po_contract_id,
+         company_id, shipment_id, target_market, invoice_number, invoice_date, invoice_issue_place,
+         packing_list_number, packing_list_date, po_contract_id,
          incoterm_code, incoterm_location, incoterm_version, currency, payment_terms,
          exporter, importer, consignee, notify_party, exporter_tax_id, importer_eori,
          port_of_loading, port_of_discharge, place_of_delivery, vessel_name, voyage_number,
          bill_of_lading_no, container_no, seal_no, customs_declaration_no, freight_amount,
-         insurance_amount, preferential_origin_claim, metadata, created_by, updated_by
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,
-                 $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30::jsonb,$31,$31)
+         insurance_amount, discount_amount, surcharge_amount, transport_mode,
+         preferential_origin_claim, metadata, created_by, updated_by
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16::jsonb,$17::jsonb,$18::jsonb,
+                 $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36::jsonb,$37,$37)
        ON CONFLICT (shipment_id) DO UPDATE SET
          target_market=EXCLUDED.target_market, invoice_number=EXCLUDED.invoice_number,
-         invoice_date=EXCLUDED.invoice_date, po_contract_id=EXCLUDED.po_contract_id,
+         invoice_date=EXCLUDED.invoice_date, invoice_issue_place=EXCLUDED.invoice_issue_place,
+         packing_list_number=EXCLUDED.packing_list_number, packing_list_date=EXCLUDED.packing_list_date,
+         po_contract_id=EXCLUDED.po_contract_id,
          incoterm_code=EXCLUDED.incoterm_code, incoterm_location=EXCLUDED.incoterm_location,
          incoterm_version=EXCLUDED.incoterm_version, currency=EXCLUDED.currency,
          payment_terms=EXCLUDED.payment_terms, exporter=EXCLUDED.exporter, importer=EXCLUDED.importer,
@@ -202,13 +223,17 @@ class ExportShipmentService {
          voyage_number=EXCLUDED.voyage_number, bill_of_lading_no=EXCLUDED.bill_of_lading_no,
          container_no=EXCLUDED.container_no, seal_no=EXCLUDED.seal_no,
          customs_declaration_no=EXCLUDED.customs_declaration_no, freight_amount=EXCLUDED.freight_amount,
-         insurance_amount=EXCLUDED.insurance_amount,
+         insurance_amount=EXCLUDED.insurance_amount, discount_amount=EXCLUDED.discount_amount,
+         surcharge_amount=EXCLUDED.surcharge_amount, transport_mode=EXCLUDED.transport_mode,
          preferential_origin_claim=EXCLUDED.preferential_origin_claim, metadata=EXCLUDED.metadata,
          updated_by=EXCLUDED.updated_by, updated_at=now()
        RETURNING *`,
       [
         companyId, shipmentId, text(value('targetMarket', 'target_market')) || 'EU',
         text(value('invoiceNumber', 'invoice_number')) || null, text(value('invoiceDate', 'invoice_date')) || null,
+        text(value('invoiceIssuePlace', 'invoice_issue_place')) || null,
+        text(value('packingListNumber', 'packing_list_number')) || null,
+        text(value('packingListDate', 'packing_list_date')) || null,
         text(value('poContractId', 'po_contract_id')) || null, text(value('incotermCode', 'incoterm_code')).toUpperCase() || null,
         text(value('incotermLocation', 'incoterm_location')) || null,
         text(value('incotermVersion', 'incoterm_version')) || 'Incoterms 2020',
@@ -222,6 +247,8 @@ class ExportShipmentService {
         text(value('containerNo', 'container_no')) || null, text(value('sealNo', 'seal_no')) || null,
         text(value('customsDeclarationNo', 'customs_declaration_no')) || null,
         numberOrNull(value('freightAmount', 'freight_amount')), numberOrNull(value('insuranceAmount', 'insurance_amount')),
+        numberOrNull(value('discountAmount', 'discount_amount')), numberOrNull(value('surchargeAmount', 'surcharge_amount')),
+        text(value('transportMode', 'transport_mode')) || null,
         value('preferentialOriginClaim', 'preferential_origin_claim') === true,
         JSON.stringify(object(value('metadata'))), userId
       ]
@@ -235,14 +262,19 @@ class ExportShipmentService {
     await this.database.query(
       `INSERT INTO shipment_export_lines (
          company_id, shipment_id, source_product_id, line_number, sku, goods_description,
-         hs_code, origin_country, quantity, unit, net_weight_kg, gross_weight_kg, embedded_co2e_kg
+         hs_code, origin_country, quantity, unit, net_weight_kg, gross_weight_kg, embedded_co2e_kg,
+         style_code, size_label, color_label, lot_number
        )
        SELECT $2, sp.shipment_id, p.id,
               ROW_NUMBER() OVER (ORDER BY sp.created_at, sp.id)::integer,
               p.sku, p.name,
               COALESCE(NULLIF(ps.payload->>'hsCode',''), NULLIF(ps.payload->>'hs_code',''), ''),
               COALESCE(NULLIF(ps.payload->>'originCountry',''), NULLIF(ps.payload->>'origin_country',''), s.origin_country),
-              sp.quantity, 'pcs', sp.weight_kg, sp.weight_kg, sp.allocated_co2e
+              sp.quantity, 'pcs', sp.weight_kg, sp.weight_kg, sp.allocated_co2e,
+              COALESCE(NULLIF(ps.payload->>'styleCode',''), NULLIF(ps.payload->>'style_code','')),
+              COALESCE(NULLIF(ps.payload->>'size',''), NULLIF(ps.payload->>'sizeLabel','')),
+              COALESCE(NULLIF(ps.payload->>'color',''), NULLIF(ps.payload->>'colorLabel','')),
+              COALESCE(NULLIF(ps.payload->>'lotNumber',''), NULLIF(ps.payload->>'batchNumber',''))
        FROM shipment_products sp
        JOIN shipments s ON s.id = sp.shipment_id AND s.company_id = $2
        JOIN products p ON p.id = sp.product_id AND p.company_id = $2
@@ -258,14 +290,17 @@ class ExportShipmentService {
     return result.rows.map(lineFromRow);
   }
 
-  async createLine(companyId, shipmentId, input) {
+  async createLine(companyId, shipmentId, input, userId = null) {
     if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const hsCodeConfirmed = Boolean(userId)
+      && (input.hsCodeConfirmed === true || input.hs_code_confirmed === true);
     const result = await this.database.query(
       `INSERT INTO shipment_export_lines (
         company_id, shipment_id, source_product_id, line_number, sku, goods_description, hs_code,
         origin_country, quantity, unit, unit_price, currency, net_weight_kg, gross_weight_kg,
-        embedded_co2e_kg, package_refs, metadata
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb)
+        embedded_co2e_kg, style_code, size_label, color_label, lot_number,
+        hs_code_confirmed, hs_code_confirmed_by, hs_code_confirmed_at, package_refs, metadata
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23::jsonb,$24::jsonb)
        RETURNING *`,
       [companyId, shipmentId, input.sourceProductId || input.source_product_id || null,
         Number(input.lineNumber || input.line_number), text(input.sku), text(input.goodsDescription || input.goods_description),
@@ -273,27 +308,43 @@ class ExportShipmentService {
         numberOrNull(input.quantity), text(input.unit) || 'pcs', numberOrNull(input.unitPrice ?? input.unit_price),
         text(input.currency).toUpperCase() || null, numberOrNull(input.netWeightKg || input.net_weight_kg),
         numberOrNull(input.grossWeightKg || input.gross_weight_kg), numberOrNull(input.embeddedCo2eKg || input.embedded_co2e_kg),
+        text(input.styleCode || input.style_code) || null, text(input.sizeLabel || input.size_label) || null,
+        text(input.colorLabel || input.color_label) || null, text(input.lotNumber || input.lot_number) || null,
+        hsCodeConfirmed,
+        hsCodeConfirmed ? userId : null,
+        hsCodeConfirmed ? new Date() : null,
         JSON.stringify(Array.isArray(input.packageRefs) ? input.packageRefs : []), JSON.stringify(object(input.metadata))]
     );
     return lineFromRow(result.rows[0]);
   }
 
-  async updateLine(companyId, shipmentId, lineId, input) {
+  async updateLine(companyId, shipmentId, lineId, input, userId = null) {
     if (!UUID_REGEX.test(String(lineId || ''))) return null;
     const current = await this.database.query(
       'SELECT * FROM shipment_export_lines WHERE id=$1 AND shipment_id=$2 AND company_id=$3', [lineId, shipmentId, companyId]
     );
     if (!current.rows[0]) return null;
     const merged = { ...lineFromRow(current.rows[0]), ...input };
+    const normalizedHsCode = normalizeHsCode(merged.hsCode);
+    const hsCodeChanged = normalizedHsCode !== normalizeHsCode(current.rows[0].hs_code);
+    // A classification change always invalidates the prior approval. A second explicit save is
+    // required so the audit identity/time can never describe a different HS/CN code.
+    const hsCodeConfirmed = Boolean(userId) && !hsCodeChanged && merged.hsCodeConfirmed === true;
     const result = await this.database.query(
       `UPDATE shipment_export_lines SET line_number=$1, sku=$2, goods_description=$3, hs_code=$4,
          origin_country=$5, quantity=$6, unit=$7, unit_price=$8, currency=$9, net_weight_kg=$10,
-         gross_weight_kg=$11, embedded_co2e_kg=$12, package_refs=$13::jsonb, metadata=$14::jsonb, updated_at=now()
-       WHERE id=$15 AND shipment_id=$16 AND company_id=$17 RETURNING *`,
-      [merged.lineNumber, text(merged.sku), text(merged.goodsDescription), normalizeHsCode(merged.hsCode),
+         gross_weight_kg=$11, embedded_co2e_kg=$12, style_code=$13, size_label=$14, color_label=$15,
+         lot_number=$16, hs_code_confirmed=$17,
+         hs_code_confirmed_by=CASE WHEN $17 THEN COALESCE($18, hs_code_confirmed_by) ELSE NULL END,
+         hs_code_confirmed_at=CASE WHEN $17 THEN COALESCE(hs_code_confirmed_at, now()) ELSE NULL END,
+         package_refs=$19::jsonb, metadata=$20::jsonb, updated_at=now()
+       WHERE id=$21 AND shipment_id=$22 AND company_id=$23 RETURNING *`,
+      [merged.lineNumber, text(merged.sku), text(merged.goodsDescription), normalizedHsCode,
         text(merged.originCountry), numberOrNull(merged.quantity), text(merged.unit), numberOrNull(merged.unitPrice),
         text(merged.currency).toUpperCase() || null, numberOrNull(merged.netWeightKg), numberOrNull(merged.grossWeightKg),
-        numberOrNull(merged.embeddedCo2eKg), JSON.stringify(merged.packageRefs || []), JSON.stringify(merged.metadata || {}),
+        numberOrNull(merged.embeddedCo2eKg), text(merged.styleCode) || null, text(merged.sizeLabel) || null,
+        text(merged.colorLabel) || null, text(merged.lotNumber) || null, hsCodeConfirmed,
+        userId, JSON.stringify(merged.packageRefs || []), JSON.stringify(merged.metadata || {}),
         lineId, shipmentId, companyId]
     );
     return lineFromRow(result.rows[0]);
@@ -363,6 +414,11 @@ class ExportShipmentService {
     const party = (type, key, value) => {
       need(type, `${key}_name`, value?.name, `profile.${key}.name`, `${key} name`);
       need(type, `${key}_address`, value?.address, `profile.${key}.address`, `${key} address`);
+      need(type, `${key}_country`, value?.country, `profile.${key}.country`, `${key} country`);
+      if (text(value?.country)) {
+        const validCountry = /^[A-Z]{2}$/.test(text(value.country).toUpperCase());
+        results.push(requirement(type, `${key}_country_format`, validCountry ? 'ready' : 'invalid', `profile.${key}.country`, validCountry ? null : `${key} country must be a 2-letter ISO code.`));
+      }
     };
     ['commercial_invoice', 'packing_list'].forEach((type) => {
       party(type, 'exporter', profile.exporter);
@@ -373,10 +429,37 @@ class ExportShipmentService {
     });
     need('commercial_invoice', 'invoice_number', profile.invoiceNumber, 'profile.invoiceNumber', 'Invoice number');
     need('commercial_invoice', 'invoice_date', profile.invoiceDate, 'profile.invoiceDate', 'Invoice date');
+    if (profile.invoiceDate) results.push(requirement('commercial_invoice', 'invoice_date_format', isIsoDate(profile.invoiceDate) ? 'ready' : 'invalid', 'profile.invoiceDate', isIsoDate(profile.invoiceDate) ? null : 'Invoice date must be a valid YYYY-MM-DD date.'));
+    need('commercial_invoice', 'invoice_issue_place', profile.invoiceIssuePlace, 'profile.invoiceIssuePlace', 'Invoice issue place');
+    need('commercial_invoice', 'exporter_contact', profile.exporter?.contact, 'profile.exporter.contact', 'Exporter contact');
+    need('commercial_invoice', 'importer_contact', profile.importer?.contact, 'profile.importer.contact', 'Importer contact');
     need('commercial_invoice', 'currency', profile.currency, 'profile.currency', 'Currency');
+    if (text(profile.currency)) {
+      const validCurrency = /^[A-Z]{3}$/.test(text(profile.currency).toUpperCase());
+      results.push(requirement('commercial_invoice', 'currency_format', validCurrency ? 'ready' : 'invalid', 'profile.currency', validCurrency ? null : 'Currency must be a 3-letter ISO 4217 code.'));
+    }
     need('commercial_invoice', 'payment_terms', profile.paymentTerms, 'profile.paymentTerms', 'Payment terms');
     need('commercial_invoice', 'exporter_tax_id', profile.exporterTaxId, 'profile.exporterTaxId', 'Exporter tax ID');
+    need('commercial_invoice', 'transport_mode', profile.transportMode, 'profile.transportMode', 'Transport mode');
+    need('commercial_invoice', 'port_of_loading', profile.portOfLoading, 'profile.portOfLoading', 'Port/place of loading');
+    need('commercial_invoice', 'port_of_discharge', profile.portOfDischarge, 'profile.portOfDischarge', 'Port/place of discharge');
+    need('packing_list', 'packing_list_number', profile.packingListNumber, 'profile.packingListNumber', 'Packing list number');
+    need('packing_list', 'packing_list_date', profile.packingListDate, 'profile.packingListDate', 'Packing list date');
+    if (profile.packingListDate) results.push(requirement('packing_list', 'packing_list_date_format', isIsoDate(profile.packingListDate) ? 'ready' : 'invalid', 'profile.packingListDate', isIsoDate(profile.packingListDate) ? null : 'Packing list date must be a valid YYYY-MM-DD date.'));
+    need('packing_list', 'transport_mode', profile.transportMode, 'profile.transportMode', 'Transport mode');
     const incoterm = text(profile.incotermCode).toUpperCase();
+    if (incoterm) {
+      ['commercial_invoice', 'packing_list'].forEach((type) => results.push(requirement(type, 'incoterm_format', INCOTERMS_2020.has(incoterm) ? 'ready' : 'invalid', 'profile.incotermCode', INCOTERMS_2020.has(incoterm) ? null : 'Incoterm must be one of the 11 Incoterms 2020 codes.')));
+    }
+    const transportMode = text(profile.transportMode).toLowerCase();
+    if (transportMode) {
+      ['commercial_invoice', 'packing_list'].forEach((type) => results.push(requirement(type, 'transport_mode_format', TRANSPORT_MODES.has(transportMode) ? 'ready' : 'invalid', 'profile.transportMode', TRANSPORT_MODES.has(transportMode) ? null : 'Transport mode is not supported.')));
+    }
+    ['freightAmount', 'insuranceAmount', 'discountAmount', 'surchargeAmount'].forEach((field) => {
+      if (profile[field] === null || profile[field] === undefined || profile[field] === '') return;
+      const valid = Number.isFinite(Number(profile[field])) && Number(profile[field]) >= 0;
+      results.push(requirement('commercial_invoice', `${field}_nonnegative`, valid ? 'ready' : 'invalid', `profile.${field}`, valid ? null : `${field} must be a non-negative number.`));
+    });
     if (['CFR', 'CIF', 'CPT', 'CIP'].includes(incoterm)) {
       const validFreight = profile.freightAmount !== null && Number(profile.freightAmount) >= 0;
       results.push(requirement('commercial_invoice', 'freight_amount', validFreight ? 'ready' : 'missing', 'profile.freightAmount', validFreight ? null : `Freight amount is required for ${incoterm}.`));
@@ -395,6 +478,10 @@ class ExportShipmentService {
           && (key !== 'quantity' || Number(value) > 0);
         results.push(requirement('commercial_invoice', `line_${index + 1}_${key}`, valid ? 'ready' : 'missing', `${prefix}.${key}`, valid ? null : `${key} is required for line ${index + 1}.`));
       });
+      const normalizedHs = normalizeHsCode(line.hsCode);
+      const validHs = normalizedHs.length >= 6 && normalizedHs.length <= 10;
+      results.push(requirement('commercial_invoice', `line_${index + 1}_hs_code_format`, validHs ? 'ready' : 'invalid', `${prefix}.hsCode`, validHs ? null : `HS/CN code for line ${index + 1} must contain 6 to 10 digits.`));
+      results.push(requirement('commercial_invoice', `line_${index + 1}_hs_code_confirmed`, line.hsCodeConfirmed ? 'ready' : 'missing', `${prefix}.hsCodeConfirmed`, line.hsCodeConfirmed ? null : `HS/CN code requires explicit confirmation for line ${index + 1}.`));
     });
     results.push(requirement('packing_list', 'lines', lines.length ? 'ready' : 'missing', 'lines', lines.length ? null : 'At least one goods line is required.'));
     lines.forEach((line, index) => {
@@ -421,6 +508,10 @@ class ExportShipmentService {
     });
     const currencyMismatch = lines.some((line) => line.currency && profile.currency && line.currency !== profile.currency);
     results.push(requirement('commercial_invoice', 'currency_reconciliation', currencyMismatch ? 'invalid' : 'ready', 'lines[].currency', currencyMismatch ? 'Line currencies must match the invoice currency.' : null));
+    const goodsTotal = lines.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0), 0);
+    const invoiceTotal = goodsTotal + Number(profile.freightAmount || 0) + Number(profile.insuranceAmount || 0)
+      + Number(profile.surchargeAmount || 0) - Number(profile.discountAmount || 0);
+    results.push(requirement('commercial_invoice', 'invoice_total_nonnegative', invoiceTotal >= 0 ? 'ready' : 'invalid', 'profile.discountAmount', invoiceTotal >= 0 ? null : 'Discount cannot make the invoice total negative.'));
     const invalidLineWeight = lines.some((line) => line.netWeightKg !== null && line.grossWeightKg !== null && line.grossWeightKg < line.netWeightKg);
     results.push(requirement('packing_list', 'line_weight_reconciliation', invalidLineWeight ? 'invalid' : 'ready', 'lines[].grossWeightKg', invalidLineWeight ? 'Gross line weight cannot be lower than net weight.' : null));
     const invalidPackageWeight = packages.some((pkg) => pkg.netWeightKg !== null && pkg.grossWeightKg !== null && pkg.grossWeightKg < pkg.netWeightKg);
@@ -430,6 +521,12 @@ class ExportShipmentService {
       const packageNet = packages.reduce((sum, pkg) => sum + Number(pkg.netWeightKg) * Number(pkg.quantity || 1), 0);
       const matches = Math.abs(lineNet - packageNet) <= Math.max(0.01, lineNet * 0.001);
       results.push(requirement('packing_list', 'net_weight_cross_document', matches ? 'ready' : 'invalid', 'packages[].netWeightKg', matches ? null : `Line net weight (${lineNet}) does not match package net weight (${packageNet}).`));
+    }
+    if (lines.length && packages.length && lines.every((line) => line.grossWeightKg !== null) && packages.every((pkg) => pkg.grossWeightKg !== null)) {
+      const lineGross = lines.reduce((sum, line) => sum + Number(line.grossWeightKg), 0);
+      const packageGross = packages.reduce((sum, pkg) => sum + Number(pkg.grossWeightKg) * Number(pkg.quantity || 1), 0);
+      const matches = Math.abs(lineGross - packageGross) <= Math.max(0.01, lineGross * 0.001);
+      results.push(requirement('packing_list', 'gross_weight_cross_document', matches ? 'ready' : 'invalid', 'packages[].grossWeightKg', matches ? null : `Line gross weight (${lineGross}) does not match package gross weight (${packageGross}).`));
     }
     if (lines.length && packages.length) {
       const allocations = new Map();
@@ -611,6 +708,7 @@ class ExportShipmentService {
     if (type === 'packing_list') return packages.map((pkg) => ({
       packageNumber: pkg.packageNumber, packageType: pkg.packageType, marks: pkg.marksAndNumbers,
       quantity: pkg.quantity, netWeightKg: pkg.netWeightKg, grossWeightKg: pkg.grossWeightKg,
+      cbm: Number(pkg.quantity || 1) * Number(pkg.lengthCm || 0) * Number(pkg.widthCm || 0) * Number(pkg.heightCm || 0) / 1000000,
       dimensions: [pkg.lengthCm, pkg.widthCm, pkg.heightCm].filter((v) => v !== null).join(' x '),
       contents: JSON.stringify(pkg.contents || [])
     }));
@@ -621,6 +719,7 @@ class ExportShipmentService {
     }));
     return lines.map((line) => ({
       lineNumber: line.lineNumber, sku: line.sku, description: line.goodsDescription,
+      styleCode: line.styleCode, sizeLabel: line.sizeLabel, colorLabel: line.colorLabel, lotNumber: line.lotNumber,
       hsCode: line.hsCode, originCountry: line.originCountry, quantity: line.quantity, unit: line.unit,
       unitPrice: line.unitPrice, currency: line.currency || payload.profile.currency,
       lineValue: Number(line.quantity || 0) * Number(line.unitPrice || 0),
@@ -635,19 +734,54 @@ class ExportShipmentService {
     const goodsTotal = lines.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0), 0);
     const freight = Number(p.freightAmount || 0);
     const insurance = Number(p.insuranceAmount || 0);
-    const metadata = {
+    const discount = Number(p.discountAmount || 0);
+    const surcharge = Number(p.surchargeAmount || 0);
+    const totalPackages = packages.reduce((sum, pkg) => sum + Number(pkg.quantity || 0), 0);
+    const totalQuantity = lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+    const totalNetKg = packages.reduce((sum, pkg) => sum + Number(pkg.netWeightKg || 0) * Number(pkg.quantity || 1), 0);
+    const totalGrossKg = packages.reduce((sum, pkg) => sum + Number(pkg.grossWeightKg || 0) * Number(pkg.quantity || 1), 0);
+    const totalCbm = packages.reduce((sum, pkg) => sum + Number(pkg.quantity || 1)
+      * Number(pkg.lengthCm || 0) * Number(pkg.widthCm || 0) * Number(pkg.heightCm || 0) / 1000000, 0);
+    const party = (value) => [value?.name, value?.address, value?.country, value?.contact].filter(Boolean).join(' | ');
+    const commonMetadata = {
       'Shipment reference': payload.shipment?.referenceNumber || payload.shipment?.id,
-      'Document version': payload.documentVersion || '', 'Invoice number': p.invoiceNumber || '',
-      'PO / Contract': p.poContractId || '', 'Incoterm': `${p.incotermCode || ''} ${p.incotermLocation || ''}`.trim(),
-      'Carrier document no.': p.billOfLadingNo || '', 'Container / Seal': `${p.containerNo || ''} / ${p.sealNo || ''}`,
-      'Payment terms': p.paymentTerms || '', 'Exporter tax ID': p.exporterTaxId || '',
-      'Goods total': goodsTotal, 'Freight': freight, 'Insurance': insurance,
-      'Invoice total': goodsTotal + freight + insurance,
-      'Total packages': packages.reduce((sum, pkg) => sum + Number(pkg.quantity || 0), 0),
-      'Total net kg': packages.reduce((sum, pkg) => sum + Number(pkg.netWeightKg || 0) * Number(pkg.quantity || 1), 0),
-      'Total gross kg': packages.reduce((sum, pkg) => sum + Number(pkg.grossWeightKg || 0) * Number(pkg.quantity || 1), 0),
+      'Document version': payload.documentVersion || '',
       'Ruleset': RULESET_VERSION, 'Issued status': issued ? 'ISSUED' : 'READY FOR INTERNAL REVIEW'
     };
+    const metadataByType = {
+      commercial_invoice: {
+        ...commonMetadata,
+        'Invoice number': p.invoiceNumber || '', 'Invoice date': p.invoiceDate || '',
+        'Issue place': p.invoiceIssuePlace || '', 'Exporter': party(p.exporter),
+        'Exporter tax ID': p.exporterTaxId || '', 'Importer': party(p.importer),
+        'Consignee': party(p.consignee), 'PO / Contract': p.poContractId || '',
+        'Incoterm': `${p.incotermCode || ''} ${p.incotermLocation || ''} (${p.incotermVersion || 'Incoterms 2020'})`.trim(),
+        'Payment terms': p.paymentTerms || '', 'Transport mode': p.transportMode || '',
+        'Loading / discharge': `${p.portOfLoading || ''} / ${p.portOfDischarge || ''}`,
+        'Currency': p.currency || '', 'Goods total': goodsTotal, 'Discount': discount,
+        'Surcharge': surcharge, 'Freight': freight, 'Insurance': insurance,
+        'Invoice total': goodsTotal + freight + insurance + surcharge - discount
+      },
+      packing_list: {
+        ...commonMetadata,
+        'Packing list number': p.packingListNumber || '', 'Packing list date': p.packingListDate || '',
+        'Invoice number': p.invoiceNumber || '', 'Exporter': party(p.exporter), 'Consignee': party(p.consignee),
+        'PO / Contract': p.poContractId || '', 'Transport mode': p.transportMode || '',
+        'Carrier document no.': p.billOfLadingNo || '', 'Container / Seal': `${p.containerNo || ''} / ${p.sealNo || ''}`,
+        'Total packages': totalPackages, 'Total quantity': totalQuantity,
+        'Total net kg': totalNetKg, 'Total gross kg': totalGrossKg, 'Total CBM': totalCbm
+      },
+      carbon_annex: {
+        ...commonMetadata, 'Carrier document no.': p.billOfLadingNo || '',
+        'Container / Seal': `${p.containerNo || ''} / ${p.sealNo || ''}`,
+        'Transport mode': p.transportMode || '', 'Total quantity': totalQuantity
+      },
+      origin_workbook: {
+        ...commonMetadata, 'Exporter': party(p.exporter), 'Invoice number': p.invoiceNumber || '',
+        'PO / Contract': p.poContractId || '', 'Preferential claim': p.preferentialOriginClaim === true
+      }
+    };
+    const metadata = metadataByType[type] || commonMetadata;
     const rows = this._documentRows(type, payload);
     if (type === 'ics2_dataset') {
       const headers = Object.keys(rows[0] || { shipmentReference: '' });
@@ -656,12 +790,13 @@ class ExportShipmentService {
     }
     const columnsByType = {
       commercial_invoice: [
-        ['lineNumber','Line'],['sku','SKU'],['description','Description'],['hsCode','HS/CN'],['originCountry','Origin'],
+        ['lineNumber','Line'],['sku','SKU'],['styleCode','Style'],['sizeLabel','Size'],['colorLabel','Colour'],['lotNumber','Lot'],
+        ['description','Description'],['hsCode','HS/CN'],['originCountry','Origin'],
         ['quantity','Quantity'],['unit','Unit'],['unitPrice','Unit price'],['currency','Currency'],['lineValue','Line value']
       ],
       packing_list: [
         ['packageNumber','Package'],['packageType','Type'],['marks','Marks'],['quantity','Packages'],
-        ['netWeightKg','Net kg'],['grossWeightKg','Gross kg'],['dimensions','L x W x H cm'],['contents','Contents']
+        ['netWeightKg','Net kg'],['grossWeightKg','Gross kg'],['dimensions','L x W x H cm'],['cbm','CBM'],['contents','Contents']
       ],
       carbon_annex: [
         ['lineNumber','Line'],['sku','SKU'],['hsCode','HS/CN'],['quantity','Quantity'],
