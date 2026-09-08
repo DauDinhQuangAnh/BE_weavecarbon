@@ -166,6 +166,39 @@ const REQUEST_BODY_OVERRIDES = {
     },
     additionalProperties: false
   },
+  'POST /reports/v2/audit-packs/{id}/reviews': {
+    type: 'object',
+    required: ['decision'],
+    properties: {
+      decision: { type: 'string', enum: ['approved', 'rejected'] },
+      notes: { type: 'string', maxLength: 5000 },
+      qaExceptions: {
+        type: 'array',
+        maxItems: 100,
+        items: {
+          type: 'object',
+          required: ['code', 'message'],
+          properties: {
+            code: { type: 'string', minLength: 1, maxLength: 100 },
+            message: { type: 'string', minLength: 1, maxLength: 1000 },
+            severity: { type: 'string', enum: ['warning', 'blocking'] },
+            status: { type: 'string', enum: ['open', 'resolved'] }
+          },
+          additionalProperties: false
+        }
+      }
+    },
+    additionalProperties: false
+  },
+  'POST /reports/v2/audit-packs/{id}/issue': {
+    type: 'object',
+    required: ['assertion', 'criteria'],
+    properties: {
+      assertion: { type: 'string', minLength: 1, maxLength: 5000 },
+      criteria: { type: 'string', minLength: 1, maxLength: 5000 }
+    },
+    additionalProperties: false
+  },
   'POST /export/dpp-locks': {
     type: 'object',
     properties: {

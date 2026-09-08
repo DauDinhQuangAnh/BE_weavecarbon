@@ -50,6 +50,8 @@ describe('reports compatibility entrypoints', () => {
       'POST /v2/snapshots',
       'POST /v2/audit-packs',
       'GET /v2/audit-packs/:id',
+      'POST /v2/audit-packs/:id/reviews',
+      'POST /v2/audit-packs/:id/issue',
       'GET /:id',
       'GET /:id/status',
       'GET /:id/download',

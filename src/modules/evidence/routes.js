@@ -35,6 +35,30 @@ function getEvidenceRagCollectionName(companyId) {
   return `${prefix}_${String(companyId).replace(/[^a-zA-Z0-9_]/g, '_')}`;
 }
 
+function parseFactorVersionIds(value) {
+  if (value === undefined || value === null || value === '') return [];
+  let items = value;
+  if (typeof value === 'string') {
+    try { items = JSON.parse(value); } catch { items = value.split(/[\n,]/); }
+  }
+  if (!Array.isArray(items)) return null;
+  const normalized = [...new Set(items.map((item) => String(item || '').trim()).filter(Boolean))];
+  return normalized.length <= 100 && normalized.every((item) => item.length <= 200) ? normalized : null;
+}
+
+function parseCalculationTermNumbers(value) {
+  if (value === undefined || value === null || value === '') return [];
+  let items = value;
+  if (typeof value === 'string') {
+    try { items = JSON.parse(value); } catch { items = value.split(/[\n,]/); }
+  }
+  if (!Array.isArray(items)) return null;
+  const normalized = [...new Set(items
+    .map((item) => Number.parseInt(item, 10))
+    .filter((item) => Number.isInteger(item) && item > 0))].sort((a, b) => a - b);
+  return normalized.length <= 1000 ? normalized : null;
+}
+
 // POST /api/evidence/:id/verify — mark evidence as verified (alias for lock)
 router.post('/:id/verify', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
@@ -67,6 +91,26 @@ router.post('/upload', expensiveOperationLimiter, upload.single('file'), asyncHa
   file.mimetype = safeUpload.mime;
 
   const kind = req.body.kind || req.body.evidence_type || 'other';
+  const factorVersionIds = parseFactorVersionIds(
+    req.body.factorVersionIds || req.body.factor_version_ids
+  );
+  if (factorVersionIds === null) {
+    return sendError(res, {
+      status: 400,
+      code: 'EVIDENCE_FACTOR_VERSION_IDS_INVALID',
+      message: 'factorVersionIds must contain at most 100 identifiers.'
+    });
+  }
+  const calculationTermNumbers = parseCalculationTermNumbers(
+    req.body.calculationTermNumbers || req.body.calculation_term_numbers
+  );
+  if (calculationTermNumbers === null) {
+    return sendError(res, {
+      status: 400,
+      code: 'EVIDENCE_CALCULATION_TERM_NUMBERS_INVALID',
+      message: 'calculationTermNumbers must contain at most 1000 positive integers.'
+    });
+  }
   const documentName = req.body.documentName || file.originalname;
   const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex');
   const storedFile = await storeEvidenceFile({
@@ -94,6 +138,7 @@ router.post('/upload', expensiveOperationLimiter, upload.single('file'), asyncHa
       storage_provider: 'local',
       storage_key: storedFile.storageKey,
       notes: req.body.notes || null,
+      extracted_json: { auditClaims: { factorVersionIds, calculationTermNumbers } },
       auditReason: 'evidence.upload'
     });
   } catch (error) {

@@ -500,6 +500,68 @@ router.get(
     }
 );
 
+router.post(
+    '/v2/audit-packs/:id/reviews',
+    authenticate,
+    requireRole('b2b'),
+    async (req, res, next) => {
+        try {
+            if (!req.companyId) {
+                return res.status(404).json({
+                    success: false,
+                    error: { code: 'NO_COMPANY', message: 'No company associated with this user' }
+                });
+            }
+            const review = await reportsService.reviewAuditBundle(
+                req.companyId, req.userId, req.params.id, req.body || {}
+            );
+            await logAuditTrail({
+                companyId: req.companyId,
+                userId: req.userId,
+                dataGroup: 'reports',
+                changedField: 'audit_bundle.reviewed',
+                newValue: review.id,
+                reason: 'audit_bundle.review',
+                notes: `Recorded append-only ${review.decision} Audit Pack review`
+            });
+            return res.status(201).json({ success: true, data: review });
+        } catch (error) {
+            next(error);
+        }
+    }
+);
+
+router.post(
+    '/v2/audit-packs/:id/issue',
+    authenticate,
+    requireRole('b2b'),
+    async (req, res, next) => {
+        try {
+            if (!req.companyId) {
+                return res.status(404).json({
+                    success: false,
+                    error: { code: 'NO_COMPANY', message: 'No company associated with this user' }
+                });
+            }
+            const issuance = await reportsService.issueAuditBundle(
+                req.companyId, req.userId, req.params.id, req.body || {}
+            );
+            await logAuditTrail({
+                companyId: req.companyId,
+                userId: req.userId,
+                dataGroup: 'reports',
+                changedField: 'audit_bundle.issued',
+                newValue: issuance.id,
+                reason: 'audit_bundle.issue',
+                notes: 'Issued an immutable internal Audit Pack; assurance remains not verified'
+            });
+            return res.status(201).json({ success: true, data: issuance });
+        } catch (error) {
+            next(error);
+        }
+    }
+);
+
 /**
  * GET /api/reports/:id
  * Get report detail

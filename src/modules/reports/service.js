@@ -17,12 +17,77 @@ const {
 } = require('./auditBundle');
 
 const PDF_REPORT_TYPES = new Set(['product_carbon', 'batch_export', 'facility_emission', 'compliance']);
+const QA_EXCEPTION_SEVERITIES = new Set(['warning', 'blocking']);
+const QA_EXCEPTION_STATUSES = new Set(['open', 'resolved']);
 
 const {
     normalizeUuid,
     pushTransactionalAnalyticsEvent,
     safeTrackAnalyticsEvent
 } = require('./helpers');
+
+const normalizeQaExceptions = (value) => {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value) || value.length > 100) {
+        throw createAppError('qaExceptions must be an array with at most 100 entries.', {
+            statusCode: 400, code: 'AUDIT_QA_EXCEPTIONS_INVALID'
+        });
+    }
+    return value.map((item, index) => {
+        const code = String(item?.code || '').trim().slice(0, 100);
+        const message = String(item?.message || '').trim().slice(0, 1000);
+        const severity = String(item?.severity || 'blocking').trim().toLowerCase();
+        const status = String(item?.status || 'open').trim().toLowerCase();
+        if (!code || !message || !QA_EXCEPTION_SEVERITIES.has(severity) || !QA_EXCEPTION_STATUSES.has(status)) {
+            throw createAppError(`Invalid QA exception at index ${index}.`, {
+                statusCode: 400, code: 'AUDIT_QA_EXCEPTIONS_INVALID'
+            });
+        }
+        return { code, message, severity, status };
+    });
+};
+
+const deriveAuditLifecycleStatus = (row) => {
+    if (row.has_newer_bundle) return 'superseded';
+    if (row.issuance_id) return 'issued';
+    if (row.status === 'processing') return 'draft';
+    if (row.status !== 'completed') return 'blocked';
+    const manifest = typeof row.manifest === 'string' ? JSON.parse(row.manifest) : row.manifest;
+    const coverageComplete = manifest?.termEvidenceCoverage?.status === 'complete';
+    const exceptions = Array.isArray(row.review_qa_exceptions) ? row.review_qa_exceptions : [];
+    const hasBlockingException = exceptions.some((item) => item?.severity === 'blocking' && item?.status !== 'resolved');
+    return coverageComplete && row.review_decision === 'approved' && !hasBlockingException ? 'ready' : 'blocked';
+};
+
+const extractEvidenceFactorVersionIds = (value) => {
+    const extracted = typeof value === 'string' ? (() => {
+        try { return JSON.parse(value); } catch { return {}; }
+    })() : (value || {});
+    const candidates = [
+        ...(Array.isArray(extracted.auditClaims?.factorVersionIds)
+            ? extracted.auditClaims.factorVersionIds : []),
+        ...(Array.isArray(extracted.factorVersionIds) ? extracted.factorVersionIds : []),
+        ...(Array.isArray(extracted.factor_version_ids) ? extracted.factor_version_ids : []),
+        extracted.factorVersionId,
+        extracted.factor_version_id
+    ];
+    return [...new Set(candidates.map((item) => String(item || '').trim()).filter(Boolean))].sort();
+};
+
+const extractEvidenceCalculationTermNumbers = (value) => {
+    const extracted = typeof value === 'string' ? (() => {
+        try { return JSON.parse(value); } catch { return {}; }
+    })() : (value || {});
+    const candidates = [
+        ...(Array.isArray(extracted.auditClaims?.calculationTermNumbers)
+            ? extracted.auditClaims.calculationTermNumbers : []),
+        ...(Array.isArray(extracted.calculationTermNumbers) ? extracted.calculationTermNumbers : []),
+        ...(Array.isArray(extracted.calculation_term_numbers) ? extracted.calculation_term_numbers : [])
+    ];
+    return [...new Set(candidates
+        .map((item) => Number.parseInt(item, 10))
+        .filter((item) => Number.isInteger(item) && item > 0))].sort((a, b) => a - b);
+};
 
 class ReportsService {
     constructor({
@@ -429,7 +494,7 @@ class ReportsService {
             const evidenceResult = await client.query(`
                 SELECT id, evidence_type, storage_provider, storage_key, original_filename,
                        mime_type, file_size_bytes, checksum_sha256,
-                       reporting_period_start, reporting_period_end
+                       reporting_period_start, reporting_period_end, extracted_json
                 FROM evidence_documents
                 WHERE company_id = $1 AND product_id = $2
                   AND status IN ('locked', 'third_party_verified')
@@ -483,14 +548,17 @@ class ReportsService {
                     INSERT INTO audit_bundle_evidence (
                         audit_bundle_id, evidence_document_id, checksum_sha256, storage_provider,
                         storage_key, original_filename, mime_type, file_size_bytes, evidence_type,
-                        reporting_period_start, reporting_period_end
-                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                        reporting_period_start, reporting_period_end, factor_version_ids,
+                        calculation_term_numbers
+                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb)
                 `, [
                     bundle.id, evidence.id, evidence.checksum_sha256.toLowerCase(),
                     evidence.storage_provider, evidence.storage_key,
                     evidence.original_filename || `${evidence.id}.bin`, evidence.mime_type,
                     evidence.file_size_bytes, evidence.evidence_type,
-                    evidence.reporting_period_start, evidence.reporting_period_end
+                    evidence.reporting_period_start, evidence.reporting_period_end,
+                    JSON.stringify(extractEvidenceFactorVersionIds(evidence.extracted_json)),
+                    JSON.stringify(extractEvidenceCalculationTermNumbers(evidence.extracted_json))
                 ]);
             }
             await client.query('COMMIT');
@@ -502,6 +570,7 @@ class ReportsService {
                 reportId,
                 version: Number(bundle.version),
                 status: bundle.status,
+                lifecycleStatus: 'draft',
                 assuranceStatus: bundle.assurance_status,
                 downloadUrl: null,
                 createdAt: bundle.created_at
@@ -516,14 +585,32 @@ class ReportsService {
 
     async getAuditBundle(companyId, auditBundleId) {
         const result = await this.database.query(`
-            SELECT id, report_id, product_id, calculation_snapshot_id, version, status,
-                   assurance_status, manifest_sha256, bundle_sha256, file_size_bytes,
-                   original_filename, error_message, completed_at, created_at
-            FROM audit_bundles
-            WHERE id = $1 AND company_id = $2
+            SELECT ab.id, ab.report_id, ab.product_id, ab.calculation_snapshot_id, ab.version, ab.status,
+                   ab.assurance_status, ab.manifest, ab.manifest_sha256, ab.bundle_sha256, ab.file_size_bytes,
+                   ab.original_filename, ab.error_message, ab.completed_at, ab.created_at,
+                   review.id AS review_id, review.decision AS review_decision,
+                   review.qa_exceptions AS review_qa_exceptions, review.notes AS review_notes,
+                   review.reviewed_by, review.reviewed_at,
+                   issuance.id AS issuance_id, issuance.assertion_text, issuance.criteria,
+                   issuance.issued_by, issuance.issued_at,
+                   EXISTS (
+                     SELECT 1 FROM audit_bundles newer
+                     WHERE newer.company_id = ab.company_id AND newer.product_id = ab.product_id
+                       AND newer.version > ab.version
+                   ) AS has_newer_bundle
+            FROM audit_bundles ab
+            LEFT JOIN LATERAL (
+              SELECT r.* FROM audit_bundle_reviews r
+              WHERE r.company_id = ab.company_id AND r.audit_bundle_id = ab.id
+              ORDER BY r.reviewed_at DESC, r.id DESC LIMIT 1
+            ) review ON true
+            LEFT JOIN audit_bundle_issuances issuance
+              ON issuance.company_id = ab.company_id AND issuance.audit_bundle_id = ab.id
+            WHERE ab.id = $1 AND ab.company_id = $2
         `, [auditBundleId, companyId]);
         const row = result.rows[0];
         if (!row) return null;
+        const manifest = typeof row.manifest === 'string' ? JSON.parse(row.manifest) : row.manifest;
         return {
             id: row.id,
             reportId: row.report_id,
@@ -531,16 +618,209 @@ class ReportsService {
             calculationSnapshotId: row.calculation_snapshot_id,
             version: Number(row.version),
             status: row.status,
+            lifecycleStatus: deriveAuditLifecycleStatus(row),
             assuranceStatus: row.assurance_status,
+            termEvidenceCoverage: manifest?.termEvidenceCoverage || null,
             manifestSha256: row.manifest_sha256,
             bundleSha256: row.bundle_sha256,
             fileSizeBytes: Number(row.file_size_bytes || 0),
             filename: row.original_filename,
             errorMessage: row.error_message,
             downloadUrl: row.status === 'completed' ? `/api/reports/${row.report_id}/download` : null,
+            latestReview: row.review_id ? {
+                id: row.review_id,
+                decision: row.review_decision,
+                qaExceptions: row.review_qa_exceptions || [],
+                notes: row.review_notes,
+                reviewedBy: row.reviewed_by,
+                reviewedAt: row.reviewed_at
+            } : null,
+            issuance: row.issuance_id ? {
+                id: row.issuance_id,
+                assertion: row.assertion_text,
+                criteria: row.criteria,
+                issuedBy: row.issued_by,
+                issuedAt: row.issued_at
+            } : null,
             completedAt: row.completed_at,
             createdAt: row.created_at
         };
+    }
+
+    async reviewAuditBundle(companyId, userId, auditBundleId, payload = {}) {
+        const decision = String(payload.decision || '').trim().toLowerCase();
+        if (!['approved', 'rejected'].includes(decision)) {
+            throw createAppError('decision must be approved or rejected.', {
+                statusCode: 400, code: 'AUDIT_REVIEW_DECISION_INVALID'
+            });
+        }
+        const qaExceptions = normalizeQaExceptions(payload.qaExceptions ?? payload.qa_exceptions);
+        const notes = String(payload.notes || '').trim().slice(0, 5000) || null;
+        const client = await this.database.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query(
+                'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
+                [auditBundleId]
+            );
+            const bundleResult = await client.query(`
+                SELECT ab.id, ab.status,
+                       EXISTS (
+                         SELECT 1 FROM audit_bundle_issuances ai
+                         WHERE ai.company_id = ab.company_id AND ai.audit_bundle_id = ab.id
+                       ) AS issued,
+                       EXISTS (
+                         SELECT 1 FROM audit_bundles newer
+                         WHERE newer.company_id = ab.company_id AND newer.product_id = ab.product_id
+                           AND newer.version > ab.version
+                       ) AS has_newer_bundle
+                FROM audit_bundles ab
+                WHERE ab.id = $1 AND ab.company_id = $2
+                FOR SHARE
+            `, [auditBundleId, companyId]);
+            const bundle = bundleResult.rows[0];
+            if (!bundle) {
+                throw createAppError('Audit Pack not found.', { statusCode: 404, code: 'AUDIT_BUNDLE_NOT_FOUND' });
+            }
+            if (bundle.status !== 'completed') {
+                throw createAppError('Only a completed Audit Pack can be reviewed.', {
+                    statusCode: 409, code: 'AUDIT_BUNDLE_NOT_COMPLETED'
+                });
+            }
+            if (bundle.issued) {
+                throw createAppError('An issued Audit Pack cannot receive another review.', {
+                    statusCode: 409, code: 'AUDIT_BUNDLE_ALREADY_ISSUED'
+                });
+            }
+            if (bundle.has_newer_bundle) {
+                throw createAppError('A superseded Audit Pack cannot receive another review.', {
+                    statusCode: 409, code: 'AUDIT_BUNDLE_SUPERSEDED'
+                });
+            }
+            const inserted = await client.query(`
+                INSERT INTO audit_bundle_reviews (
+                    company_id, audit_bundle_id, decision, qa_exceptions, notes, reviewed_by
+                ) VALUES ($1,$2,$3,$4::jsonb,$5,$6)
+                RETURNING id, decision, qa_exceptions, notes, reviewed_by, reviewed_at
+            `, [companyId, auditBundleId, decision, JSON.stringify(qaExceptions), notes, userId]);
+            await client.query('COMMIT');
+            const row = inserted.rows[0];
+            return {
+                id: row.id,
+                decision: row.decision,
+                qaExceptions: row.qa_exceptions || [],
+                notes: row.notes,
+                reviewedBy: row.reviewed_by,
+                reviewedAt: row.reviewed_at
+            };
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    async issueAuditBundle(companyId, userId, auditBundleId, payload = {}) {
+        const assertion = String(payload.assertion || payload.assertionText || '').trim().slice(0, 5000);
+        const criteria = String(payload.criteria || '').trim().slice(0, 5000);
+        if (!assertion || !criteria) {
+            throw createAppError('assertion and criteria are required for internal issue.', {
+                statusCode: 400, code: 'AUDIT_ISSUE_ASSERTION_REQUIRED'
+            });
+        }
+        const client = await this.database.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query(
+                'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
+                [auditBundleId]
+            );
+            const bundleResult = await client.query(`
+                SELECT ab.id, ab.status, ab.manifest, ab.manifest_sha256, ab.bundle_sha256,
+                       issuance.id AS issuance_id,
+                       review.id AS review_id, review.decision AS review_decision,
+                       review.qa_exceptions AS review_qa_exceptions,
+                       EXISTS (
+                         SELECT 1 FROM audit_bundles newer
+                         WHERE newer.company_id = ab.company_id AND newer.product_id = ab.product_id
+                           AND newer.version > ab.version
+                       ) AS has_newer_bundle
+                FROM audit_bundles ab
+                LEFT JOIN LATERAL (
+                  SELECT r.* FROM audit_bundle_reviews r
+                  WHERE r.company_id = ab.company_id AND r.audit_bundle_id = ab.id
+                  ORDER BY r.reviewed_at DESC, r.id DESC LIMIT 1
+                ) review ON true
+                LEFT JOIN audit_bundle_issuances issuance
+                  ON issuance.company_id = ab.company_id AND issuance.audit_bundle_id = ab.id
+                WHERE ab.id = $1 AND ab.company_id = $2
+                FOR UPDATE OF ab
+            `, [auditBundleId, companyId]);
+            const bundle = bundleResult.rows[0];
+            if (!bundle) {
+                throw createAppError('Audit Pack not found.', { statusCode: 404, code: 'AUDIT_BUNDLE_NOT_FOUND' });
+            }
+            if (bundle.status !== 'completed') {
+                throw createAppError('Only a completed Audit Pack can be issued.', {
+                    statusCode: 409, code: 'AUDIT_BUNDLE_NOT_COMPLETED'
+                });
+            }
+            if (bundle.issuance_id) {
+                throw createAppError('Audit Pack has already been issued.', {
+                    statusCode: 409, code: 'AUDIT_BUNDLE_ALREADY_ISSUED'
+                });
+            }
+            if (bundle.has_newer_bundle) {
+                throw createAppError('A superseded Audit Pack cannot be issued.', {
+                    statusCode: 409, code: 'AUDIT_BUNDLE_SUPERSEDED'
+                });
+            }
+            const manifest = typeof bundle.manifest === 'string' ? JSON.parse(bundle.manifest) : bundle.manifest;
+            if (manifest?.termEvidenceCoverage?.status !== 'complete') {
+                throw createAppError('Every calculation term needs period-bound activity and factor evidence.', {
+                    statusCode: 409,
+                    code: 'AUDIT_EVIDENCE_COVERAGE_INCOMPLETE',
+                    details: manifest?.termEvidenceCoverage || null
+                });
+            }
+            if (bundle.review_decision !== 'approved') {
+                throw createAppError('The latest human review must approve this Audit Pack.', {
+                    statusCode: 409, code: 'AUDIT_REVIEW_APPROVAL_REQUIRED'
+                });
+            }
+            const exceptions = Array.isArray(bundle.review_qa_exceptions) ? bundle.review_qa_exceptions : [];
+            if (exceptions.some((item) => item?.severity === 'blocking' && item?.status !== 'resolved')) {
+                throw createAppError('Blocking QA exceptions must be resolved before issue.', {
+                    statusCode: 409, code: 'AUDIT_QA_BLOCKING_EXCEPTIONS'
+                });
+            }
+            const inserted = await client.query(`
+                INSERT INTO audit_bundle_issuances (
+                    company_id, audit_bundle_id, assertion_text, criteria,
+                    manifest_sha256, bundle_sha256, issued_by
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+                RETURNING id, assertion_text, criteria, issued_by, issued_at
+            `, [companyId, auditBundleId, assertion, criteria,
+                bundle.manifest_sha256, bundle.bundle_sha256, userId]);
+            await client.query('COMMIT');
+            const row = inserted.rows[0];
+            return {
+                id: row.id,
+                auditBundleId,
+                lifecycleStatus: 'issued',
+                assuranceStatus: 'not_verified',
+                assertion: row.assertion_text,
+                criteria: row.criteria,
+                issuedBy: row.issued_by,
+                issuedAt: row.issued_at
+            };
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw error;
+        } finally {
+            client.release();
+        }
     }
 
     async verifyAuditBundleFile(reportId, companyId, filePath) {

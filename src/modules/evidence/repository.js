@@ -113,7 +113,7 @@ function createEvidenceRepository({ database = pool } = {}) {
     async updateExtractedJson({ companyId, evidenceId, extractedJson, status }) {
       await database.query(
         `UPDATE evidence_documents
-         SET extracted_json = $1,
+         SET extracted_json = COALESCE(extracted_json, '{}'::jsonb) || $1::jsonb,
              status = $2,
              warnings = '[]'::jsonb,
              extraction_error = NULL,

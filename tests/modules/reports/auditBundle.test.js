@@ -1,5 +1,6 @@
 const JSZip = require('jszip');
 const {
+  buildTermEvidenceCoverage,
   buildAuditBundleArchive,
   sha256
 } = require('../../../src/modules/reports/auditBundle');
@@ -31,6 +32,7 @@ const input = {
     original_filename: '../invoice?.pdf', mime_type: 'application/pdf',
     file_size_bytes: evidenceBuffer.length, checksum_sha256: sha256(evidenceBuffer),
     reporting_period_start: '2026-01-01', reporting_period_end: '2026-01-31',
+    calculation_term_numbers: [1],
     buffer: evidenceBuffer
   }]
 };
@@ -43,6 +45,14 @@ describe('server Audit Pack archive', () => {
     expect(repeated.bundleSha256).toBe(result.bundleSha256);
     expect(result.manifest.assuranceStatus).toBe('not_verified');
     expect(result.manifest.manifestSha256).toBe(result.manifestSha256);
+    expect(result.manifest.termEvidenceCoverage).toEqual(expect.objectContaining({
+      status: 'incomplete', termCount: 1, coveredTermCount: 0
+    }));
+    expect(result.manifest.termEvidenceCoverage.terms[0]).toEqual(expect.objectContaining({
+      activityEvidenceDocumentIds: ['evidence-1'],
+      factorEvidenceDocumentIds: [],
+      missing: ['factor_evidence']
+    }));
     const zip = await JSZip.loadAsync(result.buffer);
     expect(Object.keys(zip.files)).toEqual(expect.arrayContaining([
       'manifest.json', 'calculation.json', 'evidence/index.json',
@@ -70,5 +80,48 @@ describe('server Audit Pack archive', () => {
     await expect(buildAuditBundleArchive(legacy)).rejects.toMatchObject({
       code: 'AUDIT_CALCULATION_TERMS_REQUIRED'
     });
+  });
+
+  test('requires declared reporting periods and both activity and factor evidence for every term', () => {
+    const terms = input.snapshot.payload.carbonResults.calculationTerms;
+    const coverage = buildTermEvidenceCoverage(terms, [
+      {
+        evidenceDocumentId: 'activity-no-period', evidenceType: 'material invoice',
+        calculationTermNumbers: [1]
+      },
+      {
+        evidenceDocumentId: 'factor-1', evidenceType: 'emission_factor_source',
+        factorVersionIds: ['cotton:v1'],
+        reportingPeriodStart: '2025-01-01', reportingPeriodEnd: '2025-12-31'
+      }
+    ]);
+    expect(coverage.status).toBe('incomplete');
+    expect(coverage.terms[0]).toEqual(expect.objectContaining({
+      activityEvidenceDocumentIds: [],
+      factorEvidenceDocumentIds: ['factor-1'],
+      missing: ['activity_evidence_period']
+    }));
+
+    const complete = buildTermEvidenceCoverage(terms, [
+      {
+        evidenceDocumentId: 'pcf-source', evidenceType: 'PCF source',
+        factorVersionIds: ['cotton:v1'],
+        calculationTermNumbers: [1],
+        reportingPeriodStart: '2025-01-01', reportingPeriodEnd: '2025-12-31'
+      }
+    ]);
+    expect(complete).toEqual(expect.objectContaining({
+      status: 'complete', termCount: 1, coveredTermCount: 1, missingTermCount: 0
+    }));
+    expect(complete.terms[0].termKey).toMatch(/^[a-f0-9]{64}$/);
+
+    const wrongTerm = buildTermEvidenceCoverage(terms, [{
+      evidenceDocumentId: 'pcf-source', evidenceType: 'pcf_source',
+      factorVersionIds: ['cotton:v1'], calculationTermNumbers: [2],
+      reportingPeriodStart: '2025-01-01', reportingPeriodEnd: '2025-12-31'
+    }]);
+    expect(wrongTerm.terms[0]).toEqual(expect.objectContaining({
+      status: 'incomplete', activityEvidenceDocumentIds: [], missing: ['activity_evidence_term_mapping']
+    }));
   });
 });

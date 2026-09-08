@@ -4,6 +4,25 @@ const { canonicalize, stableCanonicalJson } = require('../carbon/calculationSnap
 
 const CONTRIBUTION_SCHEMA = 'carbon-contribution-terms-v1';
 
+const ACTIVITY_EVIDENCE_TYPES = Object.freeze({
+  materials: [
+    'bill_of_materials', 'bom', 'material_invoice', 'material_certificate', 'supplier_certificate',
+    'supplier_declaration', 'pcf_source'
+  ],
+  packaging: ['packaging_specification', 'packaging_invoice', 'packaging_certificate', 'pcf_source'],
+  finished_goods_manufacturing: [
+    'electricity_bill', 'electricity_invoice', 'energy_invoice', 'fuel_invoice', 'fuel_receipt', 'meter_reading',
+    'production_record', 'utility_bill', 'pcf_source'
+  ],
+  logistics_and_storage: [
+    'air_waybill', 'airway_bill', 'bill_of_lading', 'carrier_document', 'cmr', 'freight_invoice',
+    'logistics_invoice', 'transport_document', 'pcf_source'
+  ]
+});
+const FACTOR_EVIDENCE_TYPES = new Set([
+  'emission_factor', 'emission_factor_source', 'factor_source', 'methodology', 'pcf_source'
+]);
+
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
 
 const safeFilename = (value, fallback) => {
@@ -15,6 +34,110 @@ const safeFilename = (value, fallback) => {
     .replace(/^\.+/, '')
     .trim();
   return name || fallback || 'evidence.bin';
+};
+
+const normalizeEvidenceType = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '_')
+  .replace(/^_+|_+$/g, '');
+
+const hasDeclaredPeriod = (item) => {
+  if (!item.reporting_period_start || !item.reporting_period_end) return false;
+  const start = Date.parse(item.reporting_period_start);
+  const end = Date.parse(item.reporting_period_end);
+  return Number.isFinite(start) && Number.isFinite(end) && start <= end;
+};
+
+const normalizeFactorVersionIds = (value) => {
+  const parsed = typeof value === 'string' ? (() => {
+    try { return JSON.parse(value); } catch { return [value]; }
+  })() : value;
+  return [...new Set((Array.isArray(parsed) ? parsed : [])
+    .map((item) => String(item || '').trim())
+    .filter(Boolean))].sort();
+};
+
+const normalizeCalculationTermNumbers = (value) => {
+  const parsed = typeof value === 'string' ? (() => {
+    try { return JSON.parse(value); } catch { return String(value).split(/[\n,]/); }
+  })() : value;
+  return [...new Set((Array.isArray(parsed) ? parsed : [])
+    .map((item) => Number.parseInt(item, 10))
+    .filter((item) => Number.isInteger(item) && item > 0))].sort((a, b) => a - b);
+};
+
+const buildTermKey = (term, index) => sha256(stableCanonicalJson({
+  index,
+  stage: term.stage || null,
+  detail: term.detail || null,
+  activity: term.activity,
+  activityUnit: term.activityUnit,
+  factorVersionId: term.factorVersionId,
+  kgCo2e: term.kgCo2e
+}));
+
+const buildTermEvidenceCoverage = (calculationTerms, evidence) => {
+  const normalizedEvidence = evidence.map((item) => ({
+    ...item,
+    normalizedType: normalizeEvidenceType(item.evidenceType || item.evidence_type),
+    factorVersionIds: normalizeFactorVersionIds(item.factorVersionIds || item.factor_version_ids),
+    calculationTermNumbers: normalizeCalculationTermNumbers(
+      item.calculationTermNumbers || item.calculation_term_numbers
+    ),
+    hasDeclaredPeriod: hasDeclaredPeriod({
+      reporting_period_start: item.reportingPeriodStart || item.reporting_period_start,
+      reporting_period_end: item.reportingPeriodEnd || item.reporting_period_end
+    })
+  }));
+  const terms = calculationTerms.map((term, index) => {
+    const acceptedActivityTypes = ACTIVITY_EVIDENCE_TYPES[term.stage] || [];
+    const stageCandidates = normalizedEvidence.filter((item) =>
+      acceptedActivityTypes.includes(item.normalizedType)
+    );
+    const activityCandidates = stageCandidates.filter((item) => item.calculationTermNumbers.includes(index + 1));
+    const activityEvidence = activityCandidates.filter((item) => item.hasDeclaredPeriod);
+    const factorTypeCandidates = normalizedEvidence.filter((item) => FACTOR_EVIDENCE_TYPES.has(item.normalizedType));
+    const factorCandidates = factorTypeCandidates.filter((item) => item.factorVersionIds.includes(term.factorVersionId));
+    const factorEvidence = factorCandidates.filter((item) => item.hasDeclaredPeriod);
+    const missing = [];
+    if (activityEvidence.length === 0) {
+      missing.push(activityCandidates.length
+        ? 'activity_evidence_period'
+        : (stageCandidates.length ? 'activity_evidence_term_mapping' : 'activity_evidence'));
+    }
+    if (factorEvidence.length === 0) {
+      missing.push(factorCandidates.length
+        ? 'factor_evidence_period'
+        : (factorTypeCandidates.length ? 'factor_evidence_version_mapping' : 'factor_evidence'));
+    }
+    return {
+      termKey: buildTermKey(term, index),
+      termIndex: index,
+      stage: term.stage,
+      detail: term.detail,
+      factorVersionId: term.factorVersionId,
+      activityEvidenceDocumentIds: activityEvidence.map((item) => item.evidenceDocumentId || item.evidence_document_id),
+      factorEvidenceDocumentIds: factorEvidence.map((item) => item.evidenceDocumentId || item.evidence_document_id),
+      missing,
+      status: missing.length === 0 ? 'covered' : 'incomplete'
+    };
+  });
+  const coveredTerms = terms.filter((term) => term.status === 'covered').length;
+  return {
+    schemaVersion: 'audit-term-evidence-coverage-v1',
+    status: terms.length > 0 && coveredTerms === terms.length ? 'complete' : 'incomplete',
+    termCount: terms.length,
+    coveredTermCount: coveredTerms,
+    missingTermCount: terms.length - coveredTerms,
+    rules: {
+      activityEvidenceTypesByStage: ACTIVITY_EVIDENCE_TYPES,
+      factorEvidenceTypes: [...FACTOR_EVIDENCE_TYPES].sort(),
+      explicitCalculationTermNumberRequired: true,
+      reportingPeriodRequired: true
+    },
+    terms
+  };
 };
 
 const assertBundleInputs = ({ snapshot, evidenceFiles }) => {
@@ -59,10 +182,13 @@ async function buildAuditBundleArchive({ bundle, product, snapshot, evidenceFile
       fileSizeBytes: item.buffer.length,
       sha256: actualSha256,
       reportingPeriodStart: item.reporting_period_start || null,
-      reportingPeriodEnd: item.reporting_period_end || null
+      reportingPeriodEnd: item.reporting_period_end || null,
+      factorVersionIds: normalizeFactorVersionIds(item.factor_version_ids),
+      calculationTermNumbers: normalizeCalculationTermNumbers(item.calculation_term_numbers)
     };
   });
   const carbonResults = snapshot.payload.carbonResults || snapshot.payload.carbon_results;
+  const termEvidenceCoverage = buildTermEvidenceCoverage(carbonResults.calculationTerms, evidence);
   const manifestCore = canonicalize({
     schemaVersion: 'weavecarbon-audit-bundle-v1',
     bundleId: bundle.id,
@@ -84,7 +210,8 @@ async function buildAuditBundleArchive({ bundle, product, snapshot, evidenceFile
       contributionTermsSchemaVersion: carbonResults.calculationTermsSchemaVersion,
       contributionTermCount: carbonResults.calculationTerms.length
     },
-    evidence
+    evidence,
+    termEvidenceCoverage
   });
   const manifestSha256 = sha256(stableCanonicalJson(manifestCore));
   const manifest = { ...manifestCore, manifestSha256 };
@@ -107,7 +234,13 @@ async function buildAuditBundleArchive({ bundle, product, snapshot, evidenceFile
 module.exports = {
   CONTRIBUTION_SCHEMA,
   assertBundleInputs,
+  buildTermEvidenceCoverage,
   buildAuditBundleArchive,
+  buildTermKey,
+  hasDeclaredPeriod,
+  normalizeEvidenceType,
+  normalizeFactorVersionIds,
+  normalizeCalculationTermNumbers,
   safeFilename,
   sha256
 };
