@@ -843,3 +843,36 @@ Backend carbon trace core:
 - Exact next gate: apply migration 022 on isolated staging after backup, run the guarded PDF/XLSX pilot and restore drill,
   then merge/deploy only if checksums and health pass. After that, R01/R02 still require named reviews using actual shipment
   records before any status promotion.
+
+### 2026-09-10 — Migration 022 isolated staging acceptance and production recovery gate
+
+- R01 and R02 remain `READY_TO_PILOT`, not `READY_TO_ISSUE`. This run proves the technical review/issuance controls on
+  synthetic staging data; it is not the required named decision on an actual shipment.
+- Isolated staging was backed up before migration under
+  `/opt/weavecarbon-staging/backups/pre-022-20260909T152730Z`. Its PostgreSQL dump SHA-256 is
+  `b2d213cce6822f4b37ccc152e99b70581d3dd407fb95f495e57812a2e74e94c3` and uploads SHA-256 is
+  `8d90d356629725e8cd70ddbfb031986cd3cb9ea934156e0eaba84da0c1c016dd`. A disposable PostgreSQL 16 restore drill passed
+  with 71 tables and 21 migrations before the new image was started.
+- Staging applied `022_export_document_business_review.sql`; DB, BE and FE became healthy, `/ready` returned database and
+  queue `ok`, and `/` returned HTTP 200 through the staging proxy.
+- Guarded pilot result
+  `/opt/weavecarbon-staging/artifacts/export-pilot-022-rerun-20260909T175227Z/result.json` records `passed` on the isolated
+  `weavecarbon_staging` database and `productionDataTouched=false`. The fixture contained 25 goods lines, two containers,
+  two pallets and 50 cartons. It passed readiness/reconciliation, required role review, exact reviewed-to-issued byte
+  promotion, MIME/size/hash reopening, tenant isolation, issued immutability and stale-snapshot blocking. Five append-only
+  review rows were present, including the deliberate stale-snapshot test. CN 61/62/64 returned `CBAM_NOT_APPLICABLE`.
+- Pilot artifact SHA-256 values: Commercial Invoice XLSX
+  `3b8210a61cceddccb95f8cfaf4581960723c0429c89769c6ca685222df2d4b75`; Commercial Invoice PDF
+  `866b3e1ee8e0241225c3d7dc1ee57f08a7f9118e260955091ea980b6ea51c567`; Packing List XLSX
+  `f111f3d430323ef7bc8ba0e6d0bcbdd08588e981bf6687a34e837e28998a9ab4`; Packing List PDF
+  `dec1f57eb359c4e97c31c7a0ee69834f55e6734a37456e0d8d754fa80c11daae`.
+- Immediately before the planned `main` merge, production state was captured under
+  `/opt/weavecarbon/FE/backups/state-20260909T175426Z`. Database, uploads and RAG SHA-256 values are respectively
+  `5d596a69db7a7a98009bd0b74ba0665a3925f825e3d1494a6ff699818a0754870`,
+  `5e9942c65a71de04d7f110bec101478eda6344a3bfaeba6ca76549b151d6714b` and
+  `3da6c515d75d382111580dd3dba61e49b6e11e9a24765b8d0a65d7842eb7d127`. The full isolated restore report at
+  `/opt/weavecarbon/FE/restore-drills/weavecarbon_restore_20260909_175502/restore-report.txt` records `PASS`,
+  `production_data_touched=false`, RPO 34 seconds and RTO 18 seconds. The public frontend returned HTTP 200 after backup.
+- Exact next gate: fast-forward backend and frontend to `main`, wait for their deployment gates, verify migration 022,
+  deployed commit identities, container health and public smoke checks. Business promotion still requires an export
+  operator and warehouse reviewer to inspect files generated from an actual representative shipment.
