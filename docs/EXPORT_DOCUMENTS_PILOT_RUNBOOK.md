@@ -23,13 +23,14 @@ name to exactly match PostgreSQL `current_database()`.
 - 25 textile/footwear goods lines are validated and exported without truncation.
 - Two containers with separate seals and pallet parents are represented explicitly.
 - Every line is split between a full carton and a partial carton; all quantities and net/gross weights reconcile.
-- Commercial Invoice and Packing List files are generated, stored, issued and reopened in both XLSX and PDF formats.
+- Commercial Invoice and Packing List files are generated, reviewed, promoted byte-for-byte, and reopened in both XLSX and PDF formats.
 - Database MIME, size and SHA-256 values match the stored issued files.
-- The XLSX files contain the final line/package and issued watermark; the PDFs have valid page objects and PDF signatures.
+- The XLSX files contain the final line/package and controlled-copy notice; the PDFs have valid page objects and PDF signatures.
+- Issue is blocked before the required synthetic role review, and the issued SHA-256/size exactly match the reviewed file.
 - CN 61/62/64 remains outside the baseline CBAM gate.
 - Cross-tenant access, issued-content mutation and stale-snapshot issuance are blocked.
 
-The pilot writes review copies and `result.json` to `artifacts/export-pilot/`. Record all four checksums and obtain a human
+The pilot requires migration 022 and writes controlled copies plus `result.json` to `artifacts/export-pilot/`. Record all four checksums and obtain a human
 decision on layout and business meaning before changing either report from `READY_TO_PILOT` to `READY_TO_ISSUE`.
 
 The fixture proves the technical container-pallet-carton hierarchy and file integrity on an isolated database. It does not

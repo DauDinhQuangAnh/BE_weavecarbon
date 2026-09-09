@@ -44,6 +44,8 @@ This tracker separates four facts that must never be conflated:
 | Backend PostgreSQL date-normalisation fix | `dab966c` |
 | Backend R01/R02 hierarchy/PDF commit | `9934423fac24b00ceca4ad65f11cec2e2f30a5c3` |
 | Frontend R01/R02 hierarchy/PDF commit | `bace2dc4f7d3929aebfd36431833c63f61e4e169` |
+| Backend R01/R02 business-review commit | `241fd0f39f286b585589bc7e3543d832c4444d4f` |
+| Frontend R01/R02 business-review commit | `a74495460a9a37f6f63bc6ab577738f6b70be815` |
 | Frontend critical dependency patch commit | `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` |
 | Backend latest application-bearing production commit | `4ff6bc8973733225dcca3ea76f33d5a276438994` |
 | Frontend latest application-bearing production commit | `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` |
@@ -105,10 +107,13 @@ The report increment merged to `main` completed the shared shipment-document fou
 - CBAM applicability gate: ordinary CN 61/62/64 returns `CBAM_NOT_APPLICABLE`.
 - DPP production guardrails for valid GS1 GTIN, public HTTPS URL and explicit operator/facility identifiers.
 - Frontend shipment selection, profile/line/package editing, evidence approval and per-document readiness.
+- Append-only named R01/R02 decisions bound to payload, source-snapshot and file SHA-256; review/issue mutations require company-admin authority.
+- Exact-byte promotion from approved controlled copy to issued file, with storage-path, size and checksum tamper checks.
+- Destination EORI/VAT checks, customs value/basis, HS/CN provenance/effective date and explicit per-package/group-total measurement semantics.
 
 Known overall checks at the latest feature commits:
 
-- Backend: 95/95 suites and 590/590 tests passed; `npm run verify` passed.
+- Backend: 96/96 suites and 605/605 tests passed; `npm run verify:full` passed.
 - Frontend: 38/38 files and 167/167 tests passed; `npm run check` and production build passed.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
@@ -123,8 +128,8 @@ Known overall checks at the latest feature commits:
 
 | # | Report/document | Applicability | Current status | Current capability | Next gate |
 |---:|---|---|---|---|---|
-| 1 | Commercial Invoice | Almost every sale shipment | `READY_TO_PILOT` | Shipment PDF/XLSX, invoice identity/place, party/contact, HS confirmation, adjustments and immutable issue | Named export-operator review against an actual invoice and buyer/destination rules |
-| 2 | Packing List | Normal customs/transport practice | `READY_TO_PILOT` | PDF/XLSX, container-pallet-carton hierarchy, partial cartons, CBM and quantity/net/gross reconciliation | Explicit grouped-weight semantics and named warehouse physical-pack review |
+| 1 | Commercial Invoice | Almost every sale shipment | `READY_TO_PILOT` | PDF/XLSX, EORI/VAT, customs value, HS provenance and checksum-bound named review/issue | Real export-operator review against an actual invoice and buyer/destination rules |
+| 2 | Packing List | Normal customs/transport practice | `READY_TO_PILOT` | PDF/XLSX, hierarchy, explicit measurement basis, carrier display and checksum-bound named review/issue | Real warehouse review against the physical package ledger |
 | 3 | B/L, AWB, CMR or FBL | Depends on transport mode | `EXTERNAL_DOCUMENT` | Upload, link and approve carrier evidence; WeaveCarbon generates only Carbon Annex | Carrier metadata validation and real document pilot |
 | 4 | Vietnam export declaration/VNACCS | Normally mandatory | `NOT_STARTED` | Stores declaration number only | Build broker/VNACCS support dataset and response lifecycle |
 | 5 | EU import declaration/SAD/EUCDM | Importer/declarant responsibility | `NOT_STARTED` | No declaration dataset | Build declarant handoff dataset; never label it customs-accepted |
@@ -164,11 +169,12 @@ and insurance; totals; transport/ports; linked packing/carrier/origin/customs re
 **Implemented:** shipment profile/lines; parties with country/contact; invoice number/date/place; PO; Incoterm/location;
 currency/payment; exporter tax; conditional freight/insurance; discount/surcharge; transport/ports; line values and totals;
 style/size/colour/lot; explicit HS confirmation with reviewer/time and automatic invalidation when the HS code changes; PDF/XLSX;
-no line cap; immutable issue and stale-snapshot block.
+no line cap; destination EORI and conditional VAT/consignee rules; customs value/basis; HS source/ruleset/effective date with
+confirmation invalidation; named append-only export-operator review bound to three checksums; exact-byte immutable issue,
+admin-only review/issue and stale/tampered-source block.
 
-**Remaining:** destination-specific VAT/EORI and conditional consignee rules; HS classification source/ruleset/effective
-date; booked/customs-value reconciliation beyond the calculated invoice total; optional signature rules;
-staging review against one actual invoice and destination/buyer requirements.
+**Remaining:** configure actual people/segregation-of-duties beyond the current company-admin authority; destination/buyer-
+specific optional signature and instruction rules; staging review against one actual invoice and its booked customs value.
 
 **Definition of Done:** every required/conditional field is rule-tested; semantic XLSX/PDF tests verify labels and values;
 totals and currency reconcile; no placeholder; shipment over 20 lines works; a trade operator manually signs off one
@@ -182,13 +188,14 @@ real VN-to-EU pilot; only then mark `READY_TO_ISSUE`.
 pallet/carton IDs and types; marks/numbers; exact item allocation; SKU/style/size/colour/lot when needed; quantity; per-unit
 and total net/gross weight; dimensions/CBM; container/seal; total packages/quantity/net/gross/CBM; preparer/approver/version.
 
-**Implemented:** dedicated number/date; transport reference; tenant-bound containers; container-pallet-carton hierarchy;
+**Implemented:** dedicated number/date; transport reference and carrier name; tenant-bound containers; container-pallet-carton hierarchy;
 marks; dimensions; calculated row and document CBM; style/size/colour/lot; package contents allocation; package/quantity/
 net/gross/CBM totals; PDF/XLSX; exact line allocation; gross >= net checks; net and gross line/package reconciliation;
-two-container/two-pallet fixture with full and partial cartons.
+two-container/two-pallet fixture with full and partial cartons; stored `per_package`/`group_total` bases for weight and
+dimensions; named append-only warehouse review and exact-byte immutable issue.
 
-**Remaining:** distinguish per-unit package weight/dimensions from grouped totals in the stored model; carrier/transport
-company display; real warehouse pilot with a named reviewer.
+**Remaining:** configure actual people/segregation-of-duties beyond the current company-admin authority and complete a
+real physical warehouse pilot with a named reviewer.
 
 **Definition of Done:** physical package ledger exactly reconciles quantity/net/gross/CBM to invoice and booking; final
 partial package is represented correctly; over-20-line and multiple-container fixtures pass; real warehouse pilot passes.
@@ -506,13 +513,13 @@ Do not mark an item complete based only on unit tests. Attach or record the stag
 Before merging or deploying this branch:
 
 1. Back up PostgreSQL and the uploads directory and verify restoration instructions.
-2. Apply `migrations/017_shipment_export_workflow.sql`, `018_export_invoice_packing_details.sql`,
-   `019_immutable_audit_bundles.sql` and `020_audit_bundle_review_lifecycle.sql` to staging cloned from a safe schema/data
-   fixture.
+2. Apply every export/audit migration from `017_shipment_export_workflow.sql` through
+   `022_export_document_business_review.sql` to staging cloned from a safe schema/data fixture.
 3. Run migration rollback/forward compatibility checks appropriate to the environment.
 4. Create one real-like Vietnam-to-EU shipment with more than 20 lines and multiple/partial packages.
 5. Upload and approve a real-like carrier document; fill profile, package and carbon data without placeholders.
-6. Generate/download/reopen/inspect/issue every applicable new document and verify MIME, size and SHA-256.
+6. Generate/download/reopen/inspect/review/issue every applicable new document and verify MIME, size and SHA-256;
+   R01/R02 issued bytes must exactly match the approved controlled copy.
 7. Reconcile invoice value/currency, quantity, packages, net/gross weight, B/L number, container and seal across files.
 8. Verify tenant isolation, expired/unapproved evidence blocking, stale snapshot blocking and issued immutability.
 9. Verify CN 61/62/64 yields `CBAM_NOT_APPLICABLE`; verify an Annex-I fixture triggers review without producing a fake filing.
@@ -528,8 +535,9 @@ Backend:
 
 ```bash
 npm test -- --runInBand
-npm run verify
+npm run verify:full
 npm run test:migration-snapshots
+npm run test:export-documents-pilot # isolated PostgreSQL only; see docs/EXPORT_DOCUMENTS_PILOT_RUNBOOK.md
 npm run test:audit-bundle-pilot # isolated PostgreSQL only; see docs/AUDIT_PACK_PILOT_RUNBOOK.md
 git diff --check
 ```
@@ -572,13 +580,19 @@ Backend core:
 - `migrations/017_shipment_export_workflow.sql`
 - `migrations/018_export_invoice_packing_details.sql`
 - `migrations/019_immutable_audit_bundles.sql`
+- `migrations/020_audit_bundle_review_lifecycle.sql`
+- `migrations/021_export_container_hierarchy_pdf.sql`
+- `migrations/022_export_document_business_review.sql`
 - `src/services/exportShipmentService.js`
+- `src/services/exportDocumentPdf.js`
 - `src/routes/exportV2.js`
 - `src/utils/simpleXlsx.js`
 - `src/modules/evidence/`
 - `src/modules/reports/`
 - `tests/services/exportShipmentService.test.js`
 - `tests/config/exportWorkflowMigrationContract.test.js`
+- `tests/config/exportDocumentBusinessReviewMigrationContract.test.js`
+- `scripts/render-export-document-pdf-qa.js`
 - `docs/EXPORT_WORKFLOW.md`
 
 Frontend core:
@@ -807,3 +821,25 @@ Backend carbon trace core:
   migration 021 was present, `/health` was healthy and the public site returned HTTP 200.
 - These technical and deployment gates do not promote legal/business readiness. R01 and R02 remain `READY_TO_PILOT` until
   the named export operator and warehouse reviewers approve representative real shipment files against the open gates above.
+
+### 2026-09-09 — R01/R02 checksum-bound business review and measurement semantics
+
+- Status remains `READY_TO_PILOT`, not `READY_TO_ISSUE`. Backend application commit
+  `241fd0f39f286b585589bc7e3543d832c4444d4f` and frontend commit
+  `a74495460a9a37f6f63bc6ab577738f6b70be815` close the next technical controls;
+  they do not constitute a real trade or warehouse approval.
+- Additive migration 022 stores importer VAT, carrier, customs value/basis, HS/CN provenance/effective date and explicit
+  `per_package` versus `group_total` measurement bases. It adds append-only named reviews bound to payload, file and
+  source-snapshot SHA-256 with tenant-bound foreign keys.
+- Commercial Invoice requires an EU EORI where applicable, validates supplied EORI/VAT formats, records customs value and
+  the adjustment basis, and invalidates HS confirmation whenever code/source/ruleset/effective date changes. Packing List
+  calculates weight and CBM from the declared basis and displays the carrier plus row/total semantics.
+- Review and issue mutations require company-admin authority. Commercial Invoice accepts only `export_operator`; Packing
+  List accepts only `warehouse_reviewer`. Changed shipment data makes approval stale; rejected or changes-requested review
+  blocks issue. Issuance verifies the local storage path, source size and checksum, then promotes the exact approved bytes.
+- Local gates passed: backend `verify:full` with 96 suites/605 tests; frontend contract/check with 38 files/167 tests and
+  production build. Reproducible 25-line PDF fixtures were rendered with Poppler and inspected page-by-page after fixing
+  footer collision, automatic page-split corruption and long-token wrapping.
+- Exact next gate: apply migration 022 on isolated staging after backup, run the guarded PDF/XLSX pilot and restore drill,
+  then merge/deploy only if checksums and health pass. After that, R01/R02 still require named reviews using actual shipment
+  records before any status promotion.
