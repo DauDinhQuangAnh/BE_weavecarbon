@@ -45,10 +45,10 @@ This tracker separates four facts that must never be conflated:
 | Backend R01/R02 hierarchy/PDF commit | `9934423fac24b00ceca4ad65f11cec2e2f30a5c3` |
 | Frontend R01/R02 hierarchy/PDF commit | `bace2dc4f7d3929aebfd36431833c63f61e4e169` |
 | Frontend critical dependency patch commit | `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` |
-| Backend current production commit | `4ff6bc8973733225dcca3ea76f33d5a276438994` |
-| Frontend current production commit | `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` |
+| Backend latest application-bearing production commit | `4ff6bc8973733225dcca3ea76f33d5a276438994` |
+| Frontend latest application-bearing production commit | `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` |
 | Production site | `https://weavecarbon.com` |
-| Production state verified at 2026-09-09 | R01/R02 hierarchy/PDF changes and the frontend security patch are deployed from `main`; FE/BE checkouts match the current production commits above, all production containers are healthy, migrations 001-021 are current, `/health` is healthy and `/` returns HTTP 200 |
+| Production state verified at 2026-09-09 | R01/R02 hierarchy/PDF changes and the frontend security patch are deployed from `main`; deployed application code includes the application-bearing commits above, all production containers are healthy, migrations 001-021 are current, `/health` is healthy and `/` returns HTTP 200. Later documentation-only commits may advance a checkout without changing application code. |
 | Isolated staging verified at 2026-09-09 | `/opt/weavecarbon-staging`; frontend `6016c07605e3cab56cd5c40c02dbd46193b7f2b3`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migrations 001-021 applied; DB/BE/FE healthy; guarded two-container PDF/XLSX pilot and patched frontend image scan passed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
