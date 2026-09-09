@@ -42,11 +42,13 @@ This tracker separates four facts that must never be conflated:
 | Frontend isolated-staging stack commit | `188fe3d` |
 | Backend R01/R02 staging-pilot commit | `002aea9` |
 | Backend PostgreSQL date-normalisation fix | `dab966c` |
+| Backend R01/R02 hierarchy/PDF commit | `9934423fac24b00ceca4ad65f11cec2e2f30a5c3` |
+| Frontend R01/R02 hierarchy/PDF commit | `bace2dc4f7d3929aebfd36431833c63f61e4e169` |
 | Backend production report merge commit | `a242a80e8755688246ccc0c1676c6874c8b9f8e6` |
 | Frontend production report merge commit | `188fe3d9ebf7afc77caab3e67a14c09b3f1fadd9` |
 | Production site | `https://weavecarbon.com` |
 | Production state verified at 2026-09-09 | Report changes are merged and deployed on `main`; FE/BE checkouts match the merge commits above, all production containers are healthy, migrations 001-020 are current, `/health` is healthy and `/` returns HTTP 200 |
-| Isolated staging verified at 2026-09-09 | `/opt/weavecarbon-staging`; feature branches; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migrations 001-020 applied; DB/BE/FE healthy |
+| Isolated staging verified at 2026-09-09 | `/opt/weavecarbon-staging`; `feat/export-r01-r02-pdf-hierarchy`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migrations 001-021 applied; DB/BE/FE healthy; guarded two-container PDF/XLSX pilot passed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
 Never put server passwords, database credentials, tokens or `.env` values in this file.
@@ -90,6 +92,8 @@ The report increment merged to `main` completed the shared shipment-document fou
 - Versioned export documents and requirement results.
 - Lifecycle support for draft/review, blocked, issued and superseded documents.
 - Commercial Invoice, Packing List, Carbon Annex and Origin Workbook XLSX generation.
+- Commercial Invoice and Packing List PDF generation with stable A4 landscape pagination and explicit draft marking.
+- Tenant-bound container records plus container-pallet-carton package hierarchy and reconciliation.
 - ICS2 support CSV generation.
 - Validation for selected fields, package allocation and weight reconciliation.
 - Approved/current carrier evidence requirement for Carbon Annex and ICS2 support data.
@@ -103,22 +107,23 @@ The report increment merged to `main` completed the shared shipment-document fou
 
 Known overall checks at the latest feature commits:
 
-- Backend: 94/94 suites and 584/584 tests passed; `npm run verify` passed.
+- Backend: 95/95 suites and 590/590 tests passed; `npm run verify` passed.
 - Frontend: 38/38 files and 167/167 tests passed; `npm run check` and production build passed.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
   retained by CI for 14 days. This proves the synthetic integration gate, not a human real-data staging approval.
 - On the isolated VPS staging database, the guarded Audit Pack pilot passed and the guarded R01/R02 pilot issued and
-  reopened a 25-line Commercial Invoice plus a 50-carton Packing List. These are synthetic technical pilots; neither is a
+  reopened a 25-line Commercial Invoice plus a 50-carton Packing List. The latest R01/R02 run used two containers,
+  two pallets and 50 cartons and verified both PDF and XLSX outputs. These are synthetic technical pilots; neither is a
   human trade/warehouse approval.
 
 ## 5. Master dossier matrix
 
 | # | Report/document | Applicability | Current status | Current capability | Next gate |
 |---:|---|---|---|---|---|
-| 1 | Commercial Invoice | Almost every sale shipment | `READY_TO_PILOT` | Shipment XLSX, invoice identity/place, party/contact, HS confirmation, adjustments and immutable issue | PDF/print form and staging operator review |
-| 2 | Packing List | Normal customs/transport practice | `READY_TO_PILOT` | Dedicated identity/date, package XLSX, CBM and quantity/net/gross reconciliation | Package hierarchy and staging physical-pack test |
+| 1 | Commercial Invoice | Almost every sale shipment | `READY_TO_PILOT` | Shipment PDF/XLSX, invoice identity/place, party/contact, HS confirmation, adjustments and immutable issue | Named export-operator review against an actual invoice and buyer/destination rules |
+| 2 | Packing List | Normal customs/transport practice | `READY_TO_PILOT` | PDF/XLSX, container-pallet-carton hierarchy, partial cartons, CBM and quantity/net/gross reconciliation | Explicit grouped-weight semantics and named warehouse physical-pack review |
 | 3 | B/L, AWB, CMR or FBL | Depends on transport mode | `EXTERNAL_DOCUMENT` | Upload, link and approve carrier evidence; WeaveCarbon generates only Carbon Annex | Carrier metadata validation and real document pilot |
 | 4 | Vietnam export declaration/VNACCS | Normally mandatory | `NOT_STARTED` | Stores declaration number only | Build broker/VNACCS support dataset and response lifecycle |
 | 5 | EU import declaration/SAD/EUCDM | Importer/declarant responsibility | `NOT_STARTED` | No declaration dataset | Build declarant handoff dataset; never label it customs-accepted |
@@ -157,11 +162,11 @@ and insurance; totals; transport/ports; linked packing/carrier/origin/customs re
 
 **Implemented:** shipment profile/lines; parties with country/contact; invoice number/date/place; PO; Incoterm/location;
 currency/payment; exporter tax; conditional freight/insurance; discount/surcharge; transport/ports; line values and totals;
-style/size/colour/lot; explicit HS confirmation with reviewer/time and automatic invalidation when the HS code changes; XLSX;
+style/size/colour/lot; explicit HS confirmation with reviewer/time and automatic invalidation when the HS code changes; PDF/XLSX;
 no line cap; immutable issue and stale-snapshot block.
 
 **Remaining:** destination-specific VAT/EORI and conditional consignee rules; HS classification source/ruleset/effective
-date; PDF/print form; booked/customs-value reconciliation beyond the calculated invoice total; optional signature rules;
+date; booked/customs-value reconciliation beyond the calculated invoice total; optional signature rules;
 staging review against one actual invoice and destination/buyer requirements.
 
 **Definition of Done:** every required/conditional field is rule-tested; semantic XLSX/PDF tests verify labels and values;
@@ -176,13 +181,13 @@ real VN-to-EU pilot; only then mark `READY_TO_ISSUE`.
 pallet/carton IDs and types; marks/numbers; exact item allocation; SKU/style/size/colour/lot when needed; quantity; per-unit
 and total net/gross weight; dimensions/CBM; container/seal; total packages/quantity/net/gross/CBM; preparer/approver/version.
 
-**Implemented:** dedicated number/date; transport reference; flat packages; marks; dimensions; calculated row and document
-CBM; style/size/colour/lot; package contents allocation; package/quantity/net/gross/CBM totals; XLSX; exact line allocation;
-gross >= net checks; net and gross line/package reconciliation.
+**Implemented:** dedicated number/date; transport reference; tenant-bound containers; container-pallet-carton hierarchy;
+marks; dimensions; calculated row and document CBM; style/size/colour/lot; package contents allocation; package/quantity/
+net/gross/CBM totals; PDF/XLSX; exact line allocation; gross >= net checks; net and gross line/package reconciliation;
+two-container/two-pallet fixture with full and partial cartons.
 
-**Remaining:** explicit container-pallet-carton hierarchy; distinguish per-unit package weight/dimensions from grouped
-totals in the stored model; carrier/transport company display; PDF/print form; semantic test with a partially filled final
-carton and a multi-container shipment; real warehouse pilot.
+**Remaining:** distinguish per-unit package weight/dimensions from grouped totals in the stored model; carrier/transport
+company display; real warehouse pilot with a named reviewer.
 
 **Definition of Done:** physical package ledger exactly reconciles quantity/net/gross/CBM to invoice and booking; final
 partial package is represented correctly; over-20-line and multiple-container fixtures pass; real warehouse pilot passes.
@@ -750,3 +755,31 @@ Backend carbon trace core:
   remains `PARTIAL`, and no report is confirmed `READY_TO_ISSUE` without the named human and output-format gates above.
 - Exact next action remains the R01/R02 container/package hierarchy and stable PDF/print renderers, followed by a
   two-container pilot and named export-operator/warehouse review.
+
+### 2026-09-09 — R01/R02 container hierarchy, PDF and two-container staging gate
+
+- R01 and R02 remain `READY_TO_PILOT`, not `READY_TO_ISSUE`. This increment closes the planned technical PDF and
+  package-hierarchy gaps; it does not replace the required named export-operator and warehouse approvals.
+- Backend commit `9934423fac24b00ceca4ad65f11cec2e2f30a5c3` adds additive migration 021, tenant-bound containers,
+  container-pallet-carton relationships, immutable output-format identity, PDF renderers and PDF/XLSX format selection.
+  Frontend commit `bace2dc4f7d3929aebfd36431833c63f61e4e169` adds container/hierarchy editing and document-format selection.
+- Local gates passed: backend verify plus 95 suites/590 tests; frontend check plus 38 files/167 tests and production build.
+  Two three-page A4-landscape QA PDFs were rendered with Poppler, visually inspected page by page and text-checked for
+  the last of 25 product lines and page numbering.
+- Before applying migration 021, isolated staging PostgreSQL and uploads were backed up under
+  `/opt/weavecarbon-staging/backups/pre-021-20260909`. Database SHA-256 is
+  `aa44046638ce79ffa62afaadac8a59649419420fd2586d9f5c8627fcc32285f3`; uploads SHA-256 is
+  `d0120ac4e2584d07a6763317d31818716e7d370f44c3bfc9fa41187cb58b66ba`. A PostgreSQL 16 restore drill succeeded
+  with 70 public tables and its temporary container/volume were removed.
+- Staging applied `021_export_container_hierarchy_pdf.sql`; DB, BE and FE became healthy and `/ready` plus `/` passed.
+  The guarded pilot created 25 lines, two containers, two pallets and 50 cartons, including 25 partial cartons. It issued
+  and reopened four files, verified readiness/reconciliation, MIME/size/SHA-256, tenant isolation, issued immutability and
+  stale-snapshot blocking. Ordinary CN 61/62/64 correctly returned `CBAM_NOT_APPLICABLE`.
+- Staging issued-file SHA-256 values: Commercial Invoice XLSX
+  `618444737b5534024e856725bd7fcabb36790640ffd6dedfd5db9e0c0d638433a`; Commercial Invoice PDF
+  `2bd24ccc3160a162385bbd98aa2bd29281838de52cd09de97fb42e9271b52c113`; Packing List XLSX
+  `f96a8da09ad55ec978f424786ec72469e9854cdcf1407fd247d5c6e1584bbc55a`; Packing List PDF
+  `1450b9bc7cdcf9ec701ec321eb3f40ae272788964eb77602ecb3376a4cf187aaf`.
+- Exact next gate for R01: named operator review against a real invoice plus buyer/destination VAT/EORI, consignee, HS
+  source and customs-value requirements. Exact next gate for R02: make grouped package weight/dimension semantics explicit,
+  add carrier display and obtain a named warehouse review of a representative physical pack.
