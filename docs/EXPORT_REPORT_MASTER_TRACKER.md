@@ -44,11 +44,12 @@ This tracker separates four facts that must never be conflated:
 | Backend PostgreSQL date-normalisation fix | `dab966c` |
 | Backend R01/R02 hierarchy/PDF commit | `9934423fac24b00ceca4ad65f11cec2e2f30a5c3` |
 | Frontend R01/R02 hierarchy/PDF commit | `bace2dc4f7d3929aebfd36431833c63f61e4e169` |
-| Backend production report merge commit | `a242a80e8755688246ccc0c1676c6874c8b9f8e6` |
-| Frontend production report merge commit | `188fe3d9ebf7afc77caab3e67a14c09b3f1fadd9` |
+| Frontend critical dependency patch commit | `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` |
+| Backend current production commit | `4ff6bc8973733225dcca3ea76f33d5a276438994` |
+| Frontend current production commit | `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` |
 | Production site | `https://weavecarbon.com` |
-| Production state verified at 2026-09-09 | Report changes are merged and deployed on `main`; FE/BE checkouts match the merge commits above, all production containers are healthy, migrations 001-020 are current, `/health` is healthy and `/` returns HTTP 200 |
-| Isolated staging verified at 2026-09-09 | `/opt/weavecarbon-staging`; `feat/export-r01-r02-pdf-hierarchy`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migrations 001-021 applied; DB/BE/FE healthy; guarded two-container PDF/XLSX pilot passed |
+| Production state verified at 2026-09-09 | R01/R02 hierarchy/PDF changes and the frontend security patch are deployed from `main`; FE/BE checkouts match the current production commits above, all production containers are healthy, migrations 001-021 are current, `/health` is healthy and `/` returns HTTP 200 |
+| Isolated staging verified at 2026-09-09 | `/opt/weavecarbon-staging`; frontend `6016c07605e3cab56cd5c40c02dbd46193b7f2b3`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migrations 001-021 applied; DB/BE/FE healthy; guarded two-container PDF/XLSX pilot and patched frontend image scan passed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
 Never put server passwords, database credentials, tokens or `.env` values in this file.
@@ -783,3 +784,26 @@ Backend carbon trace core:
 - Exact next gate for R01: named operator review against a real invoice plus buyer/destination VAT/EORI, consignee, HS
   source and customs-value requirements. Exact next gate for R02: make grouped package weight/dimension semantics explicit,
   add carrier display and obtain a named warehouse review of a representative physical pack.
+
+### 2026-09-09 — Migration 021 production rollout, restore drill and frontend security patch
+
+- Backend `main` at `4ff6bc8973733225dcca3ea76f33d5a276438994` passed CI run `34355681111` and deploy run
+  `34355750698`. Production startup applied `021_export_container_hierarchy_pdf.sql`; the production backend checkout,
+  container health and migration record were verified after deployment.
+- A fresh production-state backup was captured under `/opt/weavecarbon/FE/backups/state-20260909T130532Z` before the
+  final frontend rollout. Database SHA-256 is `dbb69a221eb92e72c4c9012b7385bf3dcafcac58a6c67b09f19a746abf18ee3e`;
+  uploads SHA-256 is `5e9942c65a71de04d7f110bec101478eda6344a3bfaeba6ca76549b151d6714b`.
+- The backup was restored into an isolated PostgreSQL/uploads/application stack. The signed report at
+  `/opt/weavecarbon/FE/restore-drills/weavecarbon_restore_20260909_131028/restore-report.txt` records `PASS`, an RPO of
+  294 seconds and an RTO of 19 seconds after dump integrity, table counts, upload archives, authentication, dashboard,
+  product, evidence, RAG and frontend checks. Temporary restore resources were removed after verification.
+- The first frontend deploy run `34356345599` correctly failed before contacting the VPS because its immutable image still
+  contained two CRITICAL Next.js findings. Commit `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` updates Next.js to 16.3.3,
+  MapLibre GL to 6.9.0 and refreshes the dependency lock. Local audit, 38 test files/167 tests, check and production build
+  passed; the rebuilt staging image then passed the exact Trivy CRITICAL gate with zero findings and returned HTTP 200.
+- Frontend CI run `34360023924` and deploy run `34360167542` completed successfully for the exact patched commit. Final
+  production verification found frontend `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` and backend
+  `4ff6bc8973733225dcca3ea76f33d5a276438994` on `main`; production DB, BE, FE and RAG containers were healthy,
+  migration 021 was present, `/health` was healthy and the public site returned HTTP 200.
+- These technical and deployment gates do not promote legal/business readiness. R01 and R02 remain `READY_TO_PILOT` until
+  the named export operator and warehouse reviewers approve representative real shipment files against the open gates above.
