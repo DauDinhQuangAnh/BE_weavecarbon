@@ -47,11 +47,11 @@ This tracker separates four facts that must never be conflated:
 | Backend R01/R02 business-review commit | `241fd0f39f286b585589bc7e3543d832c4444d4f` |
 | Frontend R01/R02 business-review commit | `a74495460a9a37f6f63bc6ab577738f6b70be815` |
 | Frontend critical dependency patch commit | `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` |
-| Backend latest application-bearing production commit | `4ff6bc8973733225dcca3ea76f33d5a276438994` |
-| Frontend latest application-bearing production commit | `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` |
+| Backend latest application-bearing production commit | `241fd0f39f286b585589bc7e3543d832c4444d4f` (production `main` checkout `aceca26d552848c1bb913139b56eeef993d5e611`) |
+| Frontend latest application-bearing production commit | `a74495460a9a37f6f63bc6ab577738f6b70be815` |
 | Production site | `https://weavecarbon.com` |
-| Production state verified at 2026-09-09 | R01/R02 hierarchy/PDF changes and the frontend security patch are deployed from `main`; deployed application code includes the application-bearing commits above, all production containers are healthy, migrations 001-021 are current, `/health` is healthy and `/` returns HTTP 200. Later documentation-only commits may advance a checkout without changing application code. |
-| Isolated staging verified at 2026-09-09 | `/opt/weavecarbon-staging`; frontend `6016c07605e3cab56cd5c40c02dbd46193b7f2b3`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migrations 001-021 applied; DB/BE/FE healthy; guarded two-container PDF/XLSX pilot and patched frontend image scan passed |
+| Production state verified at 2026-09-10 | R01/R02 checksum-bound business review controls are deployed from `main`; all production containers are healthy, migrations 001-022 are current, `/health` is healthy and `/` returns HTTP 200. Later documentation-only commits may advance a checkout without changing application code. |
+| Isolated staging verified at 2026-09-10 | `/opt/weavecarbon-staging`; backend `aceca26d552848c1bb913139b56eeef993d5e611`; frontend `a74495460a9a37f6f63bc6ab577738f6b70be815`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migration 022 applied; DB/BE/FE healthy; guarded checksum-bound two-container PDF/XLSX pilot passed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
 Never put server passwords, database credentials, tokens or `.env` values in this file.
@@ -876,3 +876,20 @@ Backend carbon trace core:
 - Exact next gate: fast-forward backend and frontend to `main`, wait for their deployment gates, verify migration 022,
   deployed commit identities, container health and public smoke checks. Business promotion still requires an export
   operator and warehouse reviewer to inspect files generated from an actual representative shipment.
+
+### 2026-09-10 — R01/R02 review controls merged and verified in production
+
+- Backend was fast-forwarded to `main` at `aceca26d552848c1bb913139b56eeef993d5e611`. Backend CI run `34386125652`
+  and deploy run `34386191317` passed. The production checkout matches that commit, the new backend image is healthy,
+  startup applied `022_export_document_business_review.sql`, and PostgreSQL records migration 022 as current.
+- Frontend was fast-forwarded to `main` at `a74495460a9a37f6f63bc6ab577738f6b70be815`. Frontend CI run `34386626074`
+  and deploy run `34386758646` passed, including immutable image build and vulnerability-policy gates. The production
+  checkout and healthy frontend container match that exact commit.
+- Final production smoke checks returned a healthy backend from `/health` and HTTP 200 from `/`. PostgreSQL, backend,
+  frontend and RAG containers were healthy; the proxy was running. Both local repositories were clean and tracking
+  `origin/main` after the fast-forward.
+- Deployment success does not promote either report. R01 and R02 remain `READY_TO_PILOT` until a named export operator
+  and warehouse reviewer approve controlled copies generated from an actual representative shipment and the decisions are
+  recorded against those exact payload, snapshot and file checksums.
+- Exact next business gate: enter one real Vietnam-to-EU shipment, attach its approved trade and packing evidence, generate
+  both formats, reconcile values/quantities/weights/packages with the source records, and collect the two named decisions.
