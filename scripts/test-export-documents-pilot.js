@@ -102,8 +102,8 @@ async function inspectWorkbook(filePath, requiredValues) {
   const zip = await JSZip.loadAsync(buffer);
   const workbook = await zip.file('xl/worksheets/sheet1.xml').async('string');
   requiredValues.forEach((value) => assert.ok(workbook.includes(String(value)), `Workbook is missing ${value}.`));
-  assert.ok(workbook.includes('ISSUED'), 'Workbook is not visibly issued.');
-  assert.ok(!workbook.includes('DRAFT - NOT FOR CUSTOMS FILING'), 'Issued workbook retained a draft watermark.');
+  assert.ok(workbook.includes('CONTROLLED COPY - VERIFY STATUS IN WEAVECARBON'), 'Workbook is missing its controlled-copy notice.');
+  assert.ok(!workbook.includes('DRAFT - NOT FOR CUSTOMS FILING'), 'Controlled workbook retained a legacy draft watermark.');
   return { buffer, workbook };
 }
 
@@ -142,11 +142,13 @@ async function run() {
     consignee: { name: 'Synthetic EU Warehouse B.V.', address: 'Rotterdam', country: 'NL' },
     exporterTaxId: '0312345678',
     importerEori: 'NL123456789012',
+    importerVatId: 'NL123456789B01',
     portOfLoading: 'Cat Lai, Vietnam',
     portOfDischarge: 'Rotterdam, Netherlands',
     placeOfDelivery: 'Rotterdam, Netherlands',
     vesselName: 'SYNTHETIC VESSEL',
     voyageNumber: 'PILOT-001',
+    carrierName: 'Synthetic Ocean Carrier B.V.',
     billOfLadingNo: `SYNTHETIC-BL-${runId}`,
     containerNo: 'TCLU1234567',
     sealNo: 'SYNTHETIC-SEAL-001',
@@ -154,6 +156,8 @@ async function run() {
     insuranceAmount: 125,
     discountAmount: 50,
     surchargeAmount: 75,
+    customsValueAmount: 7725,
+    customsValueBasis: 'Invoice transaction value including freight, insurance and surcharge less discount',
     transportMode: 'sea',
     preferentialOriginClaim: false,
     metadata: { fixtureType: 'export_documents_pilot', synthetic: true }
@@ -167,6 +171,9 @@ async function run() {
       sku: `PILOT-SKU-${String(index).padStart(3, '0')}`,
       goodsDescription: index % 3 === 0 ? 'Synthetic footwear sample' : 'Synthetic apparel sample',
       hsCode,
+      hsCodeSource: 'EU TARIC synthetic review fixture',
+      hsCodeRuleset: 'TARIC-2026-09',
+      hsCodeEffectiveDate: '2026-09-01',
       originCountry: 'VN',
       quantity: 11,
       unit: 'pcs',
@@ -208,6 +215,8 @@ async function run() {
       lengthCm: 120,
       widthCm: 100,
       heightCm: 180,
+      weightMeasurementBasis: 'group_total',
+      dimensionMeasurementBasis: 'group_total',
       contents: [],
       containerId: container.id,
       sequenceNo: index
@@ -233,6 +242,8 @@ async function run() {
         lengthCm: allocation.suffix === 'FULL' ? 60 : 40,
         widthCm: 40,
         heightCm: allocation.suffix === 'FULL' ? 40 : 20,
+        weightMeasurementBasis: 'per_package',
+        dimensionMeasurementBasis: 'per_package',
         contents: [{ lineId: line.id, lineNumber: line.lineNumber, sku: line.sku, quantity: allocation.quantity }],
         containerId: containers[hierarchyIndex].id,
         parentPackageId: pallets[hierarchyIndex].id,
@@ -266,6 +277,18 @@ async function run() {
     for (const format of ['xlsx', 'pdf']) {
       const draft = await service.createDocumentJob(ids.companyId, ids.shipmentId, ids.userId, type, { outputFormat: format });
       assert.ok(!draft.blocked, `${type} ${format} generation was blocked.`);
+      const unreviewedIssue = await service.issueDocument(ids.companyId, ids.shipmentId, draft.id, ids.userId);
+      assert.equal(unreviewedIssue.code, 'DOCUMENT_REVIEW_REQUIRED');
+      const review = await service.reviewDocument(ids.companyId, ids.shipmentId, draft.id, ids.userId, {
+        reviewerRole: type === 'commercial_invoice' ? 'export_operator' : 'warehouse_reviewer',
+        decision: 'approved',
+        notes: 'Synthetic technical pilot review; not a real trade approval.'
+      });
+      assert.equal(review.decision, 'approved');
+      const approvedSource = await pool.query(
+        'SELECT file_sha256, file_size_bytes, storage_key FROM export_documents WHERE id=$1 AND company_id=$2',
+        [draft.id, ids.companyId]
+      );
       const issuedDocument = await service.issueDocument(ids.companyId, ids.shipmentId, draft.id, ids.userId);
       assert.equal(issuedDocument.status, 'issued');
       assert.equal(issuedDocument.outputFormat, format);
@@ -282,6 +305,8 @@ async function run() {
         : ['CTN-050', 'Total CBM', `PL-${runId}`, 'PARTIAL', 'TCLU1234562', 'PLT-02'];
       const { buffer } = format === 'xlsx' ? await inspectWorkbook(filePath, required) : await inspectPdf(filePath);
       assert.equal(row.file_sha256, sha256(buffer));
+      assert.equal(row.file_sha256, approvedSource.rows[0].file_sha256, 'Issuance changed the reviewed file checksum.');
+      assert.equal(Number(row.file_size_bytes), Number(approvedSource.rows[0].file_size_bytes), 'Issuance changed the reviewed file size.');
       assert.equal(Number(row.file_size_bytes), buffer.length);
       assert.equal(row.mime_type, format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       assert.equal(row.output_format, format);
@@ -305,6 +330,9 @@ async function run() {
   check('issued_document_mutation_blocked');
 
   const staleDraft = await service.createDocumentJob(ids.companyId, ids.shipmentId, ids.userId, 'commercial_invoice');
+  await service.reviewDocument(ids.companyId, ids.shipmentId, staleDraft.id, ids.userId, {
+    reviewerRole: 'export_operator', decision: 'approved', notes: 'Synthetic stale-snapshot test.'
+  });
   const lastLine = lines[lines.length - 1];
   await service.updateLine(ids.companyId, ids.shipmentId, lastLine.id, { unitPrice: 999 }, ids.userId);
   const staleIssue = await service.issueDocument(ids.companyId, ids.shipmentId, staleDraft.id, ids.userId);

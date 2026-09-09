@@ -7023,6 +7023,131 @@
         ]
       }
     },
+    "/export/shipments/{shipmentId}/documents/{id}/reviews": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdDocumentsByIdReviews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/documents/{id}/reviews",
+        "tags": [
+          "Export"
+        ]
+      },
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdDocumentsByIdReviews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/documents/{id}/reviews",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
     "/export/shipments/{shipmentId}/documents/{type}/generate": {
       "post": {
         "operationId": "postExportShipmentsByShipmentIdDocumentsByTypeGenerate",

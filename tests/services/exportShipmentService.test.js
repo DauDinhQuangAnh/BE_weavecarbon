@@ -1,4 +1,8 @@
 const JSZip = require('jszip');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const crypto = require('crypto');
 const { createExportShipmentService, isCbamApplicable, sourceSnapshotSha256 } = require('../../src/services/exportShipmentService');
 const { buildSimpleXlsx } = require('../../src/utils/simpleXlsx');
 
@@ -15,12 +19,14 @@ function readySnapshot(lineCount = 1) {
       consignee: { name: 'Consignee', address: 'Paris', country: 'FR' },
       portOfLoading: 'Cat Lai', portOfDischarge: 'Rotterdam', billOfLadingNo: 'BL-1',
       transportMode: 'sea', discountAmount: 0, surchargeAmount: 0,
-      importerEori: 'FR123456789000',
+      importerEori: 'FR123456789000', carrierName: 'Ocean Carrier',
+      customsValueAmount: lineCount * 50, customsValueBasis: 'Invoice transaction value',
       preferentialOriginClaim: false
     },
     lines: Array.from({ length: lineCount }, (_, index) => ({
       id: `line-${index + 1}`, lineNumber: index + 1, sku: `SKU-${index + 1}`,
       goodsDescription: 'Cotton shirt', hsCode: '62052000', originCountry: 'VN',
+      hsCodeSource: 'EU TARIC', hsCodeRuleset: 'TARIC-2026-09', hsCodeEffectiveDate: '2026-09-01',
       hsCodeConfirmed: true, styleCode: 'ST-1', sizeLabel: 'M', colorLabel: 'Blue', lotNumber: 'LOT-1',
       quantity: 10, unit: 'pcs', unitPrice: 5, currency: 'USD',
       netWeightKg: 2, grossWeightKg: 2.2, embeddedCo2eKg: 40
@@ -33,12 +39,14 @@ function readySnapshot(lineCount = 1) {
       containerId: 'container-1', containerNumber: 'TCLU1234567', sealNumber: 'SEAL-1',
       parentPackageId: null, parentPackageNumber: '', sequenceNo: 1,
       quantity: 1, netWeightKg: lineCount * 2, grossWeightKg: lineCount * 2.2,
+      weightMeasurementBasis: 'group_total', dimensionMeasurementBasis: 'group_total',
       lengthCm: 120, widthCm: 100, heightCm: 120, contents: []
     }, {
       id: 'pkg-1', packageNumber: 'CTN-1', packageType: 'carton', marksAndNumbers: 'PO-1',
       containerId: 'container-1', containerNumber: 'TCLU1234567', sealNumber: 'SEAL-1',
       parentPackageId: 'pallet-1', parentPackageNumber: 'PLT-1', sequenceNo: 2,
       quantity: 1, netWeightKg: lineCount * 2, grossWeightKg: lineCount * 2.2,
+      weightMeasurementBasis: 'per_package', dimensionMeasurementBasis: 'per_package',
       lengthCm: 60, widthCm: 40, heightCm: 40,
       contents: Array.from({ length: lineCount }, (_, index) => ({ lineNumber: index + 1, quantity: 10 }))
     }],
@@ -116,7 +124,7 @@ describe('simple XLSX export', () => {
     const zip = await JSZip.loadAsync(buffer);
     const xml = await zip.file('xl/worksheets/sheet1.xml').async('string');
     labels.forEach((label) => expect(xml).toContain(label));
-    expect(xml).toContain('READY FOR INTERNAL REVIEW - NOT ISSUED');
+    expect(xml).toContain('CONTROLLED COPY - VERIFY STATUS IN WEAVECARBON');
   });
 
   test('writes calculated invoice adjustments and package CBM into the workbook', async () => {
@@ -199,6 +207,9 @@ describe('simple XLSX export', () => {
     snapshot.profile.currency = 'US';
     snapshot.profile.incotermCode = 'INVALID';
     snapshot.profile.transportMode = 'teleport';
+    snapshot.profile.importerEori = 'INVALID-EORI';
+    snapshot.profile.importerVatId = 'FR!';
+    snapshot.profile.metadata = { buyerInstructionRequiresVat: true };
     snapshot.profile.exporter.country = 'Vietnam';
     snapshot.lines[0].hsCode = '62';
     const service = createExportShipmentService({ database: {} });
@@ -211,6 +222,8 @@ describe('simple XLSX export', () => {
       expect.objectContaining({ code: 'currency_format', status: 'invalid' }),
       expect.objectContaining({ code: 'incoterm_format', status: 'invalid' }),
       expect.objectContaining({ code: 'transport_mode_format', status: 'invalid' }),
+      expect.objectContaining({ code: 'importer_eori_format', status: 'invalid' }),
+      expect.objectContaining({ code: 'importer_vat_id_format', status: 'invalid' }),
       expect.objectContaining({ code: 'exporter_country_format', status: 'invalid' }),
       expect.objectContaining({ code: 'line_1_hs_code_format', status: 'invalid' })
     ]));
@@ -259,7 +272,7 @@ describe('shipment export persistence safety', () => {
     const [sql, values] = database.query.mock.calls[1];
     const placeholders = [...sql.matchAll(/\$(\d+)/g)].map((match) => Number(match[1]));
     expect(Math.max(...placeholders)).toBe(values.length);
-    expect(values).toHaveLength(37);
+    expect(values).toHaveLength(41);
   });
 
   test('uses the authenticated user for a new HS confirmation', async () => {
@@ -269,8 +282,9 @@ describe('shipment export persistence safety', () => {
         .mockImplementationOnce(async (_sql, values) => ({
           rows: [{
             id: lineId, shipment_id: shipmentId, line_number: 1, sku: 'SKU-1', goods_description: 'Shirt',
-            hs_code: '62052000', origin_country: 'VN', quantity: 1, unit: 'pcs', hs_code_confirmed: values[19],
-            hs_code_confirmed_by: values[20], hs_code_confirmed_at: values[21]
+            hs_code: '62052000', origin_country: 'VN', quantity: 1, unit: 'pcs', hs_code_confirmed: values[22],
+            hs_code_source: values[19], hs_code_ruleset: values[20], hs_code_effective_date: values[21],
+            hs_code_confirmed_by: values[23], hs_code_confirmed_at: values[24]
           }]
         }))
     };
@@ -278,7 +292,8 @@ describe('shipment export persistence safety', () => {
 
     const line = await service.createLine(companyId, shipmentId, {
       lineNumber: 1, sku: 'SKU-1', goodsDescription: 'Shirt', hsCode: '62052000',
-      originCountry: 'VN', quantity: 1, hsCodeConfirmed: true,
+      originCountry: 'VN', quantity: 1, hsCodeSource: 'EU TARIC', hsCodeRuleset: 'TARIC-2026-09',
+      hsCodeEffectiveDate: '2026-09-01', hsCodeConfirmed: true,
       hsCodeConfirmedBy: '00000000-0000-4000-8000-000000000099'
     }, userId);
 
@@ -290,25 +305,174 @@ describe('shipment export persistence safety', () => {
     const currentRow = {
       id: lineId, shipment_id: shipmentId, line_number: 1, sku: 'SKU-1', goods_description: 'Shirt',
       hs_code: '62052000', origin_country: 'VN', quantity: 1, unit: 'pcs', hs_code_confirmed: true,
+      hs_code_source: 'EU TARIC', hs_code_ruleset: 'TARIC-2026-09', hs_code_effective_date: '2026-09-01',
       hs_code_confirmed_by: userId, hs_code_confirmed_at: new Date('2026-09-08T00:00:00Z')
     };
     const database = {
       query: jest.fn()
         .mockResolvedValueOnce({ rows: [currentRow] })
         .mockImplementationOnce(async (_sql, values) => ({ rows: [{
-          ...currentRow, hs_code: values[3], hs_code_confirmed: values[16],
-          hs_code_confirmed_by: values[16] ? values[17] : null,
-          hs_code_confirmed_at: values[16] ? currentRow.hs_code_confirmed_at : null
+          ...currentRow, hs_code: values[3], hs_code_confirmed: values[19],
+          hs_code_confirmed_by: values[19] ? values[20] : null,
+          hs_code_confirmed_at: values[19] ? currentRow.hs_code_confirmed_at : null
         }] }))
     };
     const service = createExportShipmentService({ database });
 
     const line = await service.updateLine(companyId, shipmentId, lineId, {
-      hsCode: '62053000', hsCodeConfirmed: true
+      hsCode: '62053000', hsCodeSource: 'EU TARIC', hsCodeRuleset: 'TARIC-2026-09',
+      hsCodeEffectiveDate: '2026-09-01', hsCodeConfirmed: true
     }, userId);
 
     expect(line.hsCode).toBe('62053000');
     expect(line.hsCodeConfirmed).toBe(false);
     expect(line.hsCodeConfirmedBy).toBeNull();
+  });
+
+  test('requires a complete HS source identity before accepting confirmation', async () => {
+    const database = {
+      query: jest.fn()
+        .mockResolvedValueOnce({ rows: [{ id: shipmentId }] })
+        .mockImplementationOnce(async (_sql, values) => ({ rows: [{
+          id: lineId, shipment_id: shipmentId, line_number: 1, sku: 'SKU-1', goods_description: 'Shirt',
+          hs_code: '62052000', origin_country: 'VN', quantity: 1, unit: 'pcs', hs_code_confirmed: values[22]
+        }] }))
+    };
+    const service = createExportShipmentService({ database });
+
+    const line = await service.createLine(companyId, shipmentId, {
+      lineNumber: 1, sku: 'SKU-1', goodsDescription: 'Shirt', hsCode: '62052000',
+      originCountry: 'VN', quantity: 1, hsCodeConfirmed: true
+    }, userId);
+
+    expect(line.hsCodeConfirmed).toBe(false);
+  });
+});
+
+describe('shipment export business review', () => {
+  const companyId = '00000000-0000-4000-8000-000000000001';
+  const shipmentId = '00000000-0000-4000-8000-000000000002';
+  const documentId = '00000000-0000-4000-8000-000000000003';
+  const userId = '00000000-0000-4000-8000-000000000004';
+  const hash = 'a'.repeat(64);
+  const fileHash = 'b'.repeat(64);
+
+  test('pins an approved named review to payload, file and source hashes', async () => {
+    const snapshot = readySnapshot(1);
+    const sourceHash = sourceSnapshotSha256(snapshot);
+    const database = { query: jest.fn()
+      .mockResolvedValueOnce({ rows: [{
+        id: documentId, shipment_id: shipmentId, company_id: companyId,
+        document_type: 'commercial_invoice', status: 'ready', report_status: 'completed',
+        payload: { sourceSnapshotSha256: sourceHash }, payload_sha256: hash, file_sha256: fileHash
+      }] })
+      .mockResolvedValueOnce({ rows: [{ id: userId, email: 'reviewer@example.com', full_name: 'Export Reviewer' }] })
+      .mockResolvedValueOnce({ rows: [{
+        id: 'review-1', export_document_id: documentId, shipment_id: shipmentId,
+        document_type: 'commercial_invoice', reviewer_role: 'export_operator', decision: 'approved',
+        notes: 'Checked against buyer instruction.', reviewed_by: userId,
+        reviewer_name_snapshot: 'Export Reviewer', reviewer_email_snapshot: 'reviewer@example.com',
+        document_payload_sha256: hash, document_file_sha256: fileHash,
+        source_snapshot_sha256: sourceHash, reviewed_at: new Date('2026-09-09T00:00:00Z')
+      }] }) };
+    const service = createExportShipmentService({ database });
+    service.getProfile = jest.fn().mockResolvedValue(snapshot);
+
+    const review = await service.reviewDocument(companyId, shipmentId, documentId, userId, {
+      reviewerRole: 'export_operator', decision: 'approved', notes: 'Checked against buyer instruction.'
+    });
+
+    expect(review).toMatchObject({ reviewerName: 'Export Reviewer', decision: 'approved', documentFileSha256: fileHash });
+    expect(database.query.mock.calls[2][1]).toEqual(expect.arrayContaining([hash, fileHash, sourceHash, userId]));
+  });
+
+  test('blocks issue when the required named review is absent', async () => {
+    const snapshot = readySnapshot(1);
+    const sourceHash = sourceSnapshotSha256(snapshot);
+    const database = { query: jest.fn()
+      .mockResolvedValueOnce({ rows: [{
+        id: documentId, report_id: 'report-1', shipment_id: shipmentId, company_id: companyId,
+        document_type: 'commercial_invoice', status: 'ready', report_status: 'completed', file_format: 'pdf',
+        payload: { sourceSnapshotSha256: sourceHash }, payload_sha256: hash, file_sha256: fileHash
+      }] })
+      .mockResolvedValueOnce({ rows: [] }) };
+    const service = createExportShipmentService({ database });
+    service.getReadiness = jest.fn().mockResolvedValue({ documents: [{ type: 'commercial_invoice', status: 'ready' }] });
+    service.getProfile = jest.fn().mockResolvedValue(snapshot);
+
+    const result = await service.issueDocument(companyId, shipmentId, documentId, userId);
+
+    expect(result).toMatchObject({ blocked: true, code: 'DOCUMENT_REVIEW_REQUIRED' });
+  });
+
+  test('promotes the exact reviewed bytes and checksum when issuing', async () => {
+    const snapshot = readySnapshot(1);
+    const sourceHash = sourceSnapshotSha256(snapshot);
+    const sourceBuffer = Buffer.from('approved exact commercial invoice bytes');
+    const exactFileHash = crypto.createHash('sha256').update(sourceBuffer).digest('hex');
+    const uploadsRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'weave-export-issue-'));
+    const storageKey = 'reports/company/shipment/commercial_invoice.pdf';
+    const sourcePath = path.join(uploadsRoot, storageKey);
+    await fs.promises.mkdir(path.dirname(sourcePath), { recursive: true });
+    await fs.promises.writeFile(sourcePath, sourceBuffer);
+
+    const client = {
+      query: jest.fn()
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [{
+          id: documentId, report_id: 'report-1', shipment_id: shipmentId, company_id: companyId,
+          document_type: 'commercial_invoice', version: 1, status: 'issued', output_format: 'pdf',
+          payload: { sourceSnapshotSha256: sourceHash }, payload_sha256: hash,
+          storage_provider: 'local', storage_key: storageKey, file_sha256: exactFileHash,
+          file_size_bytes: sourceBuffer.length, issued_at: new Date('2026-09-09T00:00:00Z')
+        }] })
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({}),
+      release: jest.fn()
+    };
+    const database = {
+      query: jest.fn()
+        .mockResolvedValueOnce({ rows: [{
+          id: documentId, report_id: 'report-1', shipment_id: shipmentId, company_id: companyId,
+          document_type: 'commercial_invoice', version: 1, status: 'ready', report_status: 'completed',
+          file_format: 'pdf', output_format: 'pdf', payload: { sourceSnapshotSha256: sourceHash },
+          payload_sha256: hash, file_sha256: exactFileHash, file_size_bytes: sourceBuffer.length,
+          storage_provider: 'local', storage_key: storageKey
+        }] })
+        .mockResolvedValueOnce({ rows: [{
+          reviewer_role: 'export_operator', decision: 'approved', document_payload_sha256: hash,
+          document_file_sha256: exactFileHash, source_snapshot_sha256: sourceHash
+        }] }),
+      connect: jest.fn().mockResolvedValue(client)
+    };
+    const service = createExportShipmentService({ database, uploadsRoot });
+    service.getReadiness = jest.fn().mockResolvedValue({ documents: [{ type: 'commercial_invoice', status: 'ready' }] });
+    service.getProfile = jest.fn().mockResolvedValue(snapshot);
+
+    try {
+      const result = await service.issueDocument(companyId, shipmentId, documentId, userId);
+      const issuedPath = path.join(uploadsRoot, 'reports', companyId, 'exports', shipmentId, `commercial_invoice_${shipmentId}_v1_issued.pdf`);
+      const issuedBuffer = await fs.promises.readFile(issuedPath);
+
+      expect(result.status).toBe('issued');
+      expect(issuedBuffer.equals(sourceBuffer)).toBe(true);
+      expect(client.query.mock.calls[2][1][5]).toBe(exactFileHash);
+    } finally {
+      await fs.promises.rm(uploadsRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('does not multiply grouped package weight or grouped dimensions', async () => {
+    const snapshot = readySnapshot(1);
+    snapshot.packages[1].quantity = 2;
+    snapshot.packages[1].weightMeasurementBasis = 'group_total';
+    snapshot.packages[1].dimensionMeasurementBasis = 'group_total';
+    const service = createExportShipmentService({ database: {} });
+    const [row] = service._documentRows('packing_list', snapshot);
+
+    expect(row.netWeightKg).toBe(2);
+    expect(row.grossWeightKg).toBe(2.2);
+    expect(row.cbm).toBeCloseTo(0.096);
   });
 });

@@ -1,5 +1,5 @@
 const express = require('express');
-const { authenticate, requireRole } = require('../middleware/auth');
+const { authenticate, requireRole, requireCompanyAdmin } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendError, sendNoCompany, sendSuccess } = require('../utils/http');
 const exportV2Service = require('../services/exportV2Service');
@@ -240,7 +240,35 @@ router.post('/shipments/:shipmentId/documents/:type/generate', asyncHandler(asyn
   }
 }));
 
-router.post('/shipments/:shipmentId/documents/:id/issue', asyncHandler(async (req, res) => {
+router.get('/shipments/:shipmentId/documents/:id/reviews', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.getDocumentReviews(companyId, req.params.shipmentId, req.params.id);
+  if (!result) return sendError(res, { status: 404, code: 'EXPORT_DOCUMENT_NOT_FOUND', message: 'Export document not found.' });
+  return sendSuccess(res, { data: result });
+}));
+
+router.post('/shipments/:shipmentId/documents/:id/reviews', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.reviewDocument(
+    companyId, req.params.shipmentId, req.params.id, req.userId, req.body || {}
+  );
+  if (!result) return sendError(res, { status: 404, code: 'EXPORT_DOCUMENT_NOT_FOUND', message: 'Export document not found.' });
+  if (result.blocked) return sendError(res, { status: 409, code: result.code, message: result.message });
+  await logAuditTrail({
+    companyId,
+    userId: req.userId,
+    dataGroup: 'exports',
+    changedField: 'shipment_export.document.reviewed',
+    newValue: result.id,
+    reason: 'export.document.review',
+    notes: JSON.stringify({ documentId: result.documentId, role: result.reviewerRole, decision: result.decision })
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
+router.post('/shipments/:shipmentId/documents/:id/issue', requireCompanyAdmin, asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
   const result = await exportShipmentService.issueDocument(companyId, req.params.shipmentId, req.params.id, req.userId);
