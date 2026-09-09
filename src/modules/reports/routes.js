@@ -2,7 +2,7 @@
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
-const { authenticate, requireRole } = require('../shared/security');
+const { authenticate, requireRole, requireCompanyAdmin } = require('../shared/security');
 const { UPLOADS_ROOT } = require('../shared/runtime');
 const validate = require('../shared/validation');
 const reportsService = require('./service');
@@ -500,10 +500,52 @@ router.get(
     }
 );
 
+router.get(
+    '/v2/public/audit-pack-shares/:token',
+    async (req, res, next) => {
+        try {
+            const shared = await reportsService.getPublicAuditBundleShare(req.params.token);
+            if (!shared) {
+                return res.status(404).json({
+                    success: false,
+                    error: { code: 'AUDIT_SHARE_NOT_FOUND', message: 'Audit Pack share is unavailable.' }
+                });
+            }
+            res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+            return res.status(200).json({ success: true, data: shared });
+        } catch (error) {
+            next(error);
+        }
+    }
+);
+
+router.get(
+    '/v2/public/audit-pack-shares/:token/download',
+    async (req, res, next) => {
+        try {
+            const shared = await reportsService.downloadPublicAuditBundleShare(req.params.token);
+            if (!shared) {
+                return res.status(404).json({
+                    success: false,
+                    error: { code: 'AUDIT_SHARE_NOT_FOUND', message: 'Audit Pack share is unavailable.' }
+                });
+            }
+            res.setHeader('Content-Type', shared.mimeType);
+            res.setHeader('Content-Disposition', `attachment; filename="${shared.filename}"`);
+            res.setHeader('Content-Length', shared.buffer.length);
+            res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+            return res.status(200).send(shared.buffer);
+        } catch (error) {
+            next(error);
+        }
+    }
+);
+
 router.post(
     '/v2/audit-packs/:id/reviews',
     authenticate,
     requireRole('b2b'),
+    requireCompanyAdmin,
     async (req, res, next) => {
         try {
             if (!req.companyId) {
@@ -535,6 +577,7 @@ router.post(
     '/v2/audit-packs/:id/issue',
     authenticate,
     requireRole('b2b'),
+    requireCompanyAdmin,
     async (req, res, next) => {
         try {
             if (!req.companyId) {
@@ -556,6 +599,107 @@ router.post(
                 notes: 'Issued an immutable internal Audit Pack; assurance remains not verified'
             });
             return res.status(201).json({ success: true, data: issuance });
+        } catch (error) {
+            next(error);
+        }
+    }
+);
+
+router.post(
+    '/v2/audit-packs/:id/shares',
+    authenticate,
+    requireRole('b2b'),
+    requireCompanyAdmin,
+    async (req, res, next) => {
+        try {
+            if (!req.companyId) {
+                return res.status(404).json({
+                    success: false,
+                    error: { code: 'NO_COMPANY', message: 'No company associated with this user' }
+                });
+            }
+            const share = await reportsService.createAuditBundleShare(
+                req.companyId, req.userId, req.params.id, req.body || {}
+            );
+            await logAuditTrail({
+                companyId: req.companyId,
+                userId: req.userId,
+                dataGroup: 'reports',
+                changedField: 'audit_bundle.share_created',
+                newValue: share.id,
+                reason: 'audit_bundle.share_create',
+                notes: JSON.stringify({ expiresAt: share.expiresAt, maxDownloads: share.maxDownloads })
+            });
+            return res.status(201).json({ success: true, data: share });
+        } catch (error) {
+            next(error);
+        }
+    }
+);
+
+router.delete(
+    '/v2/audit-packs/:id/shares/:shareId',
+    authenticate,
+    requireRole('b2b'),
+    requireCompanyAdmin,
+    async (req, res, next) => {
+        try {
+            if (!req.companyId) {
+                return res.status(404).json({
+                    success: false,
+                    error: { code: 'NO_COMPANY', message: 'No company associated with this user' }
+                });
+            }
+            const revoked = await reportsService.revokeAuditBundleShare(
+                req.companyId, req.userId, req.params.id, req.params.shareId, req.body || {}
+            );
+            await logAuditTrail({
+                companyId: req.companyId,
+                userId: req.userId,
+                dataGroup: 'reports',
+                changedField: 'audit_bundle.share_revoked',
+                oldValue: revoked.id,
+                newValue: revoked.revokedAt,
+                reason: 'audit_bundle.share_revoke',
+                notes: revoked.revocationReason
+            });
+            return res.status(200).json({ success: true, data: revoked });
+        } catch (error) {
+            next(error);
+        }
+    }
+);
+
+router.post(
+    '/v2/audit-packs/:id/assurance-records',
+    authenticate,
+    requireRole('b2b'),
+    requireCompanyAdmin,
+    async (req, res, next) => {
+        try {
+            if (!req.companyId) {
+                return res.status(404).json({
+                    success: false,
+                    error: { code: 'NO_COMPANY', message: 'No company associated with this user' }
+                });
+            }
+            const assurance = await reportsService.createAuditBundleAssuranceRecord(
+                req.companyId, req.userId, req.params.id, req.body || {}
+            );
+            await logAuditTrail({
+                companyId: req.companyId,
+                userId: req.userId,
+                dataGroup: 'reports',
+                changedField: 'audit_bundle.external_assurance_recorded',
+                newValue: assurance.id,
+                reason: 'audit_bundle.external_assurance',
+                notes: JSON.stringify({
+                    outcome: assurance.outcome,
+                    providerName: assurance.providerName,
+                    evidenceDocumentId: assurance.evidenceDocumentId
+                })
+            });
+            return res.status(201).json({ success: true, data: assurance });
         } catch (error) {
             next(error);
         }

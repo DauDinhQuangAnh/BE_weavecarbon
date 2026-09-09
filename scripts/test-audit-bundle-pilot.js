@@ -73,6 +73,8 @@ async function assertRequiredSchema() {
     'audit_bundle_evidence',
     'audit_bundle_reviews',
     'audit_bundle_issuances',
+    'audit_bundle_share_links',
+    'audit_bundle_assurance_records',
     'evidence_documents',
     'product_assessment_snapshots'
   ];
@@ -175,6 +177,7 @@ async function insertEvidence(fixture, runId) {
     content: { synthetic: true, runId, factorVersionIds, reportingPeriod: REPORTING_PERIOD }
   });
 
+  let assuranceEvidenceId = null;
   for (const document of documents) {
     const evidenceId = crypto.randomUUID();
     const storageKey = `pilot/${runId}/${evidenceId}/${document.name}`;
@@ -193,7 +196,7 @@ async function insertEvidence(fixture, runId) {
          locked_at, locked_by, uploaded_by, valid_from, valid_to, approved_by, approval_note
        ) VALUES (
          $1,$2,$3,$4,$5,$6,$7,'local',$8,$5,'application/json',
-         $9,$10,$11::jsonb,'locked',now(),$12,$12,$6,$13,$12,
+         $9,$10,$11::jsonb,$14,now(),$12,$12,$6,$13,$12,
          'Synthetic isolated Audit Pack pilot evidence'
        )`,
       [
@@ -209,15 +212,18 @@ async function insertEvidence(fixture, runId) {
         sha256(buffer),
         JSON.stringify({ auditClaims: document.auditClaims, synthetic: true, runId }),
         fixture.creatorId,
-        '2027-12-31'
+        '2027-12-31',
+        document.type === 'emission_factor_source' ? 'third_party_verified' : 'locked'
       ]
     );
+    if (document.type === 'emission_factor_source') assuranceEvidenceId = evidenceId;
   }
   check('period_bound_evidence_created', {
     documentCount: documents.length,
     activityDocumentCount: groups.size,
     factorVersionCount: factorVersionIds.length
   });
+  return assuranceEvidenceId;
 }
 
 async function inspectArchive(service, bundle) {
@@ -304,9 +310,10 @@ async function reviewAndIssue(service, fixture, bundle) {
   });
   assert.equal((await service.getAuditBundle(fixture.companyId, bundle.id)).lifecycleStatus, 'blocked');
   await assert.rejects(
-    service.issueAuditBundle(fixture.companyId, fixture.reviewerId, bundle.id, {
+    service.issueAuditBundle(fixture.companyId, fixture.creatorId, bundle.id, {
       assertion: 'Synthetic internal carbon calculation assertion.',
-      criteria: 'WeaveCarbon internal Audit Pack pilot criteria v1.'
+      criteria: 'WeaveCarbon internal Audit Pack pilot criteria v1.',
+      signatureAcknowledged: true
     }),
     (error) => error?.code === 'AUDIT_QA_BLOCKING_EXCEPTIONS'
   );
@@ -323,12 +330,14 @@ async function reviewAndIssue(service, fixture, bundle) {
     }]
   });
   assert.equal((await service.getAuditBundle(fixture.companyId, bundle.id)).lifecycleStatus, 'ready');
-  const issuance = await service.issueAuditBundle(fixture.companyId, fixture.reviewerId, bundle.id, {
+  const issuance = await service.issueAuditBundle(fixture.companyId, fixture.creatorId, bundle.id, {
     assertion: 'Synthetic internal carbon calculation assertion.',
-    criteria: 'WeaveCarbon internal Audit Pack pilot criteria v1.'
+    criteria: 'WeaveCarbon internal Audit Pack pilot criteria v1.',
+    signatureAcknowledged: true
   });
   assert.equal(issuance.lifecycleStatus, 'issued');
   assert.equal(issuance.assuranceStatus, 'not_verified');
+  assert.equal(issuance.signatureValid, true);
   assert.equal((await service.getAuditBundle(fixture.companyId, bundle.id)).lifecycleStatus, 'issued');
   check(`bundle_v${bundle.version}_review_and_internal_issue`, {
     reviewId: review.id,
@@ -336,6 +345,64 @@ async function reviewAndIssue(service, fixture, bundle) {
     assuranceStatus: issuance.assuranceStatus
   });
   return { review, issuance };
+}
+
+async function exerciseSignedSharingAndAssurance(service, fixture, bundle) {
+  const share = await service.createAuditBundleShare(fixture.companyId, fixture.creatorId, bundle.id, {
+    label: 'Synthetic verifier one-time link',
+    expiresInHours: 24,
+    maxDownloads: 1
+  });
+  assert.match(share.token, /^[A-Za-z0-9_-]{43}$/);
+  const publicMetadata = await service.getPublicAuditBundleShare(share.token);
+  assert.equal(publicMetadata.bundle.id, bundle.id);
+  assert.equal(publicMetadata.issuance.signatureValid, true);
+  assert.equal(publicMetadata.assuranceStatus, 'not_verified');
+  const download = await service.downloadPublicAuditBundleShare(share.token);
+  assert.equal(sha256(download.buffer), publicMetadata.bundle.bundleSha256);
+  assert.equal(await service.getPublicAuditBundleShare(share.token), null);
+  check(`bundle_v${bundle.version}_signed_one_time_share`, {
+    shareId: share.id,
+    signaturePayloadSha256: publicMetadata.issuance.signaturePayloadSha256
+  });
+
+  const revocableShare = await service.createAuditBundleShare(fixture.companyId, fixture.creatorId, bundle.id, {
+    label: 'Synthetic revocation probe', expiresInHours: 24, maxDownloads: 2
+  });
+  await service.revokeAuditBundleShare(
+    fixture.companyId, fixture.creatorId, bundle.id, revocableShare.id,
+    { reason: 'Synthetic pilot revocation.' }
+  );
+  assert.equal(await service.getPublicAuditBundleShare(revocableShare.token), null);
+  check(`bundle_v${bundle.version}_share_revocation`);
+
+  const assurance = await service.createAuditBundleAssuranceRecord(
+    fixture.companyId,
+    fixture.creatorId,
+    bundle.id,
+    {
+      outcome: 'limited_assurance',
+      providerName: 'Synthetic Independent Verifier',
+      practitionerName: 'Synthetic Assurance Practitioner',
+      standard: 'Synthetic pilot criteria; not a real assurance engagement',
+      scope: 'Synthetic calculation and evidence fixture only.',
+      statementDate: '2026-09-10',
+      validTo: '2027-09-10',
+      evidenceDocumentId: fixture.assuranceEvidenceId,
+      notes: 'Technical lifecycle probe only.'
+    }
+  );
+  assert.equal(assurance.assuranceStatus, 'limited_assurance');
+  assert.equal((await service.getAuditBundle(fixture.companyId, bundle.id)).assuranceStatus, 'limited_assurance');
+  check(`bundle_v${bundle.version}_external_assurance_record`, {
+    assuranceId: assurance.id,
+    evidenceDocumentId: fixture.assuranceEvidenceId
+  });
+  const supersessionShare = await service.createAuditBundleShare(
+    fixture.companyId, fixture.creatorId, bundle.id,
+    { label: 'Synthetic supersession probe', expiresInHours: 24, maxDownloads: 2 }
+  );
+  return { share, revocableShare, supersessionShare, assurance };
 }
 
 async function main() {
@@ -350,7 +417,7 @@ async function main() {
   const runId = (process.env.AUDIT_PILOT_RUN_ID || crypto.randomUUID()).replace(/[^a-zA-Z0-9-]/g, '').slice(0, 36);
   uploadsRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), `weave-audit-pilot-${runId}-`));
   const fixture = await insertFixture(runId);
-  await insertEvidence(fixture, runId);
+  fixture.assuranceEvidenceId = await insertEvidence(fixture, runId);
 
   const queued = [];
   const service = createReportsService({
@@ -366,6 +433,7 @@ async function main() {
 
   const first = await createGenerateInspect(service, fixture);
   const firstLifecycle = await reviewAndIssue(service, fixture, first);
+  const firstTrust = await exerciseSignedSharingAndAssurance(service, fixture, first);
   assert.equal(await service.getAuditBundle(fixture.otherCompanyId, first.id), null);
   check('cross_tenant_bundle_read_denied');
 
@@ -373,6 +441,16 @@ async function main() {
     'completed_bundle_update_blocked',
     'UPDATE audit_bundles SET error_message = $1 WHERE id = $2',
     ['mutation-probe', first.id]
+  );
+  await expectDatabaseMutationBlocked(
+    'share_identity_update_blocked',
+    'UPDATE audit_bundle_share_links SET label = $1 WHERE id = $2',
+    ['mutation-probe', firstTrust.share.id]
+  );
+  await expectDatabaseMutationBlocked(
+    'assurance_update_blocked',
+    'UPDATE audit_bundle_assurance_records SET notes = $1 WHERE id = $2',
+    ['mutation-probe', firstTrust.assurance.id]
   );
   await expectDatabaseMutationBlocked(
     'pinned_evidence_delete_blocked',
@@ -399,7 +477,9 @@ async function main() {
   result.bundles.push({ id: second.id, reportId: second.reportId, version: second.version });
   await reviewAndIssue(service, fixture, second);
   assert.equal((await service.getAuditBundle(fixture.companyId, first.id)).lifecycleStatus, 'superseded');
+  assert.equal(await service.getPublicAuditBundleShare(firstTrust.supersessionShare.token), null);
   check('new_issuance_supersedes_previous_bundle');
+  check('supersession_invalidates_previous_share');
 
   assert.equal(queued.length, 2);
   check('existing_report_queue_reused', { queuedAuditBundleJobs: queued.length });

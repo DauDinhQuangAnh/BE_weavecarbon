@@ -10568,6 +10568,120 @@
         ]
       }
     },
+    "/reports/v2/audit-packs/{id}/assurance-records": {
+      "post": {
+        "operationId": "postReportsV2AuditPacksByIdAssuranceRecords",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "enum": [
+                      "requested",
+                      "evidence_received",
+                      "limited_assurance",
+                      "reasonable_assurance",
+                      "qualified",
+                      "adverse",
+                      "withdrawn"
+                    ],
+                    "type": "string"
+                  },
+                  "practitionerName": {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "providerName": {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "scope": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "standard": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "statementDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "validTo": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "outcome",
+                  "providerName",
+                  "scope"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /reports/v2/audit-packs/{id}/assurance-records",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
     "/reports/v2/audit-packs/{id}/issue": {
       "post": {
         "operationId": "postReportsV2AuditPacksByIdIssue",
@@ -10596,11 +10710,19 @@
                     "maxLength": 5000,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "signatureAcknowledged": {
+                    "description": "Explicit acknowledgement that this creates an internal platform attestation, not a qualified electronic signature.",
+                    "enum": [
+                      true
+                    ],
+                    "type": "boolean"
                   }
                 },
                 "required": [
                   "assertion",
-                  "criteria"
+                  "criteria",
+                  "signatureAcknowledged"
                 ],
                 "type": "object"
               }
@@ -10755,6 +10877,233 @@
           }
         ],
         "summary": "POST /reports/v2/audit-packs/{id}/reviews",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/reports/v2/audit-packs/{id}/shares": {
+      "post": {
+        "operationId": "postReportsV2AuditPacksByIdShares",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expiresInHours": {
+                    "maximum": 720,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "label": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "maxDownloads": {
+                    "maximum": 100,
+                    "minimum": 1,
+                    "nullable": true,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "expiresInHours"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /reports/v2/audit-packs/{id}/shares",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/reports/v2/audit-packs/{id}/shares/{shareId}": {
+      "delete": {
+        "operationId": "deleteReportsV2AuditPacksByIdSharesByShareId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "shareId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "DELETE /reports/v2/audit-packs/{id}/shares/{shareId}",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/reports/v2/public/audit-pack-shares/{token}": {
+      "get": {
+        "operationId": "getReportsV2PublicAuditPackSharesByToken",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [],
+        "summary": "GET /reports/v2/public/audit-pack-shares/{token}",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/reports/v2/public/audit-pack-shares/{token}/download": {
+      "get": {
+        "operationId": "getReportsV2PublicAuditPackSharesByTokenDownload",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Binary response"
+          }
+        },
+        "security": [],
+        "summary": "GET /reports/v2/public/audit-pack-shares/{token}/download",
         "tags": [
           "Reports"
         ]

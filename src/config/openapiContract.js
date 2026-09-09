@@ -16,6 +16,8 @@ const PUBLIC_OPERATIONS = new Set([
   'POST /auth/verify-email/resend',
   'POST /contact/lead',
   'GET /passport/{productId}',
+  'GET /reports/v2/public/audit-pack-shares/{token}',
+  'GET /reports/v2/public/audit-pack-shares/{token}/download',
   'GET /subscription/vnpay/ipn',
   'GET /subscription/vnpay/mock-checkout',
   'GET /subscription/vnpay/mock-complete',
@@ -40,6 +42,7 @@ const BINARY_OPERATIONS = new Map([
   ['GET /export/markets/{market_code}/documents/{document_id}/download', 'application/octet-stream'],
   ['GET /products/bulk-template', 'text/csv'],
   ['GET /products/bulk-template.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+  ['GET /reports/v2/public/audit-pack-shares/{token}/download', 'application/zip'],
   ['GET /reports/{id}/download', 'application/octet-stream']
 ]);
 
@@ -192,10 +195,47 @@ const REQUEST_BODY_OVERRIDES = {
   },
   'POST /reports/v2/audit-packs/{id}/issue': {
     type: 'object',
-    required: ['assertion', 'criteria'],
+    required: ['assertion', 'criteria', 'signatureAcknowledged'],
     properties: {
       assertion: { type: 'string', minLength: 1, maxLength: 5000 },
-      criteria: { type: 'string', minLength: 1, maxLength: 5000 }
+      criteria: { type: 'string', minLength: 1, maxLength: 5000 },
+      signatureAcknowledged: {
+        type: 'boolean',
+        enum: [true],
+        description: 'Explicit acknowledgement that this creates an internal platform attestation, not a qualified electronic signature.'
+      }
+    },
+    additionalProperties: false
+  },
+  'POST /reports/v2/audit-packs/{id}/shares': {
+    type: 'object',
+    required: ['expiresInHours'],
+    properties: {
+      label: { type: 'string', maxLength: 200 },
+      expiresInHours: { type: 'integer', minimum: 1, maximum: 720 },
+      maxDownloads: { type: 'integer', minimum: 1, maximum: 100, nullable: true }
+    },
+    additionalProperties: false
+  },
+  'POST /reports/v2/audit-packs/{id}/assurance-records': {
+    type: 'object',
+    required: ['outcome', 'providerName', 'scope'],
+    properties: {
+      outcome: {
+        type: 'string',
+        enum: [
+          'requested', 'evidence_received', 'limited_assurance', 'reasonable_assurance',
+          'qualified', 'adverse', 'withdrawn'
+        ]
+      },
+      providerName: { type: 'string', minLength: 1, maxLength: 300 },
+      practitionerName: { type: 'string', maxLength: 300 },
+      standard: { type: 'string', maxLength: 500 },
+      scope: { type: 'string', minLength: 1, maxLength: 5000 },
+      statementDate: { type: 'string', format: 'date' },
+      validTo: { type: 'string', format: 'date' },
+      evidenceDocumentId: { type: 'string', format: 'uuid' },
+      notes: { type: 'string', maxLength: 5000 }
     },
     additionalProperties: false
   },

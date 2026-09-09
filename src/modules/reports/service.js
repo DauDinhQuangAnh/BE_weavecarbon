@@ -15,10 +15,26 @@ const {
     safeFilename,
     sha256
 } = require('./auditBundle');
+const {
+    createAuditIssuanceSignature,
+    createAuditShareToken,
+    deriveExternalAssuranceStatus,
+    normalizeAuditShareToken,
+    verifyAuditIssuanceSignature
+} = require('./auditTrust');
 
 const PDF_REPORT_TYPES = new Set(['product_carbon', 'batch_export', 'facility_emission', 'compliance']);
 const QA_EXCEPTION_SEVERITIES = new Set(['warning', 'blocking']);
 const QA_EXCEPTION_STATUSES = new Set(['open', 'resolved']);
+const AUDIT_ASSURANCE_OUTCOMES = new Set([
+    'requested', 'evidence_received', 'limited_assurance', 'reasonable_assurance',
+    'qualified', 'adverse', 'withdrawn'
+]);
+const isValidIsoDate = (value) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+};
 
 const {
     normalizeUuid,
@@ -593,9 +609,23 @@ class ReportsService {
                    ab.original_filename, ab.error_message, ab.completed_at, ab.created_at,
                    review.id AS review_id, review.decision AS review_decision,
                    review.qa_exceptions AS review_qa_exceptions, review.notes AS review_notes,
-                   review.reviewed_by, review.reviewed_at,
+                   review.reviewed_by, review.reviewer_name_snapshot, review.reviewer_email_snapshot,
+                   review.reviewed_at,
                    issuance.id AS issuance_id, issuance.assertion_text, issuance.criteria,
-                   issuance.issued_by, issuance.issued_at,
+                   issuance.issued_by, issuance.signer_name_snapshot, issuance.signer_email_snapshot,
+                   issuance.signature_algorithm, issuance.signature_payload,
+                   issuance.signature_payload_sha256, issuance.signature_public_key,
+                   issuance.signature_value, issuance.signature_acknowledged_at, issuance.issued_at,
+                   assurance.id AS assurance_id, assurance.outcome AS assurance_outcome,
+                   assurance.provider_name AS assurance_provider_name,
+                   assurance.practitioner_name AS assurance_practitioner_name,
+                   assurance.standard AS assurance_standard, assurance.scope AS assurance_scope,
+                   assurance.statement_date AS assurance_statement_date,
+                   assurance.valid_to AS assurance_valid_to,
+                   assurance.evidence_document_id AS assurance_evidence_document_id,
+                   assurance.evidence_sha256 AS assurance_evidence_sha256,
+                   assurance.notes AS assurance_notes, assurance.recorded_at AS assurance_recorded_at,
+                   COALESCE(shares.items, '[]'::jsonb) AS share_links,
                    EXISTS (
                      SELECT 1
                      FROM audit_bundles newer
@@ -613,6 +643,26 @@ class ReportsService {
             ) review ON true
             LEFT JOIN audit_bundle_issuances issuance
               ON issuance.company_id = ab.company_id AND issuance.audit_bundle_id = ab.id
+            LEFT JOIN LATERAL (
+              SELECT ar.* FROM audit_bundle_assurance_records ar
+              WHERE ar.company_id = ab.company_id AND ar.audit_bundle_id = ab.id
+              ORDER BY ar.recorded_at DESC, ar.id DESC LIMIT 1
+            ) assurance ON true
+            LEFT JOIN LATERAL (
+              SELECT jsonb_agg(jsonb_build_object(
+                'id', sl.id,
+                'label', sl.label,
+                'expiresAt', sl.expires_at,
+                'maxDownloads', sl.max_downloads,
+                'downloadCount', sl.download_count,
+                'lastAccessedAt', sl.last_accessed_at,
+                'revokedAt', sl.revoked_at,
+                'revocationReason', sl.revocation_reason,
+                'createdAt', sl.created_at
+              ) ORDER BY sl.created_at DESC, sl.id DESC) AS items
+              FROM audit_bundle_share_links sl
+              WHERE sl.company_id = ab.company_id AND sl.audit_bundle_id = ab.id
+            ) shares ON true
             WHERE ab.id = $1 AND ab.company_id = $2
         `, [auditBundleId, companyId]);
         const row = result.rows[0];
@@ -626,7 +676,12 @@ class ReportsService {
             version: Number(row.version),
             status: row.status,
             lifecycleStatus: deriveAuditLifecycleStatus(row),
-            assuranceStatus: row.assurance_status,
+            assuranceStatus: deriveExternalAssuranceStatus(
+                row.assurance_id ? {
+                    outcome: row.assurance_outcome,
+                    validTo: row.assurance_valid_to
+                } : null
+            ),
             termEvidenceCoverage: manifest?.termEvidenceCoverage || null,
             manifestSha256: row.manifest_sha256,
             bundleSha256: row.bundle_sha256,
@@ -640,6 +695,8 @@ class ReportsService {
                 qaExceptions: row.review_qa_exceptions || [],
                 notes: row.review_notes,
                 reviewedBy: row.reviewed_by,
+                reviewerName: row.reviewer_name_snapshot || null,
+                reviewerEmail: row.reviewer_email_snapshot || null,
                 reviewedAt: row.reviewed_at
             } : null,
             issuance: row.issuance_id ? {
@@ -647,8 +704,31 @@ class ReportsService {
                 assertion: row.assertion_text,
                 criteria: row.criteria,
                 issuedBy: row.issued_by,
+                signerName: row.signer_name_snapshot || null,
+                signerEmail: row.signer_email_snapshot || null,
+                signatureAlgorithm: row.signature_algorithm || null,
+                signaturePayloadSha256: row.signature_payload_sha256 || null,
+                signaturePublicKey: row.signature_public_key || null,
+                signatureValue: row.signature_value || null,
+                signatureValid: verifyAuditIssuanceSignature(row),
+                signatureAcknowledgedAt: row.signature_acknowledged_at || null,
                 issuedAt: row.issued_at
             } : null,
+            externalAssurance: row.assurance_id ? {
+                id: row.assurance_id,
+                outcome: row.assurance_outcome,
+                providerName: row.assurance_provider_name,
+                practitionerName: row.assurance_practitioner_name,
+                standard: row.assurance_standard,
+                scope: row.assurance_scope,
+                statementDate: row.assurance_statement_date,
+                validTo: row.assurance_valid_to,
+                evidenceDocumentId: row.assurance_evidence_document_id,
+                evidenceSha256: row.assurance_evidence_sha256,
+                notes: row.assurance_notes,
+                recordedAt: row.assurance_recorded_at
+            } : null,
+            shareLinks: Array.isArray(row.share_links) ? row.share_links : [],
             completedAt: row.completed_at,
             createdAt: row.created_at
         };
@@ -710,10 +790,19 @@ class ReportsService {
             }
             const inserted = await client.query(`
                 INSERT INTO audit_bundle_reviews (
-                    company_id, audit_bundle_id, decision, qa_exceptions, notes, reviewed_by
-                ) VALUES ($1,$2,$3,$4::jsonb,$5,$6)
-                RETURNING id, decision, qa_exceptions, notes, reviewed_by, reviewed_at
+                    company_id, audit_bundle_id, decision, qa_exceptions, notes, reviewed_by,
+                    reviewer_name_snapshot, reviewer_email_snapshot
+                )
+                SELECT $1,$2,$3,$4::jsonb,$5,$6,u.full_name,u.email
+                FROM users u WHERE u.id = $6
+                RETURNING id, decision, qa_exceptions, notes, reviewed_by,
+                          reviewer_name_snapshot, reviewer_email_snapshot, reviewed_at
             `, [companyId, auditBundleId, decision, JSON.stringify(qaExceptions), notes, userId]);
+            if (!inserted.rows[0]) {
+                throw createAppError('Reviewer identity no longer exists.', {
+                    statusCode: 409, code: 'AUDIT_REVIEWER_IDENTITY_REQUIRED'
+                });
+            }
             await client.query('COMMIT');
             const row = inserted.rows[0];
             return {
@@ -722,6 +811,8 @@ class ReportsService {
                 qaExceptions: row.qa_exceptions || [],
                 notes: row.notes,
                 reviewedBy: row.reviewed_by,
+                reviewerName: row.reviewer_name_snapshot,
+                reviewerEmail: row.reviewer_email_snapshot,
                 reviewedAt: row.reviewed_at
             };
         } catch (error) {
@@ -740,6 +831,11 @@ class ReportsService {
                 statusCode: 400, code: 'AUDIT_ISSUE_ASSERTION_REQUIRED'
             });
         }
+        if (payload.signatureAcknowledged !== true && payload.signature_acknowledged !== true) {
+            throw createAppError('Explicit signature acknowledgement is required.', {
+                statusCode: 400, code: 'AUDIT_SIGNATURE_ACKNOWLEDGEMENT_REQUIRED'
+            });
+        }
         const client = await this.database.connect();
         try {
             await client.query('BEGIN');
@@ -751,7 +847,8 @@ class ReportsService {
                 SELECT ab.id, ab.status, ab.manifest, ab.manifest_sha256, ab.bundle_sha256,
                        issuance.id AS issuance_id,
                        review.id AS review_id, review.decision AS review_decision,
-                       review.qa_exceptions AS review_qa_exceptions,
+                       review.qa_exceptions AS review_qa_exceptions, review.reviewed_by,
+                       signer.full_name AS signer_name, signer.email AS signer_email,
                        EXISTS (
                          SELECT 1 FROM audit_bundles newer
                          WHERE newer.company_id = ab.company_id AND newer.product_id = ab.product_id
@@ -765,9 +862,10 @@ class ReportsService {
                 ) review ON true
                 LEFT JOIN audit_bundle_issuances issuance
                   ON issuance.company_id = ab.company_id AND issuance.audit_bundle_id = ab.id
+                INNER JOIN users signer ON signer.id = $3
                 WHERE ab.id = $1 AND ab.company_id = $2
                 FOR UPDATE OF ab
-            `, [auditBundleId, companyId]);
+            `, [auditBundleId, companyId, userId]);
             const bundle = bundleResult.rows[0];
             if (!bundle) {
                 throw createAppError('Audit Pack not found.', { statusCode: 404, code: 'AUDIT_BUNDLE_NOT_FOUND' });
@@ -800,20 +898,46 @@ class ReportsService {
                     statusCode: 409, code: 'AUDIT_REVIEW_APPROVAL_REQUIRED'
                 });
             }
+            if (bundle.reviewed_by === userId) {
+                throw createAppError('Reviewer and issuer must be different people.', {
+                    statusCode: 409, code: 'AUDIT_SEGREGATION_OF_DUTIES_REQUIRED'
+                });
+            }
             const exceptions = Array.isArray(bundle.review_qa_exceptions) ? bundle.review_qa_exceptions : [];
             if (exceptions.some((item) => item?.severity === 'blocking' && item?.status !== 'resolved')) {
                 throw createAppError('Blocking QA exceptions must be resolved before issue.', {
                     statusCode: 409, code: 'AUDIT_QA_BLOCKING_EXCEPTIONS'
                 });
             }
+            const signedAt = new Date().toISOString();
+            const signature = createAuditIssuanceSignature({
+                companyId,
+                auditBundleId,
+                manifestSha256: bundle.manifest_sha256,
+                bundleSha256: bundle.bundle_sha256,
+                assertion,
+                criteria,
+                signerId: userId,
+                signerName: bundle.signer_name,
+                signerEmail: bundle.signer_email,
+                signedAt
+            });
             const inserted = await client.query(`
                 INSERT INTO audit_bundle_issuances (
                     company_id, audit_bundle_id, assertion_text, criteria,
-                    manifest_sha256, bundle_sha256, issued_by
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7)
-                RETURNING id, assertion_text, criteria, issued_by, issued_at
+                    manifest_sha256, bundle_sha256, issued_by, signer_name_snapshot,
+                    signer_email_snapshot, signature_algorithm, signature_payload,
+                    signature_payload_sha256, signature_public_key, signature_value,
+                    signature_acknowledged_at
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15)
+                RETURNING id, assertion_text, criteria, issued_by, signer_name_snapshot,
+                          signer_email_snapshot, signature_algorithm, signature_payload_sha256,
+                          signature_public_key, signature_value, signature_acknowledged_at, issued_at
             `, [companyId, auditBundleId, assertion, criteria,
-                bundle.manifest_sha256, bundle.bundle_sha256, userId]);
+                bundle.manifest_sha256, bundle.bundle_sha256, userId,
+                bundle.signer_name, bundle.signer_email, signature.signatureAlgorithm,
+                JSON.stringify(signature.signaturePayload), signature.signaturePayloadSha256,
+                signature.signaturePublicKey, signature.signatureValue, signature.signedAt]);
             await client.query('COMMIT');
             const row = inserted.rows[0];
             return {
@@ -824,7 +948,440 @@ class ReportsService {
                 assertion: row.assertion_text,
                 criteria: row.criteria,
                 issuedBy: row.issued_by,
+                signerName: row.signer_name_snapshot,
+                signerEmail: row.signer_email_snapshot,
+                signatureAlgorithm: row.signature_algorithm,
+                signaturePayloadSha256: row.signature_payload_sha256,
+                signaturePublicKey: row.signature_public_key,
+                signatureValue: row.signature_value,
+                signatureValid: true,
+                signatureAcknowledgedAt: row.signature_acknowledged_at,
                 issuedAt: row.issued_at
+            };
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    async createAuditBundleShare(companyId, userId, auditBundleId, payload = {}) {
+        const expiresInHours = Number(payload.expiresInHours ?? payload.expires_in_hours ?? 168);
+        if (!Number.isInteger(expiresInHours) || expiresInHours < 1 || expiresInHours > 720) {
+            throw createAppError('expiresInHours must be an integer between 1 and 720.', {
+                statusCode: 400, code: 'AUDIT_SHARE_EXPIRY_INVALID'
+            });
+        }
+        const rawMaxDownloads = payload.maxDownloads ?? payload.max_downloads ?? 10;
+        const maxDownloads = rawMaxDownloads === null ? null : Number(rawMaxDownloads);
+        if (maxDownloads !== null && (!Number.isInteger(maxDownloads) || maxDownloads < 1 || maxDownloads > 100)) {
+            throw createAppError('maxDownloads must be null or an integer between 1 and 100.', {
+                statusCode: 400, code: 'AUDIT_SHARE_DOWNLOAD_LIMIT_INVALID'
+            });
+        }
+        const label = String(payload.label || '').trim().slice(0, 200) || null;
+        const client = await this.database.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query(
+                'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
+                [auditBundleId]
+            );
+            const bundleResult = await client.query(`
+                SELECT ab.id, ab.status, ab.manifest_sha256, ab.bundle_sha256,
+                       ai.id AS issuance_id, ai.signature_algorithm, ai.signature_payload,
+                       ai.signature_payload_sha256, ai.signature_public_key, ai.signature_value,
+                       EXISTS (
+                         SELECT 1 FROM audit_bundles newer
+                         INNER JOIN audit_bundle_issuances newer_issue
+                           ON newer_issue.company_id = newer.company_id
+                          AND newer_issue.audit_bundle_id = newer.id
+                         WHERE newer.company_id = ab.company_id AND newer.product_id = ab.product_id
+                           AND newer.version > ab.version
+                       ) AS has_newer_issued_bundle
+                FROM audit_bundles ab
+                LEFT JOIN audit_bundle_issuances ai
+                  ON ai.company_id = ab.company_id AND ai.audit_bundle_id = ab.id
+                WHERE ab.id = $1 AND ab.company_id = $2
+                FOR SHARE OF ab
+            `, [auditBundleId, companyId]);
+            const bundle = bundleResult.rows[0];
+            if (!bundle) {
+                throw createAppError('Audit Pack not found.', {
+                    statusCode: 404, code: 'AUDIT_BUNDLE_NOT_FOUND'
+                });
+            }
+            if (bundle.status !== 'completed' || !bundle.issuance_id) {
+                throw createAppError('Only an issued Audit Pack can be shared.', {
+                    statusCode: 409, code: 'AUDIT_BUNDLE_ISSUED_REQUIRED'
+                });
+            }
+            if (bundle.has_newer_issued_bundle) {
+                throw createAppError('A superseded Audit Pack cannot receive a new share link.', {
+                    statusCode: 409, code: 'AUDIT_BUNDLE_SUPERSEDED'
+                });
+            }
+            if (!verifyAuditIssuanceSignature(bundle)) {
+                throw createAppError('The Audit Pack issuance has no valid platform signature.', {
+                    statusCode: 409, code: 'AUDIT_ISSUANCE_SIGNATURE_REQUIRED'
+                });
+            }
+            const { token, tokenSha256 } = createAuditShareToken();
+            const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000).toISOString();
+            const inserted = await client.query(`
+                INSERT INTO audit_bundle_share_links (
+                    company_id, audit_bundle_id, issuance_id, token_sha256, label,
+                    manifest_sha256, bundle_sha256, expires_at, max_downloads, created_by
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                RETURNING id, label, expires_at, max_downloads, download_count, created_at
+            `, [companyId, auditBundleId, bundle.issuance_id, tokenSha256, label,
+                bundle.manifest_sha256, bundle.bundle_sha256, expiresAt, maxDownloads, userId]);
+            await client.query('COMMIT');
+            const row = inserted.rows[0];
+            return {
+                id: row.id,
+                label: row.label,
+                expiresAt: row.expires_at,
+                maxDownloads: row.max_downloads === null ? null : Number(row.max_downloads),
+                downloadCount: Number(row.download_count || 0),
+                createdAt: row.created_at,
+                token,
+                shareUrl: `/api/reports/v2/public/audit-pack-shares/${token}/download`
+            };
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    async revokeAuditBundleShare(companyId, userId, auditBundleId, shareId, payload = {}) {
+        const reason = String(payload.reason || '').trim().slice(0, 1000) || null;
+        const result = await this.database.query(`
+            UPDATE audit_bundle_share_links
+            SET revoked_at = now(), revoked_by = $1, revocation_reason = $2
+            WHERE id = $3 AND audit_bundle_id = $4 AND company_id = $5 AND revoked_at IS NULL
+            RETURNING id, revoked_at, revocation_reason
+        `, [userId, reason, shareId, auditBundleId, companyId]);
+        if (!result.rows[0]) {
+            throw createAppError('Active Audit Pack share link not found.', {
+                statusCode: 404, code: 'AUDIT_SHARE_NOT_FOUND'
+            });
+        }
+        return {
+            id: result.rows[0].id,
+            revokedAt: result.rows[0].revoked_at,
+            revocationReason: result.rows[0].revocation_reason
+        };
+    }
+
+    async createAuditBundleAssuranceRecord(companyId, userId, auditBundleId, payload = {}) {
+        const outcome = String(payload.outcome || '').trim().toLowerCase();
+        if (!AUDIT_ASSURANCE_OUTCOMES.has(outcome)) {
+            throw createAppError('Unsupported external assurance outcome.', {
+                statusCode: 400, code: 'AUDIT_ASSURANCE_OUTCOME_INVALID'
+            });
+        }
+        const providerName = String(payload.providerName || payload.provider_name || '').trim().slice(0, 300);
+        const scope = String(payload.scope || '').trim().slice(0, 5000);
+        const practitionerName = String(payload.practitionerName || payload.practitioner_name || '').trim().slice(0, 300) || null;
+        const standard = String(payload.standard || '').trim().slice(0, 500) || null;
+        const notes = String(payload.notes || '').trim().slice(0, 5000) || null;
+        const statementDate = String(payload.statementDate || payload.statement_date || '').trim() || null;
+        const validTo = String(payload.validTo || payload.valid_to || '').trim() || null;
+        const evidenceDocumentId = payload.evidenceDocumentId || payload.evidence_document_id || null;
+        if (!providerName || !scope) {
+            throw createAppError('providerName and scope are required.', {
+                statusCode: 400, code: 'AUDIT_ASSURANCE_DETAILS_REQUIRED'
+            });
+        }
+        for (const [field, value] of [['statementDate', statementDate], ['validTo', validTo]]) {
+            if (value && !isValidIsoDate(value)) {
+                throw createAppError(`${field} must be an ISO date.`, {
+                    statusCode: 400, code: 'AUDIT_ASSURANCE_DATE_INVALID'
+                });
+            }
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        if (statementDate && validTo && validTo < statementDate) {
+            throw createAppError('validTo cannot be earlier than statementDate.', {
+                statusCode: 400, code: 'AUDIT_ASSURANCE_DATE_INVALID'
+            });
+        }
+        const needsEvidence = !['requested', 'withdrawn'].includes(outcome);
+        if (needsEvidence && (!statementDate || !normalizeUuid(evidenceDocumentId))) {
+            throw createAppError('A statement date and third-party-verified evidence document are required.', {
+                statusCode: 400, code: 'AUDIT_ASSURANCE_EVIDENCE_REQUIRED'
+            });
+        }
+        const normalizedEvidenceId = evidenceDocumentId ? normalizeUuid(evidenceDocumentId) : null;
+        if (evidenceDocumentId && !normalizedEvidenceId) {
+            throw createAppError('evidenceDocumentId must be a UUID.', {
+                statusCode: 400, code: 'AUDIT_ASSURANCE_EVIDENCE_INVALID'
+            });
+        }
+        const client = await this.database.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query(
+                'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
+                [auditBundleId]
+            );
+            const bundleResult = await client.query(`
+                SELECT ab.id, ab.status, ab.product_id, ab.manifest_sha256, ab.bundle_sha256,
+                       ai.id AS issuance_id, ai.signature_algorithm, ai.signature_payload,
+                       ai.signature_payload_sha256, ai.signature_public_key, ai.signature_value,
+                       latest.id AS latest_assurance_id,
+                       ed.id AS evidence_id, ed.status AS evidence_status,
+                       ed.checksum_sha256 AS evidence_sha256, ed.storage_key AS evidence_storage_key,
+                       ed.file_size_bytes AS evidence_file_size, ed.valid_to AS evidence_valid_to,
+                       abe.evidence_document_id AS pinned_evidence_id,
+                       abe.checksum_sha256 AS pinned_evidence_sha256
+                FROM audit_bundles ab
+                LEFT JOIN audit_bundle_issuances ai
+                  ON ai.company_id = ab.company_id AND ai.audit_bundle_id = ab.id
+                LEFT JOIN LATERAL (
+                  SELECT ar.id FROM audit_bundle_assurance_records ar
+                  WHERE ar.company_id = ab.company_id AND ar.audit_bundle_id = ab.id
+                  ORDER BY ar.recorded_at DESC, ar.id DESC LIMIT 1
+                ) latest ON true
+                LEFT JOIN evidence_documents ed
+                  ON ed.id = $3 AND ed.company_id = ab.company_id AND ed.product_id = ab.product_id
+                LEFT JOIN audit_bundle_evidence abe
+                  ON abe.audit_bundle_id = ab.id AND abe.evidence_document_id = ed.id
+                WHERE ab.id = $1 AND ab.company_id = $2
+                FOR SHARE OF ab
+            `, [auditBundleId, companyId, normalizedEvidenceId]);
+            const bundle = bundleResult.rows[0];
+            if (!bundle) {
+                throw createAppError('Audit Pack not found.', {
+                    statusCode: 404, code: 'AUDIT_BUNDLE_NOT_FOUND'
+                });
+            }
+            if (bundle.status !== 'completed' || !bundle.issuance_id || !verifyAuditIssuanceSignature(bundle)) {
+                throw createAppError('A valid signed issuance is required before external assurance can be recorded.', {
+                    statusCode: 409, code: 'AUDIT_SIGNED_ISSUANCE_REQUIRED'
+                });
+            }
+            if (outcome === 'withdrawn' && !bundle.latest_assurance_id) {
+                throw createAppError('There is no assurance record to withdraw.', {
+                    statusCode: 409, code: 'AUDIT_ASSURANCE_WITHDRAWAL_INVALID'
+                });
+            }
+            if (needsEvidence) {
+                const evidenceValidTo = bundle.evidence_valid_to
+                    ? String(bundle.evidence_valid_to).slice(0, 10) : null;
+                const evidenceIsCurrent = !evidenceValidTo || evidenceValidTo >= today;
+                if (!bundle.evidence_id || !bundle.pinned_evidence_id ||
+                    bundle.pinned_evidence_sha256 !== bundle.evidence_sha256 ||
+                    bundle.evidence_status !== 'third_party_verified' ||
+                    !bundle.evidence_storage_key || Number(bundle.evidence_file_size || 0) <= 0 ||
+                    !/^[a-f0-9]{64}$/i.test(bundle.evidence_sha256 || '') || !evidenceIsCurrent) {
+                    throw createAppError('Assurance evidence must be pinned in this bundle, current, stored and third-party verified.', {
+                        statusCode: 409, code: 'AUDIT_ASSURANCE_EVIDENCE_NOT_VERIFIED'
+                    });
+                }
+                if (validTo && evidenceValidTo && validTo > evidenceValidTo) {
+                    throw createAppError('Assurance validity cannot outlive its evidence document.', {
+                        statusCode: 409, code: 'AUDIT_ASSURANCE_VALIDITY_EXCEEDS_EVIDENCE'
+                    });
+                }
+            }
+            const effectiveValidTo = needsEvidence && !validTo && bundle.evidence_valid_to
+                ? String(bundle.evidence_valid_to).slice(0, 10) : validTo;
+            const inserted = await client.query(`
+                INSERT INTO audit_bundle_assurance_records (
+                    company_id, audit_bundle_id, issuance_id, outcome, provider_name,
+                    practitioner_name, standard, scope, statement_date, valid_to,
+                    evidence_document_id, evidence_sha256, manifest_sha256, bundle_sha256,
+                    notes, supersedes_id, recorded_by
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+                RETURNING id, outcome, provider_name, practitioner_name, standard, scope,
+                          statement_date, valid_to, evidence_document_id, evidence_sha256,
+                          notes, supersedes_id, recorded_at
+            `, [companyId, auditBundleId, bundle.issuance_id, outcome, providerName,
+                practitionerName, standard, scope, statementDate, effectiveValidTo,
+                needsEvidence ? bundle.evidence_id : null, needsEvidence ? bundle.evidence_sha256 : null,
+                bundle.manifest_sha256, bundle.bundle_sha256, notes,
+                bundle.latest_assurance_id || null, userId]);
+            await client.query('COMMIT');
+            const row = inserted.rows[0];
+            return {
+                id: row.id,
+                outcome: row.outcome,
+                assuranceStatus: deriveExternalAssuranceStatus(row),
+                providerName: row.provider_name,
+                practitionerName: row.practitioner_name,
+                standard: row.standard,
+                scope: row.scope,
+                statementDate: row.statement_date,
+                validTo: row.valid_to,
+                evidenceDocumentId: row.evidence_document_id,
+                evidenceSha256: row.evidence_sha256,
+                notes: row.notes,
+                supersedesId: row.supersedes_id,
+                recordedAt: row.recorded_at
+            };
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    async _findPublicAuditBundleShare(queryable, tokenSha256, lock = false) {
+        const result = await queryable.query(`
+            SELECT sl.id AS share_id, sl.label, sl.expires_at, sl.max_downloads,
+                   sl.download_count, sl.last_accessed_at,
+                   sl.manifest_sha256 AS share_manifest_sha256,
+                   sl.bundle_sha256 AS share_bundle_sha256,
+                   ab.id AS audit_bundle_id, ab.version, ab.report_id, ab.storage_provider,
+                   ab.storage_key, ab.original_filename, ab.mime_type, ab.file_size_bytes,
+                   ab.manifest_sha256, ab.bundle_sha256,
+                   p.sku, p.name AS product_name,
+                   ai.assertion_text, ai.criteria, ai.issued_at,
+                   ai.signer_name_snapshot, ai.signer_email_snapshot,
+                   ai.signature_algorithm, ai.signature_payload, ai.signature_payload_sha256,
+                   ai.signature_public_key, ai.signature_value, ai.signature_acknowledged_at,
+                   assurance.outcome AS assurance_outcome,
+                   assurance.provider_name AS assurance_provider_name,
+                   assurance.practitioner_name AS assurance_practitioner_name,
+                   assurance.standard AS assurance_standard, assurance.scope AS assurance_scope,
+                   assurance.statement_date AS assurance_statement_date,
+                   assurance.valid_to AS assurance_valid_to,
+                   assurance.evidence_sha256 AS assurance_evidence_sha256
+            FROM audit_bundle_share_links sl
+            INNER JOIN audit_bundles ab
+              ON ab.id = sl.audit_bundle_id AND ab.company_id = sl.company_id
+            INNER JOIN audit_bundle_issuances ai
+              ON ai.id = sl.issuance_id AND ai.company_id = sl.company_id
+            INNER JOIN products p ON p.id = ab.product_id AND p.company_id = ab.company_id
+            LEFT JOIN LATERAL (
+              SELECT ar.* FROM audit_bundle_assurance_records ar
+              WHERE ar.company_id = ab.company_id AND ar.audit_bundle_id = ab.id
+              ORDER BY ar.recorded_at DESC, ar.id DESC LIMIT 1
+            ) assurance ON true
+            WHERE sl.token_sha256 = $1 AND sl.revoked_at IS NULL AND sl.expires_at > now()
+              AND (sl.max_downloads IS NULL OR sl.download_count < sl.max_downloads)
+              AND ab.status = 'completed'
+              AND NOT EXISTS (
+                SELECT 1 FROM audit_bundles newer
+                INNER JOIN audit_bundle_issuances newer_issue
+                  ON newer_issue.company_id = newer.company_id
+                 AND newer_issue.audit_bundle_id = newer.id
+                WHERE newer.company_id = ab.company_id AND newer.product_id = ab.product_id
+                  AND newer.version > ab.version
+              )
+            ${lock ? 'FOR UPDATE OF sl' : ''}
+        `, [tokenSha256]);
+        return result.rows[0] || null;
+    }
+
+    _mapPublicAuditBundleShare(row, token) {
+        if (!row || row.share_bundle_sha256 !== row.bundle_sha256 ||
+            row.share_manifest_sha256 !== row.manifest_sha256 ||
+            !verifyAuditIssuanceSignature(row)) return null;
+        return {
+            schemaVersion: 'weavecarbon-audit-share-v1',
+            label: row.label,
+            expiresAt: row.expires_at,
+            maxDownloads: row.max_downloads === null ? null : Number(row.max_downloads),
+            downloadCount: Number(row.download_count || 0),
+            bundle: {
+                id: row.audit_bundle_id,
+                version: Number(row.version),
+                sku: row.sku,
+                productName: row.product_name,
+                manifestSha256: row.manifest_sha256,
+                bundleSha256: row.bundle_sha256,
+                filename: row.original_filename,
+                fileSizeBytes: Number(row.file_size_bytes || 0)
+            },
+            issuance: {
+                assertion: row.assertion_text,
+                criteria: row.criteria,
+                signerName: row.signer_name_snapshot,
+                signerEmail: row.signer_email_snapshot,
+                issuedAt: row.issued_at,
+                signatureAlgorithm: row.signature_algorithm,
+                signaturePayloadSha256: row.signature_payload_sha256,
+                signaturePublicKey: row.signature_public_key,
+                signatureValue: row.signature_value,
+                signatureValid: true,
+                signatureAcknowledgedAt: row.signature_acknowledged_at
+            },
+            assuranceStatus: deriveExternalAssuranceStatus({ outcome: row.assurance_outcome }),
+            externalAssurance: row.assurance_outcome ? {
+                outcome: row.assurance_outcome,
+                providerName: row.assurance_provider_name,
+                practitionerName: row.assurance_practitioner_name,
+                standard: row.assurance_standard,
+                scope: row.assurance_scope,
+                statementDate: row.assurance_statement_date,
+                validTo: row.assurance_valid_to,
+                evidenceSha256: row.assurance_evidence_sha256
+            } : null,
+            downloadUrl: `/api/reports/v2/public/audit-pack-shares/${token}/download`,
+            disclaimer: 'This read-only share proves server-recorded integrity only. It is not a customs filing or certification.'
+        };
+    }
+
+    async getPublicAuditBundleShare(rawToken) {
+        const token = normalizeAuditShareToken(rawToken);
+        if (!token) return null;
+        const row = await this._findPublicAuditBundleShare(this.database, sha256(token));
+        return this._mapPublicAuditBundleShare(row, token);
+    }
+
+    async downloadPublicAuditBundleShare(rawToken) {
+        const token = normalizeAuditShareToken(rawToken);
+        if (!token) return null;
+        const client = await this.database.connect();
+        try {
+            await client.query('BEGIN');
+            const row = await this._findPublicAuditBundleShare(client, sha256(token), true);
+            const metadata = this._mapPublicAuditBundleShare(row, token);
+            if (!metadata || row.storage_provider !== 'local') {
+                await client.query('ROLLBACK');
+                return null;
+            }
+            const filePath = path.resolve(this.uploadsRoot, row.storage_key || '');
+            const relative = path.relative(this.uploadsRoot, filePath);
+            if (!row.storage_key || relative.startsWith('..') || path.isAbsolute(relative)) {
+                throw createAppError('Shared Audit Pack has an invalid storage path.', {
+                    statusCode: 409, code: 'AUDIT_SHARE_STORAGE_INVALID'
+                });
+            }
+            let buffer;
+            try {
+                buffer = await fs.promises.readFile(filePath);
+            } catch (error) {
+                if (error?.code === 'ENOENT') {
+                    throw createAppError('Shared Audit Pack file is missing from storage.', {
+                        statusCode: 409, code: 'AUDIT_SHARE_STORAGE_MISSING'
+                    });
+                }
+                throw error;
+            }
+            if (buffer.length !== Number(row.file_size_bytes) || sha256(buffer) !== row.bundle_sha256) {
+                throw createAppError('Shared Audit Pack failed its immutable checksum.', {
+                    statusCode: 409, code: 'AUDIT_SHARE_CHECKSUM_MISMATCH'
+                });
+            }
+            await client.query(`
+                UPDATE audit_bundle_share_links
+                SET download_count = download_count + 1, last_accessed_at = now()
+                WHERE id = $1
+            `, [row.share_id]);
+            await client.query('COMMIT');
+            return {
+                metadata,
+                buffer,
+                filename: safeFilename(row.original_filename, `AuditPack_${row.audit_bundle_id}.zip`),
+                mimeType: row.mime_type || 'application/zip'
             };
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});

@@ -338,7 +338,7 @@ coverage where claimed; assurance.
 **Definition of Done:** boundary/source completeness and base-year logic exist; missing sources/exclusions are disclosed;
 all totals reproduce from evidence; report name accurately reflects its scope.
 
-### R14 — Audit/evidence pack — P0 containment complete, implementation incomplete
+### R14 — Audit/evidence pack — PARTIAL; technical trust workflow implemented
 
 **Required inputs/output:** signed assertion/criteria; data-management plan; roles/controls/retention; process map; calculation
 manifest; raw activity data + unit/period/source; factor provenance/version/geography/unit; immutable evidence files/hashes;
@@ -405,14 +405,29 @@ QA/QC, approvals/exceptions; assumptions/allocation/uncertainty/change history; 
 - The machine-readable result is uploaded as a CI artifact. See `docs/AUDIT_PACK_PILOT_RUNBOOK.md` for safety guards,
   execution and interpretation.
 
-**Remaining:** run the same migrations and one real-evidence pilot on a confirmed non-production staging environment, then
-record its ZIP checksum and human reviewer decision; add an actually signed assertion and expiring read-only share link; add
-an external-assurance record/actor workflow. Structured QA exceptions are supported by the API but still need a dedicated
-multi-row frontend editor. No external assurance or legal usability is claimed.
+**Signed delivery and assurance-record increment implemented (pending staging):**
+
+- Migration 023 adds reviewer/signer identity snapshots, complete Ed25519 attestation fields, checksum-bound expiring share
+  records and append-only external-assurance records. Only the opaque share token's SHA-256 is stored.
+- Review, issue, share, revoke and assurance mutations require company-admin authority. Reviewer and issuer must be different
+  users, and issue requires explicit acknowledgement that the signature is an internal platform attestation rather than a
+  qualified electronic signature or independent assurance conclusion.
+- Public shares are read-only, rate/download limited, checksum-verified before streaming and automatically unavailable after
+  expiry, revocation, download exhaustion or issuance of a replacement bundle.
+- External outcomes are never inferred. A conclusion other than requested/withdrawn requires an explicit provider, scope,
+  statement date and current third-party-verified evidence file already pinned to the exact immutable bundle. Its validity
+  cannot outlive that evidence; an expired conclusion is visibly derived as `expired`.
+- The frontend now has a structured multi-row QA exception editor, explicit signature acknowledgement, one-time share-token
+  handling, revocation controls and append-only assurance entry tied to eligible evidence.
+
+**Remaining:** pass migration 023, the expanded signed-share/assurance pilot and restore gate on isolated staging, then merge
+and deploy the technical controls. R14 still requires a representative real-evidence pack, a named reviewer decision and an
+authentic external statement/provider/scope/checksum validation before any external-assurance or legal-usability claim.
 
 **Definition of Done:** production fails closed without a real product/calculation/evidence; no sample fallback; raw AD x EF
 and units are preserved; lock/approval comes from backend state; server stores a checksummed manifest and evidence bundle;
-missing evidence and assurance are visibly disclosed. This is the next P0 after R01/R02 staging review.
+missing evidence and assurance are visibly disclosed. The technical gate still requires staging and production verification;
+the assurance gate additionally requires authentic third-party evidence and named human review.
 
 ### R15 — Apparel & Footwear PEF/PEFCR
 

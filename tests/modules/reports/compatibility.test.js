@@ -3,7 +3,8 @@ jest.mock('../../../src/modules/shared/database', () => (
 ));
 jest.mock('../../../src/modules/shared/security', () => ({
   authenticate: (_req, _res, next) => next(),
-  requireRole: () => (_req, _res, next) => next()
+  requireRole: () => (_req, _res, next) => next(),
+  requireCompanyAdmin: (_req, _res, next) => next()
 }));
 jest.mock('../../../src/modules/shared/auditing', () => ({
   logAuditTrail: jest.fn()
@@ -50,8 +51,13 @@ describe('reports compatibility entrypoints', () => {
       'POST /v2/snapshots',
       'POST /v2/audit-packs',
       'GET /v2/audit-packs/:id',
+      'GET /v2/public/audit-pack-shares/:token',
+      'GET /v2/public/audit-pack-shares/:token/download',
       'POST /v2/audit-packs/:id/reviews',
       'POST /v2/audit-packs/:id/issue',
+      'POST /v2/audit-packs/:id/shares',
+      'DELETE /v2/audit-packs/:id/shares/:shareId',
+      'POST /v2/audit-packs/:id/assurance-records',
       'GET /:id',
       'GET /:id/status',
       'GET /:id/download',

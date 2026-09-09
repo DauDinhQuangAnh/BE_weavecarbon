@@ -181,8 +181,31 @@ describe('ReportsService', () => {
     const service = createReportsService({ database: { connect: jest.fn().mockResolvedValue(client) } });
 
     await expect(service.issueAuditBundle('company-1', 'user-2', 'bundle-1', {
-      assertion: 'Internal calculation assertion', criteria: 'WeaveCarbon internal review criteria v1'
+      assertion: 'Internal calculation assertion', criteria: 'WeaveCarbon internal review criteria v1',
+      signatureAcknowledged: true
     })).rejects.toMatchObject({ code: 'AUDIT_EVIDENCE_COVERAGE_INCOMPLETE', statusCode: 409 });
+    expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+
+  test('requires different users for human review and issue', async () => {
+    const client = createMockClient();
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{
+        id: 'bundle-1', status: 'completed', issuance_id: null, has_newer_completed_bundle: false,
+        manifest_sha256: 'a'.repeat(64), bundle_sha256: 'b'.repeat(64),
+        review_decision: 'approved', review_qa_exceptions: [], reviewed_by: 'user-2',
+        signer_name: 'Reviewer Issuer', signer_email: 'reviewer@example.test',
+        manifest: { termEvidenceCoverage: { status: 'complete' } }
+      }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const service = createReportsService({ database: { connect: jest.fn().mockResolvedValue(client) } });
+
+    await expect(service.issueAuditBundle('company-1', 'user-2', 'bundle-1', {
+      assertion: 'Internal assertion', criteria: 'Internal criteria v1', signatureAcknowledged: true
+    })).rejects.toMatchObject({ code: 'AUDIT_SEGREGATION_OF_DUTIES_REQUIRED', statusCode: 409 });
     expect(client.query).toHaveBeenCalledWith('ROLLBACK');
     expect(client.release).toHaveBeenCalledTimes(1);
   });
@@ -195,7 +218,8 @@ describe('ReportsService', () => {
       .mockResolvedValueOnce({ rows: [{
         id: 'bundle-1', status: 'completed', issuance_id: null, has_newer_completed_bundle: false,
         manifest_sha256: 'a'.repeat(64), bundle_sha256: 'b'.repeat(64),
-        review_decision: 'approved', review_qa_exceptions: [],
+        review_decision: 'approved', review_qa_exceptions: [], reviewed_by: 'user-1',
+        signer_name: 'Issuer Two', signer_email: 'issuer@example.test',
         manifest: { termEvidenceCoverage: { status: 'complete' } }
       }] })
       .mockResolvedValueOnce({ rows: [{
@@ -206,7 +230,7 @@ describe('ReportsService', () => {
     const service = createReportsService({ database: { connect: jest.fn().mockResolvedValue(client) } });
 
     await expect(service.issueAuditBundle('company-1', 'user-2', 'bundle-1', {
-      assertion: 'Internal assertion', criteria: 'Internal criteria v1'
+      assertion: 'Internal assertion', criteria: 'Internal criteria v1', signatureAcknowledged: true
     })).resolves.toEqual(expect.objectContaining({
       id: 'issuance-1', lifecycleStatus: 'issued', assuranceStatus: 'not_verified'
     }));
