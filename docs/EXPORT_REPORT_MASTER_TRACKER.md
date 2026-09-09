@@ -27,7 +27,7 @@ This tracker separates four facts that must never be conflated:
 |---|---|
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
-| Working branch in both repositories | `feat/shipment-export-workflow` |
+| Current integration branch in both repositories | `main` |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -42,8 +42,10 @@ This tracker separates four facts that must never be conflated:
 | Frontend isolated-staging stack commit | `188fe3d` |
 | Backend R01/R02 staging-pilot commit | `002aea9` |
 | Backend PostgreSQL date-normalisation fix | `dab966c` |
+| Backend production report merge commit | `a242a80e8755688246ccc0c1676c6874c8b9f8e6` |
+| Frontend production report merge commit | `188fe3d9ebf7afc77caab3e67a14c09b3f1fadd9` |
 | Production site | `https://weavecarbon.com` |
-| Production state verified at 2026-09-09 | FE/BE containers healthy on `main`; R14 files are absent from both host checkouts and running images, so the feature branch is not deployed |
+| Production state verified at 2026-09-09 | Report changes are merged and deployed on `main`; FE/BE checkouts match the merge commits above, all production containers are healthy, migrations 001-020 are current, `/health` is healthy and `/` returns HTTP 200 |
 | Isolated staging verified at 2026-09-09 | `/opt/weavecarbon-staging`; feature branches; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migrations 001-020 applied; DB/BE/FE healthy |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
@@ -53,9 +55,9 @@ Never put server passwords, database credentials, tokens or `.env` values in thi
 
 ```bash
 git clone https://github.com/DauDinhQuangAnh/BE_weavecarbon.git
-git -C BE_weavecarbon switch feat/shipment-export-workflow
+git -C BE_weavecarbon switch main
 git clone https://github.com/DauDinhQuangAnh/weavecarbon.git
-git -C weavecarbon switch feat/shipment-export-workflow
+git -C weavecarbon switch main
 ```
 
 Then give the next AI this instruction:
@@ -80,9 +82,9 @@ Then give the next AI this instruction:
 Only a human-approved staging pilot can promote `READY_TO_PILOT` to `READY_TO_ISSUE`. Only the correct actor and
 workflow can produce `ISSUED`, `CARRIER_SUBMITTED` or `AUTHORITY_ACCEPTED`.
 
-## 4. What the feature branch actually completed
+## 4. What the merged report increment actually completed
 
-The current feature branch completed the shared shipment-document foundation, not the entire report programme:
+The report increment merged to `main` completed the shared shipment-document foundation, not the entire report programme:
 
 - Shipment-scoped export profile, immutable line snapshot and package records.
 - Versioned export documents and requirement results.
@@ -511,7 +513,8 @@ Before merging or deploying this branch:
 10. Manually review document layout/meaning with an export operator/compliance owner.
 11. Merge through reviewed pull requests. Observe CI, deploy health, migration logs, worker jobs and file downloads.
 
-The feature branch is running only in the isolated loopback staging stack. It is not running in the production stack.
+The report increment is deployed in production from `main`. The isolated loopback staging stack remains available for
+synthetic pilots and must continue using its dedicated database and uploads volumes.
 
 ## 10. Verification commands
 
@@ -726,3 +729,24 @@ Backend carbon trace core:
   container-pallet-carton hierarchy.
 - Exact next action: add additive container/package hierarchy and stable PDF/print renderers for R01/R02, rerun the fixture
   with at least two containers, then obtain named human export-operator and warehouse decisions on representative files.
+
+### 2026-09-09 — Main merge, production backup and deployment verification
+
+- The backend report increment was fast-forwarded to `main` at
+  `a242a80e8755688246ccc0c1676c6874c8b9f8e6`. Main CI run `34292449082` and deploy run `34292502356` completed
+  successfully. The backend startup log applied migrations 019/020 and then confirmed the schema was current through 020.
+- The frontend report increment was fast-forwarded to `main` at
+  `188fe3d9ebf7afc77caab3e67a14c09b3f1fadd9`. Main CI run `34292712417` and deploy run `34292802240` completed
+  successfully.
+- Before the merge, production PostgreSQL and uploads were backed up under
+  `/opt/weavecarbon/backups/pre-main-merge-20260909`. `postgres.dump` SHA-256 is
+  `7c7382495b925ad9879433606738eb004d396d9ec780d5f62b2118fecbf67f4e`; `uploads.tar.gz` SHA-256 is
+  `0b7a6242f9a8dd7067e600e49909376612b426bd4b1392a87dc953145849f666`. A temporary PostgreSQL 16 restore drill
+  succeeded with 66 public tables; the temporary restore container and volume were removed after verification.
+- Post-deploy verification found both production checkouts clean on `main` at the exact merge commits, production DB/BE/FE,
+  proxy and RAG containers healthy, `/health` healthy and `https://weavecarbon.com/` returning HTTP 200. The isolated
+  staging containers remained healthy and separate.
+- Production availability does not promote any report's business/legal status. R01/R02 remain `READY_TO_PILOT`, R14
+  remains `PARTIAL`, and no report is confirmed `READY_TO_ISSUE` without the named human and output-format gates above.
+- Exact next action remains the R01/R02 container/package hierarchy and stable PDF/print renderers, followed by a
+  two-container pilot and named export-operator/warehouse review.
