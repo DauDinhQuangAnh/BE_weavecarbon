@@ -4,11 +4,19 @@ const path = require('path');
 const pool = require('../config/database');
 const { UPLOADS_ROOT } = require('../config/runtime');
 const { buildSimpleXlsx } = require('../utils/simpleXlsx');
+const { buildExportDocumentPdf } = require('./exportDocumentPdf');
 
 const RULESET_VERSION = 'VN-EU-TEXTILE-2026.09.1';
 const DOCUMENT_TYPES = new Set([
   'commercial_invoice', 'packing_list', 'carbon_annex', 'origin_workbook', 'ics2_dataset'
 ]);
+const DOCUMENT_FORMATS = {
+  commercial_invoice: new Set(['xlsx', 'pdf']),
+  packing_list: new Set(['xlsx', 'pdf']),
+  carbon_annex: new Set(['xlsx']),
+  origin_workbook: new Set(['xlsx']),
+  ics2_dataset: new Set(['csv'])
+};
 const CORE_DOCUMENT_TYPES = ['commercial_invoice', 'packing_list', 'carbon_annex', 'ics2_dataset'];
 const CARRIER_EVIDENCE_TYPES = ['bill_of_lading', 'carrier_bill_of_lading', 'air_waybill', 'awb', 'cmr'];
 const INCOTERMS_2020 = new Set(['EXW', 'FCA', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP', 'FAS', 'FOB', 'CFR', 'CIF']);
@@ -47,6 +55,7 @@ function sourceSnapshotSha256(snapshot) {
     shipment: snapshot?.shipment || null,
     profile: snapshot?.profile || null,
     lines: snapshot?.lines || [],
+    containers: snapshot?.containers || [],
     packages: snapshot?.packages || [],
     carrierDocuments: snapshot?.carrierDocuments || []
   }));
@@ -129,10 +138,22 @@ function packageFromRow(row) {
   return {
     id: row.id, shipmentId: row.shipment_id, packageNumber: row.package_number,
     packageType: row.package_type, marksAndNumbers: row.marks_and_numbers || '',
+    containerId: row.container_id || null, containerNumber: row.container_number || '',
+    sealNumber: row.seal_number || '', parentPackageId: row.parent_package_id || null,
+    parentPackageNumber: row.parent_package_number || '', sequenceNo: numberOrNull(row.sequence_no),
     quantity: Number(row.quantity), netWeightKg: numberOrNull(row.net_weight_kg),
     grossWeightKg: numberOrNull(row.gross_weight_kg), lengthCm: numberOrNull(row.length_cm),
     widthCm: numberOrNull(row.width_cm), heightCm: numberOrNull(row.height_cm),
     contents: row.contents || []
+  };
+}
+
+function containerFromRow(row) {
+  return {
+    id: row.id, shipmentId: row.shipment_id, containerNumber: row.container_number,
+    sealNumber: row.seal_number, equipmentType: row.equipment_type,
+    marksAndNumbers: row.marks_and_numbers || '', tareWeightKg: numberOrNull(row.tare_weight_kg),
+    maxGrossWeightKg: numberOrNull(row.max_gross_weight_kg), metadata: row.metadata || {}
   };
 }
 
@@ -161,10 +182,18 @@ class ExportShipmentService {
   async getProfile(companyId, shipmentId) {
     const shipment = await this._assertShipment(companyId, shipmentId);
     if (!shipment) return null;
-    const [profileResult, linesResult, packagesResult, evidenceResult, documentsResult] = await Promise.all([
+    const [profileResult, linesResult, containersResult, packagesResult, evidenceResult, documentsResult] = await Promise.all([
       this.database.query('SELECT * FROM shipment_export_profiles WHERE shipment_id = $1 AND company_id = $2', [shipmentId, companyId]),
       this.database.query('SELECT * FROM shipment_export_lines WHERE shipment_id = $1 AND company_id = $2 ORDER BY line_number', [shipmentId, companyId]),
-      this.database.query('SELECT * FROM shipment_packages WHERE shipment_id = $1 AND company_id = $2 ORDER BY package_number', [shipmentId, companyId]),
+      this.database.query('SELECT * FROM shipment_containers WHERE shipment_id = $1 AND company_id = $2 ORDER BY container_number', [shipmentId, companyId]),
+      this.database.query(
+        `SELECT p.*, c.container_number, c.seal_number, parent.package_number AS parent_package_number
+         FROM shipment_packages p
+         LEFT JOIN shipment_containers c ON c.id = p.container_id AND c.company_id = p.company_id AND c.shipment_id = p.shipment_id
+         LEFT JOIN shipment_packages parent ON parent.id = p.parent_package_id AND parent.company_id = p.company_id AND parent.shipment_id = p.shipment_id
+         WHERE p.shipment_id = $1 AND p.company_id = $2
+         ORDER BY c.container_number NULLS LAST, p.sequence_no NULLS LAST, p.package_number`, [shipmentId, companyId]
+      ),
       this.database.query(
         `SELECT id, evidence_type, document_name, original_filename, status, valid_from, valid_to,
                 checksum_sha256, uploaded_at, locked_at, approved_by, approval_note
@@ -187,6 +216,7 @@ class ExportShipmentService {
       },
       profile: profileFromRow(profileResult.rows[0]),
       lines: linesResult.rows.map(lineFromRow),
+      containers: containersResult.rows.map(containerFromRow),
       packages: packagesResult.rows.map(packageFromRow),
       carrierDocuments: evidenceResult.rows.map((row) => ({
         id: row.id, type: row.evidence_type, name: row.original_filename || row.document_name,
@@ -365,19 +395,78 @@ class ExportShipmentService {
     return Boolean(result.rows[0]);
   }
 
+  async createContainer(companyId, shipmentId, input) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const result = await this.database.query(
+      `INSERT INTO shipment_containers (company_id, shipment_id, container_number, seal_number,
+         equipment_type, marks_and_numbers, tare_weight_kg, max_gross_weight_kg, metadata)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) RETURNING *`,
+      [companyId, shipmentId, text(input.containerNumber || input.container_number),
+        text(input.sealNumber || input.seal_number), text(input.equipmentType || input.equipment_type),
+        text(input.marksAndNumbers || input.marks_and_numbers) || null,
+        numberOrNull(input.tareWeightKg ?? input.tare_weight_kg),
+        numberOrNull(input.maxGrossWeightKg ?? input.max_gross_weight_kg),
+        JSON.stringify(object(input.metadata))]
+    );
+    return containerFromRow(result.rows[0]);
+  }
+
+  async updateContainer(companyId, shipmentId, containerId, input) {
+    if (!UUID_REGEX.test(String(containerId || ''))) return null;
+    const current = await this.database.query(
+      'SELECT * FROM shipment_containers WHERE id=$1 AND shipment_id=$2 AND company_id=$3',
+      [containerId, shipmentId, companyId]
+    );
+    if (!current.rows[0]) return null;
+    const merged = { ...containerFromRow(current.rows[0]), ...input };
+    const result = await this.database.query(
+      `UPDATE shipment_containers SET container_number=$1, seal_number=$2, equipment_type=$3,
+         marks_and_numbers=$4, tare_weight_kg=$5, max_gross_weight_kg=$6, metadata=$7::jsonb,
+         updated_at=now() WHERE id=$8 AND shipment_id=$9 AND company_id=$10 RETURNING *`,
+      [text(merged.containerNumber), text(merged.sealNumber), text(merged.equipmentType),
+        text(merged.marksAndNumbers) || null, numberOrNull(merged.tareWeightKg),
+        numberOrNull(merged.maxGrossWeightKg), JSON.stringify(object(merged.metadata)),
+        containerId, shipmentId, companyId]
+    );
+    return containerFromRow(result.rows[0]);
+  }
+
+  async deleteContainer(companyId, shipmentId, containerId) {
+    if (!UUID_REGEX.test(String(containerId || ''))) return false;
+    const result = await this.database.query(
+      'DELETE FROM shipment_containers WHERE id=$1 AND shipment_id=$2 AND company_id=$3 RETURNING id',
+      [containerId, shipmentId, companyId]
+    );
+    return Boolean(result.rows[0]);
+  }
+
   async createPackage(companyId, shipmentId, input) {
     if (!(await this._assertShipment(companyId, shipmentId))) return null;
     const result = await this.database.query(
       `INSERT INTO shipment_packages (company_id, shipment_id, package_number, package_type,
-         marks_and_numbers, quantity, net_weight_kg, gross_weight_kg, length_cm, width_cm, height_cm, contents)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) RETURNING *`,
+         marks_and_numbers, quantity, net_weight_kg, gross_weight_kg, length_cm, width_cm, height_cm, contents,
+         container_id, parent_package_id, sequence_no)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15) RETURNING *`,
       [companyId, shipmentId, text(input.packageNumber || input.package_number), text(input.packageType || input.package_type),
         text(input.marksAndNumbers || input.marks_and_numbers) || null, Number(input.quantity ?? 1),
         numberOrNull(input.netWeightKg || input.net_weight_kg), numberOrNull(input.grossWeightKg || input.gross_weight_kg),
         numberOrNull(input.lengthCm || input.length_cm), numberOrNull(input.widthCm || input.width_cm),
-        numberOrNull(input.heightCm || input.height_cm), JSON.stringify(Array.isArray(input.contents) ? input.contents : [])]
+        numberOrNull(input.heightCm || input.height_cm), JSON.stringify(Array.isArray(input.contents) ? input.contents : []),
+        input.containerId || input.container_id || null, input.parentPackageId || input.parent_package_id || null,
+        numberOrNull(input.sequenceNo ?? input.sequence_no)]
     );
-    return packageFromRow(result.rows[0]);
+    return this.getPackage(companyId, shipmentId, result.rows[0].id);
+  }
+
+  async getPackage(companyId, shipmentId, packageId) {
+    const result = await this.database.query(
+      `SELECT p.*, c.container_number, c.seal_number, parent.package_number AS parent_package_number
+       FROM shipment_packages p
+       LEFT JOIN shipment_containers c ON c.id=p.container_id AND c.company_id=p.company_id AND c.shipment_id=p.shipment_id
+       LEFT JOIN shipment_packages parent ON parent.id=p.parent_package_id AND parent.company_id=p.company_id AND parent.shipment_id=p.shipment_id
+       WHERE p.id=$1 AND p.shipment_id=$2 AND p.company_id=$3`, [packageId, shipmentId, companyId]
+    );
+    return result.rows[0] ? packageFromRow(result.rows[0]) : null;
   }
 
   async updatePackage(companyId, shipmentId, packageId, input) {
@@ -390,13 +479,15 @@ class ExportShipmentService {
     const result = await this.database.query(
       `UPDATE shipment_packages SET package_number=$1, package_type=$2, marks_and_numbers=$3,
          quantity=$4, net_weight_kg=$5, gross_weight_kg=$6, length_cm=$7, width_cm=$8, height_cm=$9,
-         contents=$10::jsonb, updated_at=now() WHERE id=$11 AND shipment_id=$12 AND company_id=$13 RETURNING *`,
+         contents=$10::jsonb, container_id=$11, parent_package_id=$12, sequence_no=$13,
+         updated_at=now() WHERE id=$14 AND shipment_id=$15 AND company_id=$16 RETURNING *`,
       [text(merged.packageNumber), text(merged.packageType), text(merged.marksAndNumbers) || null,
         Number(merged.quantity || 1), numberOrNull(merged.netWeightKg), numberOrNull(merged.grossWeightKg),
         numberOrNull(merged.lengthCm), numberOrNull(merged.widthCm), numberOrNull(merged.heightCm),
-        JSON.stringify(merged.contents || []), packageId, shipmentId, companyId]
+        JSON.stringify(merged.contents || []), merged.containerId || null, merged.parentPackageId || null,
+        numberOrNull(merged.sequenceNo), packageId, shipmentId, companyId]
     );
-    return packageFromRow(result.rows[0]);
+    return result.rows[0] ? this.getPackage(companyId, shipmentId, packageId) : null;
   }
 
   async deletePackage(companyId, shipmentId, packageId) {
@@ -412,6 +503,8 @@ class ExportShipmentService {
     const profile = snapshot.profile || {};
     const lines = snapshot.lines || [];
     const packages = snapshot.packages || [];
+    const containers = snapshot.containers || [];
+    const leafPackages = packages.filter((pkg) => text(pkg.packageType).toLowerCase() !== 'pallet');
     const carriers = snapshot.carrierDocuments || [];
     const results = [];
     const need = (type, code, value, pathName, label) => results.push(requirement(
@@ -496,7 +589,26 @@ class ExportShipmentService {
         results.push(requirement('packing_list', `line_${index + 1}_${key}`, valid ? 'ready' : 'missing', `lines[${index}].${key}`, valid ? null : `${key} is required for packing line ${index + 1}.`));
       });
     });
-    results.push(requirement('packing_list', 'packages', packages.length ? 'ready' : 'missing', 'packages', packages.length ? null : 'At least one package is required.'));
+    results.push(requirement('packing_list', 'containers', containers.length ? 'ready' : 'missing', 'containers', containers.length ? null : 'At least one container/load unit is required.'));
+    containers.forEach((container, index) => {
+      [['container_number', container.containerNumber], ['seal_number', container.sealNumber], ['equipment_type', container.equipmentType]]
+        .forEach(([key, value]) => results.push(requirement(
+          'packing_list', `container_${index + 1}_${key}`, text(value) ? 'ready' : 'missing',
+          `containers[${index}].${key}`, text(value) ? null : `${key} is required for container ${index + 1}.`
+        )));
+      const hasPallet = packages.some((pkg) => pkg.containerId === container.id && text(pkg.packageType).toLowerCase() === 'pallet');
+      results.push(requirement('packing_list', `container_${index + 1}_pallet`, hasPallet ? 'ready' : 'missing',
+        `containers[${index}]`, hasPallet ? null : `Container ${container.containerNumber || index + 1} requires at least one pallet.`));
+      if (container.maxGrossWeightKg !== null && container.maxGrossWeightKg !== undefined && container.maxGrossWeightKg !== '') {
+        const cargoGross = leafPackages.filter((pkg) => pkg.containerId === container.id)
+          .reduce((sum, pkg) => sum + Number(pkg.grossWeightKg || 0) * Number(pkg.quantity || 1), 0);
+        const loadedGross = cargoGross + Number(container.tareWeightKg || 0);
+        const withinLimit = loadedGross <= Number(container.maxGrossWeightKg);
+        results.push(requirement('packing_list', `container_${index + 1}_max_gross`, withinLimit ? 'ready' : 'invalid',
+          `containers[${index}].maxGrossWeightKg`, withinLimit ? null : `Container ${container.containerNumber || index + 1} loaded gross weight (${loadedGross} kg) exceeds its maximum (${container.maxGrossWeightKg} kg).`));
+      }
+    });
+    results.push(requirement('packing_list', 'packages', leafPackages.length ? 'ready' : 'missing', 'packages', leafPackages.length ? null : 'At least one carton/package is required.'));
     packages.forEach((pkg, index) => {
       [['package_number', pkg.packageNumber], ['package_type', pkg.packageType], ['marks_and_numbers', pkg.marksAndNumbers],
         ['quantity', pkg.quantity], ['net_weight_kg', pkg.netWeightKg], ['gross_weight_kg', pkg.grossWeightKg],
@@ -506,11 +618,26 @@ class ExportShipmentService {
         results.push(requirement('packing_list', `package_${index + 1}_${key}`, valid ? 'ready' : 'missing', `packages[${index}].${key}`, valid ? null : `${key} is required for package ${index + 1}.`));
       });
       const contents = Array.isArray(pkg.contents) ? pkg.contents : [];
-      const validContents = contents.length > 0 && contents.every((item) => {
+      results.push(requirement('packing_list', `package_${index + 1}_sequence`, Number(pkg.sequenceNo) > 0 ? 'ready' : 'missing',
+        `packages[${index}].sequenceNo`, Number(pkg.sequenceNo) > 0 ? null : `A positive sequence number is required for package ${pkg.packageNumber || index + 1}.`));
+      const isPallet = text(pkg.packageType).toLowerCase() === 'pallet';
+      const validContents = isPallet || (contents.length > 0 && contents.every((item) => {
         const ref = text(item?.lineId || item?.sku || item?.lineNumber);
         return ref && Number(item?.quantity) > 0;
-      });
+      }));
       results.push(requirement('packing_list', `package_${index + 1}_contents`, validContents ? 'ready' : 'missing', `packages[${index}].contents`, validContents ? null : `Product allocation is required for package ${index + 1}.`));
+      const container = containers.find((item) => item.id === pkg.containerId);
+      results.push(requirement('packing_list', `package_${index + 1}_container`, container ? 'ready' : 'missing',
+        `packages[${index}].containerId`, container ? null : `Package ${pkg.packageNumber || index + 1} must reference a container in this shipment.`));
+      if (isPallet) {
+        results.push(requirement('packing_list', `package_${index + 1}_parent`, pkg.parentPackageId ? 'invalid' : 'ready',
+          `packages[${index}].parentPackageId`, pkg.parentPackageId ? 'A pallet cannot be nested under another package.' : null));
+      } else {
+        const parent = packages.find((item) => item.id === pkg.parentPackageId);
+        const validParent = parent && text(parent.packageType).toLowerCase() === 'pallet' && parent.containerId === pkg.containerId;
+        results.push(requirement('packing_list', `package_${index + 1}_parent`, validParent ? 'ready' : 'missing',
+          `packages[${index}].parentPackageId`, validParent ? null : `Package ${pkg.packageNumber || index + 1} must reference a pallet in the same container.`));
+      }
     });
     const currencyMismatch = lines.some((line) => line.currency && profile.currency && line.currency !== profile.currency);
     results.push(requirement('commercial_invoice', 'currency_reconciliation', currencyMismatch ? 'invalid' : 'ready', 'lines[].currency', currencyMismatch ? 'Line currencies must match the invoice currency.' : null));
@@ -522,22 +649,22 @@ class ExportShipmentService {
     results.push(requirement('packing_list', 'line_weight_reconciliation', invalidLineWeight ? 'invalid' : 'ready', 'lines[].grossWeightKg', invalidLineWeight ? 'Gross line weight cannot be lower than net weight.' : null));
     const invalidPackageWeight = packages.some((pkg) => pkg.netWeightKg !== null && pkg.grossWeightKg !== null && pkg.grossWeightKg < pkg.netWeightKg);
     results.push(requirement('packing_list', 'package_weight_reconciliation', invalidPackageWeight ? 'invalid' : 'ready', 'packages[].grossWeightKg', invalidPackageWeight ? 'Gross package weight cannot be lower than net weight.' : null));
-    if (lines.length && packages.length && lines.every((line) => line.netWeightKg !== null) && packages.every((pkg) => pkg.netWeightKg !== null)) {
+    if (lines.length && leafPackages.length && lines.every((line) => line.netWeightKg !== null) && leafPackages.every((pkg) => pkg.netWeightKg !== null)) {
       const lineNet = lines.reduce((sum, line) => sum + Number(line.netWeightKg), 0);
-      const packageNet = packages.reduce((sum, pkg) => sum + Number(pkg.netWeightKg) * Number(pkg.quantity || 1), 0);
+      const packageNet = leafPackages.reduce((sum, pkg) => sum + Number(pkg.netWeightKg) * Number(pkg.quantity || 1), 0);
       const matches = Math.abs(lineNet - packageNet) <= Math.max(0.01, lineNet * 0.001);
       results.push(requirement('packing_list', 'net_weight_cross_document', matches ? 'ready' : 'invalid', 'packages[].netWeightKg', matches ? null : `Line net weight (${lineNet}) does not match package net weight (${packageNet}).`));
     }
-    if (lines.length && packages.length && lines.every((line) => line.grossWeightKg !== null) && packages.every((pkg) => pkg.grossWeightKg !== null)) {
+    if (lines.length && leafPackages.length && lines.every((line) => line.grossWeightKg !== null) && leafPackages.every((pkg) => pkg.grossWeightKg !== null)) {
       const lineGross = lines.reduce((sum, line) => sum + Number(line.grossWeightKg), 0);
-      const packageGross = packages.reduce((sum, pkg) => sum + Number(pkg.grossWeightKg) * Number(pkg.quantity || 1), 0);
+      const packageGross = leafPackages.reduce((sum, pkg) => sum + Number(pkg.grossWeightKg) * Number(pkg.quantity || 1), 0);
       const matches = Math.abs(lineGross - packageGross) <= Math.max(0.01, lineGross * 0.001);
       results.push(requirement('packing_list', 'gross_weight_cross_document', matches ? 'ready' : 'invalid', 'packages[].grossWeightKg', matches ? null : `Line gross weight (${lineGross}) does not match package gross weight (${packageGross}).`));
     }
-    if (lines.length && packages.length) {
+    if (lines.length && leafPackages.length) {
       const allocations = new Map();
       let unknownReference = false;
-      packages.forEach((pkg) => (Array.isArray(pkg.contents) ? pkg.contents : []).forEach((item) => {
+      leafPackages.forEach((pkg) => (Array.isArray(pkg.contents) ? pkg.contents : []).forEach((item) => {
         const line = lines.find((candidate) => candidate.id === item?.lineId || candidate.sku === item?.sku || candidate.lineNumber === Number(item?.lineNumber));
         if (!line) { unknownReference = true; return; }
         allocations.set(line.id, (allocations.get(line.id) || 0) + Number(item.quantity || 0));
@@ -628,9 +755,16 @@ class ExportShipmentService {
     finally { client.release(); }
   }
 
-  async createDocumentJob(companyId, shipmentId, userId, documentType) {
+  async createDocumentJob(companyId, shipmentId, userId, documentType, options = {}) {
     if (!DOCUMENT_TYPES.has(documentType)) {
       const error = new Error('Unsupported export document type.'); error.code = 'INVALID_DOCUMENT_TYPE'; throw error;
+    }
+    const defaultFormat = documentType === 'ics2_dataset' ? 'csv' : 'xlsx';
+    const outputFormat = text(options.outputFormat || options.output_format || options.format || defaultFormat).toLowerCase();
+    if (!DOCUMENT_FORMATS[documentType]?.has(outputFormat)) {
+      const error = new Error(`Unsupported ${documentType} output format.`);
+      error.code = 'INVALID_DOCUMENT_FORMAT';
+      throw error;
     }
     const readiness = await this.getReadiness(companyId, shipmentId);
     if (!readiness) return null;
@@ -650,12 +784,11 @@ class ExportShipmentService {
         [shipmentId, documentType]
       );
       const version = Number(versionResult.rows[0].version);
-      const format = documentType === 'ics2_dataset' ? 'csv' : 'xlsx';
       const reportResult = await client.query(
         `INSERT INTO reports (company_id, report_type, title, target_market, file_format, status, created_by, metadata)
          VALUES ($1, 'export_declaration', $2, 'EU', $3, 'processing', $4, '{}'::jsonb)
          RETURNING id, status`,
-        [companyId, `${documentType} - ${snapshot.shipment.referenceNumber || shipmentId} - v${version}`, format, userId]
+        [companyId, `${documentType} - ${snapshot.shipment.referenceNumber || shipmentId} - v${version}`, outputFormat, userId]
       );
       const payload = {
         ...snapshot,
@@ -667,11 +800,11 @@ class ExportShipmentService {
       const payloadHash = sha256(JSON.stringify(payload));
       const documentResult = await client.query(
         `INSERT INTO export_documents (company_id, shipment_id, report_id, document_type, version,
-           status, payload, validation_results, payload_sha256, created_by, supersedes_id)
-         VALUES ($1,$2,$3,$4,$5,'ready',$6::jsonb,$7::jsonb,$8,$9,$10) RETURNING *`,
+           status, payload, validation_results, payload_sha256, created_by, supersedes_id, output_format)
+         VALUES ($1,$2,$3,$4,$5,'ready',$6::jsonb,$7::jsonb,$8,$9,$10,$11) RETURNING *`,
         [companyId, shipmentId, reportResult.rows[0].id, documentType, version,
           JSON.stringify(payload), JSON.stringify(documentReadiness), payloadHash, userId,
-          versionResult.rows[0].previous_id || null]
+          versionResult.rows[0].previous_id || null, outputFormat]
       );
       await client.query('UPDATE reports SET metadata=$1::jsonb WHERE id=$2', [JSON.stringify({
         export_document_id: documentResult.rows[0].id, shipment_id: shipmentId,
@@ -693,10 +826,13 @@ class ExportShipmentService {
   _documentRows(type, payload) {
     const lines = payload.lines || [];
     const packages = payload.packages || [];
+    const containers = payload.containers || [];
+    const leafPackages = packages.filter((pkg) => text(pkg.packageType).toLowerCase() !== 'pallet');
+    const containerNumbers = containers.map((item) => item.containerNumber).filter(Boolean).join('; ');
     if (type === 'ics2_dataset') return lines.map((line) => ({
       shipmentReference: payload.shipment?.referenceNumber || payload.shipment?.id,
       transportDocumentNo: payload.profile?.billOfLadingNo || '',
-      containerNo: payload.profile?.containerNo || '',
+      containerNo: containerNumbers,
       consignorName: payload.profile?.exporter?.name || '',
       consignorAddress: payload.profile?.exporter?.address || '',
       consigneeName: payload.profile?.importer?.name || '',
@@ -711,8 +847,10 @@ class ExportShipmentService {
       unit: line.unit,
       grossWeightKg: line.grossWeightKg
     }));
-    if (type === 'packing_list') return packages.map((pkg) => ({
-      packageNumber: pkg.packageNumber, packageType: pkg.packageType, marks: pkg.marksAndNumbers,
+    if (type === 'packing_list') return leafPackages.map((pkg) => ({
+      containerNumber: pkg.containerNumber, sealNumber: pkg.sealNumber,
+      palletNumber: pkg.parentPackageNumber, packageNumber: pkg.packageNumber,
+      packageType: pkg.packageType, marks: pkg.marksAndNumbers,
       quantity: pkg.quantity, netWeightKg: pkg.netWeightKg, grossWeightKg: pkg.grossWeightKg,
       cbm: Number(pkg.quantity || 1) * Number(pkg.lengthCm || 0) * Number(pkg.widthCm || 0) * Number(pkg.heightCm || 0) / 1000000,
       dimensions: [pkg.lengthCm, pkg.widthCm, pkg.heightCm].filter((v) => v !== null).join(' x '),
@@ -721,7 +859,7 @@ class ExportShipmentService {
     if (type === 'carbon_annex') return lines.map((line) => ({
       lineNumber: line.lineNumber, sku: line.sku, hsCode: line.hsCode, quantity: line.quantity,
       embeddedCo2eKg: line.embeddedCo2eKg, carrierDocumentNo: payload.profile.billOfLadingNo,
-      containerNo: payload.profile.containerNo
+      containerNo: containerNumbers
     }));
     return lines.map((line) => ({
       lineNumber: line.lineNumber, sku: line.sku, description: line.goodsDescription,
@@ -733,20 +871,24 @@ class ExportShipmentService {
     }));
   }
 
-  async _buildDocumentBuffer(type, payload, issued) {
+  async _buildDocumentBuffer(type, payload, issued, outputFormat = null) {
+    const format = outputFormat || (type === 'ics2_dataset' ? 'csv' : 'xlsx');
+    if (format === 'pdf') return buildExportDocumentPdf(type, payload, issued);
     const p = payload.profile || {};
     const lines = payload.lines || [];
     const packages = payload.packages || [];
+    const containers = payload.containers || [];
+    const leafPackages = packages.filter((pkg) => text(pkg.packageType).toLowerCase() !== 'pallet');
     const goodsTotal = lines.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0), 0);
     const freight = Number(p.freightAmount || 0);
     const insurance = Number(p.insuranceAmount || 0);
     const discount = Number(p.discountAmount || 0);
     const surcharge = Number(p.surchargeAmount || 0);
-    const totalPackages = packages.reduce((sum, pkg) => sum + Number(pkg.quantity || 0), 0);
+    const totalPackages = leafPackages.reduce((sum, pkg) => sum + Number(pkg.quantity || 0), 0);
     const totalQuantity = lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
-    const totalNetKg = packages.reduce((sum, pkg) => sum + Number(pkg.netWeightKg || 0) * Number(pkg.quantity || 1), 0);
-    const totalGrossKg = packages.reduce((sum, pkg) => sum + Number(pkg.grossWeightKg || 0) * Number(pkg.quantity || 1), 0);
-    const totalCbm = packages.reduce((sum, pkg) => sum + Number(pkg.quantity || 1)
+    const totalNetKg = leafPackages.reduce((sum, pkg) => sum + Number(pkg.netWeightKg || 0) * Number(pkg.quantity || 1), 0);
+    const totalGrossKg = leafPackages.reduce((sum, pkg) => sum + Number(pkg.grossWeightKg || 0) * Number(pkg.quantity || 1), 0);
+    const totalCbm = leafPackages.reduce((sum, pkg) => sum + Number(pkg.quantity || 1)
       * Number(pkg.lengthCm || 0) * Number(pkg.widthCm || 0) * Number(pkg.heightCm || 0) / 1000000, 0);
     const party = (value) => [value?.name, value?.address, value?.country, value?.contact].filter(Boolean).join(' | ');
     const commonMetadata = {
@@ -773,13 +915,15 @@ class ExportShipmentService {
         'Packing list number': p.packingListNumber || '', 'Packing list date': p.packingListDate || '',
         'Invoice number': p.invoiceNumber || '', 'Exporter': party(p.exporter), 'Consignee': party(p.consignee),
         'PO / Contract': p.poContractId || '', 'Transport mode': p.transportMode || '',
-        'Carrier document no.': p.billOfLadingNo || '', 'Container / Seal': `${p.containerNo || ''} / ${p.sealNo || ''}`,
+        'Carrier document no.': p.billOfLadingNo || '',
+        'Containers / seals': containers.map((item) => `${item.containerNumber} / ${item.sealNumber}`).join('; '),
+        'Total containers': containers.length,
         'Total packages': totalPackages, 'Total quantity': totalQuantity,
         'Total net kg': totalNetKg, 'Total gross kg': totalGrossKg, 'Total CBM': totalCbm
       },
       carbon_annex: {
         ...commonMetadata, 'Carrier document no.': p.billOfLadingNo || '',
-        'Container / Seal': `${p.containerNo || ''} / ${p.sealNo || ''}`,
+        'Containers / seals': containers.map((item) => `${item.containerNumber} / ${item.sealNumber}`).join('; '),
         'Transport mode': p.transportMode || '', 'Total quantity': totalQuantity
       },
       origin_workbook: {
@@ -801,6 +945,7 @@ class ExportShipmentService {
         ['quantity','Quantity'],['unit','Unit'],['unitPrice','Unit price'],['currency','Currency'],['lineValue','Line value']
       ],
       packing_list: [
+        ['containerNumber','Container'],['sealNumber','Seal'],['palletNumber','Pallet'],
         ['packageNumber','Package'],['packageType','Type'],['marks','Marks'],['quantity','Packages'],
         ['netWeightKg','Net kg'],['grossWeightKg','Gross kg'],['dimensions','L x W x H cm'],['cbm','CBM'],['contents','Contents']
       ],
@@ -828,8 +973,8 @@ class ExportShipmentService {
     const document = result.rows[0];
     if (!document) throw new Error('Export document job target not found.');
     const payload = { ...document.payload, documentVersion: document.version };
-    const buffer = await this._buildDocumentBuffer(document.document_type, payload, false);
-    const ext = document.document_type === 'ics2_dataset' ? 'csv' : 'xlsx';
+    const ext = document.output_format || document.file_format || (document.document_type === 'ics2_dataset' ? 'csv' : 'xlsx');
+    const buffer = await this._buildDocumentBuffer(document.document_type, payload, false, ext);
     const filename = `${document.document_type}_${document.shipment_id}_v${document.version}.${ext}`;
     const storageKey = `reports/${companyId}/exports/${document.shipment_id}/${filename}`;
     const filePath = path.resolve(this.uploadsRoot, storageKey);
@@ -841,7 +986,9 @@ class ExportShipmentService {
       throw new Error('Generated export file failed size verification.');
     }
     const digest = sha256(storedBuffer);
-    const mime = ext === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv';
+    const mime = ext === 'xlsx'
+      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      : (ext === 'pdf' ? 'application/pdf' : 'text/csv');
     const client = await this.database.connect();
     try {
       await client.query('BEGIN');
@@ -888,7 +1035,7 @@ class ExportShipmentService {
   async issueDocument(companyId, shipmentId, documentId, userId) {
     if (!UUID_REGEX.test(String(documentId || ''))) return null;
     const result = await this.database.query(
-      `SELECT ed.*, r.status AS report_status FROM export_documents ed JOIN reports r ON r.id=ed.report_id
+      `SELECT ed.*, r.status AS report_status, r.file_format FROM export_documents ed JOIN reports r ON r.id=ed.report_id
        WHERE ed.id=$1 AND ed.shipment_id=$2 AND ed.company_id=$3`, [documentId, shipmentId, companyId]
     );
     const document = result.rows[0];
@@ -911,8 +1058,8 @@ class ExportShipmentService {
       };
     }
     const payload = { ...document.payload, documentVersion: document.version };
-    const buffer = await this._buildDocumentBuffer(document.document_type, payload, true);
-    const ext = document.document_type === 'ics2_dataset' ? 'csv' : 'xlsx';
+    const ext = document.output_format || document.file_format || (document.document_type === 'ics2_dataset' ? 'csv' : 'xlsx');
+    const buffer = await this._buildDocumentBuffer(document.document_type, payload, true, ext);
     const filename = `${document.document_type}_${shipmentId}_v${document.version}_issued.${ext}`;
     const storageKey = `reports/${companyId}/exports/${shipmentId}/${filename}`;
     const filePath = path.resolve(this.uploadsRoot, storageKey);
@@ -934,8 +1081,10 @@ class ExportShipmentService {
       );
       const updated = await client.query(
         `UPDATE export_documents SET status='issued', approved_by=$1, issued_by=$1, issued_at=now(), storage_key=$2,
-           original_filename=$3, file_size_bytes=$4, file_sha256=$5, updated_at=now()
-         WHERE id=$6 AND company_id=$7 AND shipment_id=$8 RETURNING *`, [userId, storageKey, filename, buffer.length, digest, documentId, companyId, shipmentId]
+           original_filename=$3, mime_type=$4, file_size_bytes=$5, file_sha256=$6, updated_at=now()
+         WHERE id=$7 AND company_id=$8 AND shipment_id=$9 RETURNING *`, [userId, storageKey, filename,
+          ext === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : (ext === 'pdf' ? 'application/pdf' : 'text/csv'),
+          buffer.length, digest, documentId, companyId, shipmentId]
       );
       await client.query(
         `UPDATE reports SET storage_key=$1, original_filename=$2, file_size_bytes=$3,
@@ -952,6 +1101,7 @@ class ExportShipmentService {
     return {
       id: row.id, shipmentId: row.shipment_id, reportId: row.report_id,
       type: row.document_type, version: Number(row.version), status: row.status,
+      outputFormat: row.output_format || row.file_format || null,
       reportStatus: row.report_status || null, validationResults: row.validation_results || {},
       payloadSha256: row.payload_sha256, fileSha256: row.file_sha256,
       filename: row.original_filename, fileSizeBytes: Number(row.file_size_bytes || 0),

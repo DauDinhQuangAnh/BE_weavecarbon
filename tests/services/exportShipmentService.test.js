@@ -25,8 +25,19 @@ function readySnapshot(lineCount = 1) {
       quantity: 10, unit: 'pcs', unitPrice: 5, currency: 'USD',
       netWeightKg: 2, grossWeightKg: 2.2, embeddedCo2eKg: 40
     })),
+    containers: [{
+      id: 'container-1', containerNumber: 'TCLU1234567', sealNumber: 'SEAL-1', equipmentType: '40HC'
+    }],
     packages: [{
+      id: 'pallet-1', packageNumber: 'PLT-1', packageType: 'pallet', marksAndNumbers: 'PO-1',
+      containerId: 'container-1', containerNumber: 'TCLU1234567', sealNumber: 'SEAL-1',
+      parentPackageId: null, parentPackageNumber: '', sequenceNo: 1,
+      quantity: 1, netWeightKg: lineCount * 2, grossWeightKg: lineCount * 2.2,
+      lengthCm: 120, widthCm: 100, heightCm: 120, contents: []
+    }, {
       id: 'pkg-1', packageNumber: 'CTN-1', packageType: 'carton', marksAndNumbers: 'PO-1',
+      containerId: 'container-1', containerNumber: 'TCLU1234567', sealNumber: 'SEAL-1',
+      parentPackageId: 'pallet-1', parentPackageNumber: 'PLT-1', sequenceNo: 2,
       quantity: 1, netWeightKg: lineCount * 2, grossWeightKg: lineCount * 2.2,
       lengthCm: 60, widthCm: 40, heightCm: 40,
       contents: Array.from({ length: lineCount }, (_, index) => ({ lineNumber: index + 1, quantity: 10 }))
@@ -70,7 +81,16 @@ describe('shipment export readiness', () => {
     const changed = readySnapshot(2);
     changed.lines[1].quantity = 11;
     expect(sourceSnapshotSha256(original)).not.toBe(sourceSnapshotSha256(changed));
+    const changedSeal = readySnapshot(2);
+    changedSeal.containers[0].sealNumber = 'SEAL-2';
+    expect(sourceSnapshotSha256(original)).not.toBe(sourceSnapshotSha256(changedSeal));
     expect(sourceSnapshotSha256(original)).toBe(sourceSnapshotSha256(readySnapshot(2)));
+  });
+
+  test('rejects an unsupported output format before queueing work', async () => {
+    const service = createExportShipmentService({ database: {} });
+    await expect(service.createDocumentJob('company-1', 'shipment-1', 'user-1', 'commercial_invoice', { outputFormat: 'csv' }))
+      .rejects.toMatchObject({ code: 'INVALID_DOCUMENT_FORMAT' });
   });
 });
 
@@ -88,7 +108,7 @@ describe('simple XLSX export', () => {
 
   test.each([
     ['commercial_invoice', ['Line value', 'Unit price', 'Invoice total', 'Payment terms', 'Issue place', 'Style', 'Lot']],
-    ['packing_list', ['Package', 'Marks', 'Net kg', 'Gross kg', 'L x W x H cm', 'CBM', 'Total quantity']],
+    ['packing_list', ['Container', 'Seal', 'Pallet', 'Package', 'Marks', 'Net kg', 'Gross kg', 'L x W x H cm', 'CBM', 'Total quantity']],
     ['carbon_annex', ['Embedded kg CO2e', 'Carrier document', 'Container']]
   ])('uses document-specific columns for %s', async (type, labels) => {
     const service = createExportShipmentService({ database: {} });
@@ -117,6 +137,13 @@ describe('simple XLSX export', () => {
     expect(packingXml).toMatch(/<v>0\.096<\/v>/);
   });
 
+  test.each(['commercial_invoice', 'packing_list'])('creates a printable PDF for %s', async (type) => {
+    const service = createExportShipmentService({ database: {} });
+    const buffer = await service._buildDocumentBuffer(type, readySnapshot(25), false, 'pdf');
+    expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    expect(buffer.length).toBeGreaterThan(20_000);
+  });
+
   test('blocks invoice without confirmed HS and packing list without its own identity', async () => {
     const snapshot = readySnapshot(1);
     snapshot.lines[0].hsCodeConfirmed = false;
@@ -135,7 +162,7 @@ describe('simple XLSX export', () => {
 
   test('reconciles gross weight and prevents negative invoice totals', async () => {
     const snapshot = readySnapshot(1);
-    snapshot.packages[0].grossWeightKg = 3;
+    snapshot.packages[1].grossWeightKg = 3;
     snapshot.profile.discountAmount = 1000;
     const service = createExportShipmentService({ database: {} });
     service.getProfile = jest.fn().mockResolvedValue(snapshot);
@@ -144,6 +171,25 @@ describe('simple XLSX export', () => {
     expect(result.requirements).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'gross_weight_cross_document', status: 'invalid' }),
       expect.objectContaining({ code: 'invoice_total_nonnegative', status: 'invalid' })
+    ]));
+  });
+
+  test('blocks a flat package list without tenant-scoped container and pallet links', async () => {
+    const snapshot = readySnapshot(1);
+    snapshot.containers = [];
+    snapshot.packages = [snapshot.packages[1]];
+    snapshot.packages[0].containerId = null;
+    snapshot.packages[0].parentPackageId = null;
+    const service = createExportShipmentService({ database: {} });
+    service.getProfile = jest.fn().mockResolvedValue(snapshot);
+
+    const result = await service.getReadiness('company-1', 'shipment-1');
+
+    expect(result.documents.find((item) => item.type === 'packing_list').status).toBe('blocked');
+    expect(result.requirements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'containers', status: 'missing' }),
+      expect.objectContaining({ code: 'package_1_container', status: 'missing' }),
+      expect.objectContaining({ code: 'package_1_parent', status: 'missing' })
     ]));
   });
 
@@ -186,6 +232,7 @@ describe('shipment export persistence safety', () => {
           invoice_date: new Date('2026-09-09T00:00:00.000Z'),
           packing_list_date: new Date('2026-09-10T00:00:00.000Z')
         }] })
+        .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [] })

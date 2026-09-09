@@ -14,7 +14,7 @@ const { createExportShipmentService } = require('../src/services/exportShipmentS
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const LINE_COUNT = 25;
 const result = {
-  schemaVersion: 'weavecarbon-export-documents-pilot-v1',
+  schemaVersion: 'weavecarbon-export-documents-pilot-v2',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -107,6 +107,14 @@ async function inspectWorkbook(filePath, requiredValues) {
   return { buffer, workbook };
 }
 
+async function inspectPdf(filePath) {
+  const buffer = await fs.promises.readFile(filePath);
+  assert.equal(buffer.subarray(0, 5).toString('ascii'), '%PDF-', 'Generated file is not a PDF.');
+  assert.ok(buffer.length > 20000, 'Generated PDF is unexpectedly small.');
+  assert.ok((buffer.toString('latin1').match(/\/Type \/Page\b/g) || []).length >= 1, 'Generated PDF has no page objects.');
+  return { buffer };
+}
+
 async function run() {
   await requireIsolationConfirmation();
   const runId = `${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
@@ -177,8 +185,38 @@ async function run() {
   }
   assert.equal(lines.length, LINE_COUNT);
 
+  const containers = [];
+  const pallets = [];
+  for (let index = 1; index <= 2; index += 1) {
+    const container = await service.createContainer(ids.companyId, ids.shipmentId, {
+      containerNumber: `TCLU123456${index}`,
+      sealNumber: `SYNTHETIC-SEAL-00${index}`,
+      equipmentType: '40HC',
+      marksAndNumbers: `PO-${runId}`,
+      tareWeightKg: 3800,
+      maxGrossWeightKg: 30480,
+      metadata: { synthetic: true }
+    });
+    containers.push(container);
+    pallets.push(await service.createPackage(ids.companyId, ids.shipmentId, {
+      packageNumber: `PLT-${String(index).padStart(2, '0')}`,
+      packageType: 'pallet',
+      marksAndNumbers: `${container.containerNumber} / PALLET ${index}`,
+      quantity: 1,
+      netWeightKg: index === 1 ? 143 : 132,
+      grossWeightKg: index === 1 ? 156 : 144,
+      lengthCm: 120,
+      widthCm: 100,
+      heightCm: 180,
+      contents: [],
+      containerId: container.id,
+      sequenceNo: index
+    }));
+  }
+
   let packageSequence = 0;
-  for (const line of lines) {
+  for (const [lineIndex, line] of lines.entries()) {
+    const hierarchyIndex = lineIndex % containers.length;
     const allocations = [
       { suffix: 'FULL', quantity: 10, net: 10, gross: 10.9 },
       { suffix: 'PARTIAL', quantity: 1, net: 1, gross: 1.1 }
@@ -188,18 +226,24 @@ async function run() {
       await service.createPackage(ids.companyId, ids.shipmentId, {
         packageNumber: `CTN-${String(packageSequence).padStart(3, '0')}`,
         packageType: 'carton',
-        marksAndNumbers: `TCLU1234567 / ${allocation.suffix}`,
+        marksAndNumbers: `${containers[hierarchyIndex].containerNumber} / ${allocation.suffix}`,
         quantity: 1,
         netWeightKg: allocation.net,
         grossWeightKg: allocation.gross,
         lengthCm: allocation.suffix === 'FULL' ? 60 : 40,
         widthCm: 40,
         heightCm: allocation.suffix === 'FULL' ? 40 : 20,
-        contents: [{ lineId: line.id, lineNumber: line.lineNumber, sku: line.sku, quantity: allocation.quantity }]
+        contents: [{ lineId: line.id, lineNumber: line.lineNumber, sku: line.sku, quantity: allocation.quantity }],
+        containerId: containers[hierarchyIndex].id,
+        parentPackageId: pallets[hierarchyIndex].id,
+        sequenceNo: packageSequence + containers.length
       });
     }
   }
-  check('real_like_fixture_created', { lineCount: LINE_COUNT, packageCount: packageSequence, partialCartonCount: LINE_COUNT });
+  check('real_like_fixture_created', {
+    lineCount: LINE_COUNT, containerCount: containers.length, palletCount: pallets.length,
+    packageCount: packageSequence, partialCartonCount: LINE_COUNT
+  });
 
   const readiness = await service.getReadiness(ids.companyId, ids.shipmentId);
   const invoiceReadiness = readiness.documents.find((item) => item.type === 'commercial_invoice');
@@ -219,30 +263,34 @@ async function run() {
   const artifactDir = await writeResult();
   const issued = {};
   for (const type of ['commercial_invoice', 'packing_list']) {
-    const draft = await service.createDocumentJob(ids.companyId, ids.shipmentId, ids.userId, type);
-    assert.ok(!draft.blocked, `${type} generation was blocked.`);
-    const issuedDocument = await service.issueDocument(ids.companyId, ids.shipmentId, draft.id, ids.userId);
-    assert.equal(issuedDocument.status, 'issued');
-    const stored = await pool.query(
-      `SELECT ed.*, r.status AS report_status, r.file_format
-       FROM export_documents ed JOIN reports r ON r.id=ed.report_id
-       WHERE ed.id=$1 AND ed.company_id=$2`,
-      [draft.id, ids.companyId]
-    );
-    const row = stored.rows[0];
-    const filePath = path.resolve(UPLOADS_ROOT, row.storage_key);
-    const required = type === 'commercial_invoice'
-      ? ['PILOT-SKU-025', 'Invoice total', `INV-${runId}`]
-      : ['CTN-050', 'Total CBM', `PL-${runId}`, 'PARTIAL'];
-    const { buffer } = await inspectWorkbook(filePath, required);
-    assert.equal(row.file_sha256, sha256(buffer));
-    assert.equal(Number(row.file_size_bytes), buffer.length);
-    assert.equal(row.mime_type, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    assert.equal(row.report_status, 'completed');
-    const artifactName = `${type}_${ids.shipmentId}_issued.xlsx`;
-    await fs.promises.copyFile(filePath, path.join(artifactDir, artifactName));
-    issued[type] = { id: row.id, filePath, artifactName, sha256: row.file_sha256, fileSizeBytes: buffer.length };
-    result.documents.push({ type, id: row.id, version: Number(row.version), artifactName, sha256: row.file_sha256, fileSizeBytes: buffer.length });
+    for (const format of ['xlsx', 'pdf']) {
+      const draft = await service.createDocumentJob(ids.companyId, ids.shipmentId, ids.userId, type, { outputFormat: format });
+      assert.ok(!draft.blocked, `${type} ${format} generation was blocked.`);
+      const issuedDocument = await service.issueDocument(ids.companyId, ids.shipmentId, draft.id, ids.userId);
+      assert.equal(issuedDocument.status, 'issued');
+      assert.equal(issuedDocument.outputFormat, format);
+      const stored = await pool.query(
+        `SELECT ed.*, r.status AS report_status, r.file_format
+         FROM export_documents ed JOIN reports r ON r.id=ed.report_id
+         WHERE ed.id=$1 AND ed.company_id=$2`,
+        [draft.id, ids.companyId]
+      );
+      const row = stored.rows[0];
+      const filePath = path.resolve(UPLOADS_ROOT, row.storage_key);
+      const required = type === 'commercial_invoice'
+        ? ['PILOT-SKU-025', 'Invoice total', `INV-${runId}`]
+        : ['CTN-050', 'Total CBM', `PL-${runId}`, 'PARTIAL', 'TCLU1234562', 'PLT-02'];
+      const { buffer } = format === 'xlsx' ? await inspectWorkbook(filePath, required) : await inspectPdf(filePath);
+      assert.equal(row.file_sha256, sha256(buffer));
+      assert.equal(Number(row.file_size_bytes), buffer.length);
+      assert.equal(row.mime_type, format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      assert.equal(row.output_format, format);
+      assert.equal(row.report_status, 'completed');
+      const artifactName = `${type}_${ids.shipmentId}_issued.${format}`;
+      await fs.promises.copyFile(filePath, path.join(artifactDir, artifactName));
+      issued[`${type}_${format}`] = { id: row.id, filePath, artifactName, sha256: row.file_sha256, fileSizeBytes: buffer.length };
+      result.documents.push({ type, format, id: row.id, version: Number(row.version), artifactName, sha256: row.file_sha256, fileSizeBytes: buffer.length });
+    }
   }
   check('issued_files_verified', { documentCount: result.documents.length });
 
@@ -251,7 +299,7 @@ async function run() {
   check('cross_tenant_read_denied');
 
   await assert.rejects(
-    pool.query(`UPDATE export_documents SET payload='{}'::jsonb WHERE id=$1`, [issued.commercial_invoice.id]),
+    pool.query(`UPDATE export_documents SET payload='{}'::jsonb WHERE id=$1`, [issued.commercial_invoice_pdf.id]),
     /immutable/i
   );
   check('issued_document_mutation_blocked');
@@ -262,12 +310,12 @@ async function run() {
   const staleIssue = await service.issueDocument(ids.companyId, ids.shipmentId, staleDraft.id, ids.userId);
   assert.equal(staleIssue.blocked, true);
   assert.equal(staleIssue.code, 'DOCUMENT_SNAPSHOT_STALE');
-  const firstInvoice = await pool.query('SELECT status FROM export_documents WHERE id=$1', [issued.commercial_invoice.id]);
+  const firstInvoice = await pool.query('SELECT status FROM export_documents WHERE id=$1', [issued.commercial_invoice_pdf.id]);
   assert.equal(firstInvoice.rows[0].status, 'issued');
   check('stale_snapshot_issue_blocked_without_superseding_current_issue');
 
   result.status = 'passed';
-  result.fixture = { ...ids, runId, lineCount: LINE_COUNT, packageCount: packageSequence };
+  result.fixture = { ...ids, runId, lineCount: LINE_COUNT, containerCount: containers.length, palletCount: pallets.length, packageCount: packageSequence };
   result.finishedAt = new Date().toISOString();
   await writeResult();
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

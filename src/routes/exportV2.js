@@ -164,6 +164,35 @@ router.delete('/shipments/:shipmentId/lines/:lineId', asyncHandler(async (req, r
   return sendSuccess(res, { data: { deleted: true } });
 }));
 
+router.post('/shipments/:shipmentId/containers', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.createContainer(companyId, req.params.shipmentId, req.body || {});
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { status: 201, data });
+}));
+
+router.patch('/shipments/:shipmentId/containers/:containerId', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.updateContainer(companyId, req.params.shipmentId, req.params.containerId, req.body || {});
+  if (!data) return sendError(res, { status: 404, code: 'EXPORT_CONTAINER_NOT_FOUND', message: 'Container not found.' });
+  return sendSuccess(res, { data });
+}));
+
+router.delete('/shipments/:shipmentId/containers/:containerId', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  try {
+    const deleted = await exportShipmentService.deleteContainer(companyId, req.params.shipmentId, req.params.containerId);
+    if (!deleted) return sendError(res, { status: 404, code: 'EXPORT_CONTAINER_NOT_FOUND', message: 'Container not found.' });
+    return sendSuccess(res, { data: { deleted: true } });
+  } catch (error) {
+    if (error.code === '23503') return sendError(res, { status: 409, code: 'EXPORT_CONTAINER_IN_USE', message: 'Move or delete linked pallets and packages before deleting this container.' });
+    throw error;
+  }
+}));
+
 router.post('/shipments/:shipmentId/packages', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
@@ -200,13 +229,13 @@ router.post('/shipments/:shipmentId/documents/:type/generate', asyncHandler(asyn
   const companyId = requireCompany(req, res);
   if (!companyId) return;
   try {
-    const result = await exportShipmentService.createDocumentJob(companyId, req.params.shipmentId, req.userId, req.params.type);
+    const result = await exportShipmentService.createDocumentJob(companyId, req.params.shipmentId, req.userId, req.params.type, req.body || {});
     if (!result) return sendNotFound(res);
     if (result.blocked) return sendError(res, { status: 409, code: 'EXPORT_DOCUMENT_BLOCKED', message: 'Required shipment data is incomplete.', details: result.readiness });
-    await logAuditTrail({ companyId, userId: req.userId, dataGroup: 'exports', changedField: 'shipment_export.document.generated', newValue: result.id, reason: 'export.document.generate', notes: req.params.type });
+    await logAuditTrail({ companyId, userId: req.userId, dataGroup: 'exports', changedField: 'shipment_export.document.generated', newValue: result.id, reason: 'export.document.generate', notes: `${req.params.type}:${result.outputFormat || 'default'}` });
     return sendSuccess(res, { status: 202, data: result });
   } catch (error) {
-    if (error.code === 'INVALID_DOCUMENT_TYPE') return sendError(res, { status: 400, code: error.code, message: error.message });
+    if (['INVALID_DOCUMENT_TYPE', 'INVALID_DOCUMENT_FORMAT'].includes(error.code)) return sendError(res, { status: 400, code: error.code, message: error.message });
     throw error;
   }
 }));

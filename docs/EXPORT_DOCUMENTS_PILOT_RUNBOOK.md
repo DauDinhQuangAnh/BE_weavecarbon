@@ -21,16 +21,16 @@ name to exactly match PostgreSQL `current_database()`.
 ## What it verifies
 
 - 25 textile/footwear goods lines are validated and exported without truncation.
+- Two containers with separate seals and pallet parents are represented explicitly.
 - Every line is split between a full carton and a partial carton; all quantities and net/gross weights reconcile.
-- Commercial Invoice and Packing List files are generated, stored, issued and reopened as real XLSX archives.
+- Commercial Invoice and Packing List files are generated, stored, issued and reopened in both XLSX and PDF formats.
 - Database MIME, size and SHA-256 values match the stored issued files.
-- The issued files contain the final line/package and issued watermark.
+- The XLSX files contain the final line/package and issued watermark; the PDFs have valid page objects and PDF signatures.
 - CN 61/62/64 remains outside the baseline CBAM gate.
 - Cross-tenant access, issued-content mutation and stale-snapshot issuance are blocked.
 
-The pilot writes review copies and `result.json` to `artifacts/export-pilot/`. Record the two checksums and obtain a human
+The pilot writes review copies and `result.json` to `artifacts/export-pilot/`. Record all four checksums and obtain a human
 decision on layout and business meaning before changing either report from `READY_TO_PILOT` to `READY_TO_ISSUE`.
 
-This fixture does not prove multi-container hierarchy because that hierarchy is not yet represented in the current package
-model. It deliberately keeps that limitation visible instead of encoding a container number into free text and calling the
-requirement complete.
+The fixture proves the technical container-pallet-carton hierarchy and file integrity on an isolated database. It does not
+prove that a real warehouse packing ledger, buyer instruction, letter of credit or customs valuation requirement was met.
