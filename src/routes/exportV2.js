@@ -132,6 +132,80 @@ router.put('/shipments/:shipmentId/profile', asyncHandler(async (req, res) => {
   return sendSuccess(res, { data });
 }));
 
+router.get('/shipments/:shipmentId/vn-customs/profile', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const bundle = await exportShipmentService.getProfile(companyId, req.params.shipmentId);
+  if (!bundle) return sendNotFound(res);
+  return sendSuccess(res, { data: bundle.vnCustomsProfile });
+}));
+
+router.put('/shipments/:shipmentId/vn-customs/profile', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.upsertVnCustomsProfile(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (!data) return sendNotFound(res);
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.vn_customs_profile', newValue: req.params.shipmentId,
+    reason: 'export.vn_customs.profile.update',
+    notes: `${data.brokerTargetSchemaId || 'unmapped'}@${data.brokerTargetSchemaVersion || 'unversioned'}`
+  });
+  return sendSuccess(res, { data });
+}));
+
+router.get('/shipments/:shipmentId/vn-customs/reconciliation', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.reconcileVnCustomsHandoff(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.get('/shipments/:shipmentId/vn-customs/events', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.getVnCustomsEvents(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/vn-customs/events', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.recordVnCustomsEvent(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (result?.error) {
+    const messages = {
+      VN_CUSTOMS_EVENT_TYPE_INVALID: 'Unsupported broker/authority event type.',
+      VN_CUSTOMS_EVENT_LINK_INVALID: 'An issued handoff and approved evidence file are required.',
+      VN_CUSTOMS_EVENT_DETAILS_REQUIRED: 'External reference, named actor and occurrence time are required.',
+      VN_CUSTOMS_HANDOFF_NOT_FOUND: 'The selected document is not a Vietnam customs broker handoff for this shipment.',
+      VN_CUSTOMS_HANDOFF_NOT_ISSUED: 'Only an issued immutable broker handoff can receive external events.',
+      VN_CUSTOMS_EVENT_EVIDENCE_NOT_APPROVED: 'Evidence must belong to this shipment, be approved and remain valid.',
+      VN_CUSTOMS_EVENT_EVIDENCE_TYPE_MISMATCH: 'The selected evidence type does not support this broker/authority event.',
+      VN_CUSTOMS_EVENT_EVIDENCE_STORAGE_UNSUPPORTED: 'External-response evidence must be in verified local storage.',
+      VN_CUSTOMS_EVENT_EVIDENCE_FILE_UNAVAILABLE: 'External-response evidence bytes are unavailable.',
+      VN_CUSTOMS_EVENT_EVIDENCE_FILE_TAMPERED: 'External-response evidence no longer matches its stored checksum and size.',
+      VN_CUSTOMS_EVENT_RECORDER_IDENTITY_REQUIRED: 'The authenticated recorder requires a stable name or email.'
+    };
+    return sendError(res, {
+      status: result.error.includes('NOT_FOUND') ? 404 : 409,
+      code: result.error,
+      message: messages[result.error] || 'Vietnam customs external event could not be recorded.'
+    });
+  }
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.vn_customs_event', newValue: result.id,
+    reason: 'export.vn_customs.external_event', notes: `${result.eventType}:${result.externalReference}`
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
 router.post('/shipments/:shipmentId/lines/sync', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;

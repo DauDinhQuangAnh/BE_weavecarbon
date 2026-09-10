@@ -8568,6 +8568,489 @@
         ]
       }
     },
+    "/export/shipments/{shipmentId}/vn-customs/events": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdVnCustomsEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/vn-customs/events",
+        "tags": [
+          "Export"
+        ]
+      },
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdVnCustomsEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "actorIdentifier": {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "actorName": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "eventType": {
+                    "enum": [
+                      "broker_received",
+                      "broker_validated",
+                      "broker_rejected",
+                      "authority_submitted",
+                      "authority_accepted",
+                      "authority_rejected",
+                      "authority_released",
+                      "authority_cancelled",
+                      "amendment_requested",
+                      "amendment_submitted"
+                    ],
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "exportDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "externalReference": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "messageCode": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "messageText": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "occurredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "exportDocumentId",
+                  "eventType",
+                  "externalReference",
+                  "evidenceDocumentId",
+                  "actorName",
+                  "occurredAt"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/vn-customs/events",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/vn-customs/profile": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdVnCustomsProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/vn-customs/profile",
+        "tags": [
+          "Export"
+        ]
+      },
+      "put": {
+        "operationId": "putExportShipmentsByShipmentIdVnCustomsProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "brokerTargetSchemaId": {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "brokerTargetSchemaVersion": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "cargoClassificationCode": {
+                    "maxLength": 20,
+                    "type": "string"
+                  },
+                  "customsBroker": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "customsOfficeCode": {
+                    "maxLength": 20,
+                    "type": "string"
+                  },
+                  "declarant": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "declarationNotes": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "declarationTypeCode": {
+                    "maxLength": 20,
+                    "type": "string"
+                  },
+                  "destinationCountryCode": {
+                    "pattern": "^[A-Za-z]{2}$",
+                    "type": "string"
+                  },
+                  "exchangeRate": {
+                    "exclusiveMinimum": true,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "exitCustomsOfficeCode": {
+                    "maxLength": 20,
+                    "type": "string"
+                  },
+                  "exportDutyAmount": {
+                    "minimum": 0,
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "exportDutyRate": {
+                    "minimum": 0,
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "inspectionReferences": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "inspectionRequirementStatus": {
+                    "enum": [
+                      "unknown",
+                      "not_required",
+                      "required"
+                    ],
+                    "type": "string"
+                  },
+                  "invoiceClassificationCode": {
+                    "maxLength": 20,
+                    "type": "string"
+                  },
+                  "invoicePaymentMethodCode": {
+                    "maxLength": 20,
+                    "type": "string"
+                  },
+                  "loadingLocationCode": {
+                    "maxLength": 20,
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "permitReferences": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "permitRequirementStatus": {
+                    "enum": [
+                      "unknown",
+                      "not_required",
+                      "required"
+                    ],
+                    "type": "string"
+                  },
+                  "supportingDocuments": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "maxItems": 200,
+                    "type": "array"
+                  },
+                  "taxBasis": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "taxTreatment": {
+                    "enum": [
+                      "unknown",
+                      "not_subject",
+                      "exempt",
+                      "taxable"
+                    ],
+                    "type": "string"
+                  },
+                  "transportMethodCode": {
+                    "maxLength": 20,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "declarant",
+                  "customsBroker",
+                  "customsOfficeCode",
+                  "declarationTypeCode",
+                  "cargoClassificationCode",
+                  "transportMethodCode",
+                  "exitCustomsOfficeCode",
+                  "loadingLocationCode",
+                  "destinationCountryCode",
+                  "invoiceClassificationCode",
+                  "invoicePaymentMethodCode",
+                  "exchangeRate",
+                  "permitRequirementStatus",
+                  "inspectionRequirementStatus",
+                  "taxTreatment",
+                  "supportingDocuments",
+                  "brokerTargetSchemaId",
+                  "brokerTargetSchemaVersion"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "PUT /export/shipments/{shipmentId}/vn-customs/profile",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/vn-customs/reconciliation": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdVnCustomsReconciliation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/vn-customs/reconciliation",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
     "/fuel-invoices": {
       "get": {
         "operationId": "getFuelInvoices",

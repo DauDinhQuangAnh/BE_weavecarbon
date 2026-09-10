@@ -190,6 +190,46 @@ const CARRIER_DOCUMENT_PROPERTIES = {
   metadata: { type: 'object', additionalProperties: true }
 };
 
+const VN_CUSTOMS_PROFILE_SCHEMA = {
+  type: 'object',
+  required: [
+    'declarant', 'customsBroker', 'customsOfficeCode', 'declarationTypeCode',
+    'cargoClassificationCode', 'transportMethodCode', 'exitCustomsOfficeCode',
+    'loadingLocationCode', 'destinationCountryCode', 'invoiceClassificationCode',
+    'invoicePaymentMethodCode', 'exchangeRate', 'permitRequirementStatus',
+    'inspectionRequirementStatus', 'taxTreatment', 'supportingDocuments',
+    'brokerTargetSchemaId', 'brokerTargetSchemaVersion'
+  ],
+  properties: {
+    declarant: { type: 'object', additionalProperties: true },
+    customsBroker: { type: 'object', additionalProperties: true },
+    customsOfficeCode: { type: 'string', maxLength: 20 },
+    declarationTypeCode: { type: 'string', maxLength: 20 },
+    cargoClassificationCode: { type: 'string', maxLength: 20 },
+    transportMethodCode: { type: 'string', maxLength: 20 },
+    exitCustomsOfficeCode: { type: 'string', maxLength: 20 },
+    loadingLocationCode: { type: 'string', maxLength: 20 },
+    destinationCountryCode: { type: 'string', pattern: '^[A-Za-z]{2}$' },
+    invoiceClassificationCode: { type: 'string', maxLength: 20 },
+    invoicePaymentMethodCode: { type: 'string', maxLength: 20 },
+    exchangeRate: { type: 'number', minimum: 0, exclusiveMinimum: true },
+    permitRequirementStatus: { type: 'string', enum: ['unknown', 'not_required', 'required'] },
+    permitReferences: { type: 'array', maxItems: 100, items: { type: 'object', additionalProperties: true } },
+    inspectionRequirementStatus: { type: 'string', enum: ['unknown', 'not_required', 'required'] },
+    inspectionReferences: { type: 'array', maxItems: 100, items: { type: 'object', additionalProperties: true } },
+    taxTreatment: { type: 'string', enum: ['unknown', 'not_subject', 'exempt', 'taxable'] },
+    exportDutyRate: { type: 'number', minimum: 0, nullable: true },
+    exportDutyAmount: { type: 'number', minimum: 0, nullable: true },
+    taxBasis: { type: 'string', maxLength: 5000 },
+    supportingDocuments: { type: 'array', maxItems: 200, items: { type: 'object', additionalProperties: true } },
+    brokerTargetSchemaId: { type: 'string', minLength: 1, maxLength: 300 },
+    brokerTargetSchemaVersion: { type: 'string', minLength: 1, maxLength: 100 },
+    declarationNotes: { type: 'string', maxLength: 5000 },
+    metadata: { type: 'object', additionalProperties: true }
+  },
+  additionalProperties: false
+};
+
 const REQUEST_BODY_OVERRIDES = {
   'POST /reports/v2/snapshots': {
     type: 'object',
@@ -312,6 +352,35 @@ const REQUEST_BODY_OVERRIDES = {
     properties: {
       metadataConfirmed: { type: 'boolean', enum: [true] },
       confirmationNote: { type: 'string', minLength: 1, maxLength: 5000 }
+    },
+    additionalProperties: false
+  },
+  'PUT /export/shipments/{shipmentId}/vn-customs/profile': VN_CUSTOMS_PROFILE_SCHEMA,
+  'POST /export/shipments/{shipmentId}/vn-customs/events': {
+    type: 'object',
+    required: [
+      'exportDocumentId', 'eventType', 'externalReference', 'evidenceDocumentId',
+      'actorName', 'occurredAt'
+    ],
+    properties: {
+      exportDocumentId: { type: 'string', format: 'uuid' },
+      eventType: {
+        type: 'string',
+        enum: [
+          'broker_received', 'broker_validated', 'broker_rejected',
+          'authority_submitted', 'authority_accepted', 'authority_rejected',
+          'authority_released', 'authority_cancelled',
+          'amendment_requested', 'amendment_submitted'
+        ]
+      },
+      externalReference: { type: 'string', minLength: 1, maxLength: 500 },
+      messageCode: { type: 'string', maxLength: 200 },
+      messageText: { type: 'string', maxLength: 5000 },
+      evidenceDocumentId: { type: 'string', format: 'uuid' },
+      actorName: { type: 'string', minLength: 1, maxLength: 500 },
+      actorIdentifier: { type: 'string', maxLength: 300 },
+      occurredAt: { type: 'string', format: 'date-time' },
+      metadata: { type: 'object', additionalProperties: true }
     },
     additionalProperties: false
   },

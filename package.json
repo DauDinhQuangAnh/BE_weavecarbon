@@ -14,6 +14,7 @@
     "test:audit-bundle-pilot": "node scripts/test-audit-bundle-pilot.js",
     "test:export-documents-pilot": "node scripts/test-export-documents-pilot.js",
     "test:carrier-document-pilot": "node scripts/test-carrier-document-pilot.js",
+    "test:vn-customs-handoff-pilot": "node scripts/test-carrier-document-pilot.js",
     "db:audit-hot-queries": "node scripts/audit-hot-queries.js",
     "analytics:flush": "node scripts/flush-analytics-outbox.js",
     "build:release": "node scripts/build-release.js",

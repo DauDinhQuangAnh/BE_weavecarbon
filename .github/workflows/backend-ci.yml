@@ -253,7 +253,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Run isolated carrier-document and Carbon Annex pilot
+      - name: Run isolated carrier-document, Carbon Annex and Vietnam customs handoff pilot
         env:
           ALLOW_CARRIER_DOCUMENT_PILOT: "1"
           CARRIER_PILOT_CONFIRM_ISOLATED: I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA
@@ -266,6 +266,15 @@ jobs:
         with:
           name: carrier-document-pilot-${{ github.run_id }}
           path: artifacts/carrier-document-pilot/result.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Vietnam customs handoff pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vn-customs-handoff-pilot-${{ github.run_id }}
+          path: artifacts/vn-customs-handoff-pilot/result.json
           if-no-files-found: error
           retention-days: 14
 

@@ -28,6 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
+| Active R04 implementation branch in both repositories | `feat/r04-vn-customs-handoff` |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -135,7 +136,7 @@ Known overall checks at the latest feature commits:
 | 1 | Commercial Invoice | Almost every sale shipment | `READY_TO_PILOT` | PDF/XLSX, EORI/VAT, customs value, HS provenance and checksum-bound named review/issue | Real export-operator review against an actual invoice and buyer/destination rules |
 | 2 | Packing List | Normal customs/transport practice | `READY_TO_PILOT` | PDF/XLSX, hierarchy, explicit measurement basis, carrier display and checksum-bound named review/issue | Real warehouse review against the physical package ledger |
 | 3 | B/L, AWB, CMR, CIM or FBL | Depends on transport mode | `EXTERNAL_DOCUMENT` | Structured immutable carrier metadata, exact-file verification, mode/totals/equipment reconciliation and versioned replacement; WeaveCarbon generates only Carbon Annex | Real carrier-document pilot and issuer/authenticity review |
-| 4 | Vietnam export declaration/VNACCS | Normally mandatory | `NOT_STARTED` | Stores declaration number only | Build broker/VNACCS support dataset and response lifecycle |
+| 4 | Vietnam export declaration/VNACCS | Normally mandatory | `PARTIAL` | Versioned internal broker-handoff JSON/XLSX, R01/R02/R03 reconciliation, named review and evidence-backed append-only external events; no VNACCS submission | Obtain and validate an exact broker target schema/code list, then complete a named real-shipment broker pilot |
 | 5 | EU import declaration/SAD/EUCDM | Importer/declarant responsibility | `NOT_STARTED` | No declaration dataset | Build declarant handoff dataset; never label it customs-accepted |
 | 6 | ENS/ICS2 support dataset | Goods entering EU | `PARTIAL` | Basic per-line CSV | Mode/release-specific schema, house/master consignment and schema validation |
 | 7 | EVFTA EUR.1/origin declaration support | Only when claiming preference | `PARTIAL` | Basic Origin Workbook plus locked supporting evidence gate | BOM-origin rules engine and official-form/wording workflow |
@@ -235,7 +236,21 @@ number/container/seal/packages/weights match Invoice and Packing List; Carbon An
 exchange rate/origin/destination; transport; packages/weights; permits/inspection; taxes; acceptance/MRN-like reference,
 amendments and messages.
 
-**Current gap:** only a text declaration reference is stored. No submission is authorised in this phase.
+**Implemented:** additive migration 025 adds a typed shipment customs profile and append-only external-event ledger. The
+internal `weavecarbon.vn-export-broker-handoff@1.0.0` JSON/XLSX envelope validates the declarant and broker identities,
+customs/procedure/transport/location/invoice/payment codes, non-Vietnam destination, positive exchange rate, 8-digit
+confirmed Vietnam tariff lines, value/currency, line/package weights, permit/inspection decisions and export-duty
+treatment. Readiness requires current issued Commercial Invoice and Packing List plus current confirmed R03 carrier
+metadata; exact supporting/carrier file bytes are checked again before generation and issue. A named
+`customs_declaration_reviewer` approval is checksum-bound. Generated JSON is always marked
+`notForDirectSubmission=true` and `authorityStatus=NOT_SUBMITTED`. Broker/authority events are separate, tenant-bound,
+append-only records pinned to exact issued-document and approved-evidence hashes; authority outcomes accept only a locked
+`customs_authority_response` whose stored bytes still match its SHA-256.
+
+**Remaining:** no broker has yet supplied or approved a real target schema, code lists, validation rules or acknowledgement
+samples. The configurable target-schema identity is mandatory and has no demo fallback, but WeaveCarbon does not claim
+its internal envelope is a VNACCS import message. Procedure/HS/tax/permit decisions still require a qualified customs
+specialist and an authentic shipment pilot. Direct submission remains out of scope.
 
 **Definition of Done:** versioned broker-handoff dataset passes an agreed schema, reconciles against R01/R02/R03, records
 broker/authority response and never claims `AUTHORITY_ACCEPTED` without external evidence.
@@ -540,7 +555,7 @@ Before merging or deploying this branch:
 
 1. Back up PostgreSQL and the uploads directory and verify restoration instructions.
 2. Apply every export/audit migration from `017_shipment_export_workflow.sql` through
-   `024_r03_carrier_document_controls.sql` to staging cloned from a safe schema/data fixture.
+   `025_r04_vn_customs_broker_handoff.sql` to staging cloned from a safe schema/data fixture.
 3. Run migration rollback/forward compatibility checks appropriate to the environment.
 4. Create one real-like Vietnam-to-EU shipment with more than 20 lines and multiple/partial packages.
 5. Upload and approve a real-like carrier document; fill profile, package and carbon data without placeholders.
@@ -566,6 +581,7 @@ npm run test:migration-snapshots
 npm run test:export-documents-pilot # isolated PostgreSQL only; see docs/EXPORT_DOCUMENTS_PILOT_RUNBOOK.md
 npm run test:audit-bundle-pilot # isolated PostgreSQL only; see docs/AUDIT_PACK_PILOT_RUNBOOK.md
 npm run test:carrier-document-pilot # isolated PostgreSQL only; see docs/CARRIER_DOCUMENT_PILOT_RUNBOOK.md
+npm run test:vn-customs-handoff-pilot # same guarded R03/R04 fixture; see docs/VN_CUSTOMS_HANDOFF_PILOT_RUNBOOK.md
 git diff --check
 ```
 
@@ -597,6 +613,10 @@ Recheck these official sources at the start of the related report work and store
 - CBAM legal text: https://eur-lex.europa.eu/eli/reg/2023/956
 - GHG Protocol standards/guidance: https://ghgprotocol.org/standards-guidance
 - ISO 14067 catalogue entry: https://www.iso.org/standard/71206.html
+- Vietnam customs procedures, Circular 38/2015/TT-BTC official legal database entry:
+  https://vbpl.vn/botaichinh/Pages/vbpq-toanvan.aspx?ItemID=58638
+- Circular 121/2025/TT-BTC amending customs procedures, effective 2026-02-01, official Customs PDF:
+  https://files.customs.gov.vn/CustomsCMS/DONG_NAI/2025/12/26/121_2025_TT_BTC_18_12_2025.pdf
 
 Official sources define legal requirements; this tracker is an engineering control document, not legal advice.
 
@@ -610,22 +630,30 @@ Backend core:
 - `migrations/020_audit_bundle_review_lifecycle.sql`
 - `migrations/021_export_container_hierarchy_pdf.sql`
 - `migrations/022_export_document_business_review.sql`
+- `migrations/024_r03_carrier_document_controls.sql`
+- `migrations/025_r04_vn_customs_broker_handoff.sql`
 - `src/services/exportShipmentService.js`
+- `src/services/vnCustomsHandoffControls.js`
 - `src/services/exportDocumentPdf.js`
 - `src/routes/exportV2.js`
 - `src/utils/simpleXlsx.js`
 - `src/modules/evidence/`
 - `src/modules/reports/`
 - `tests/services/exportShipmentService.test.js`
+- `tests/services/vnCustomsHandoffControls.test.js`
+- `tests/config/vnCustomsHandoffMigrationContract.test.js`
 - `tests/config/exportWorkflowMigrationContract.test.js`
 - `tests/config/exportDocumentBusinessReviewMigrationContract.test.js`
 - `scripts/render-export-document-pdf-qa.js`
 - `docs/EXPORT_WORKFLOW.md`
+- `docs/VN_CUSTOMS_HANDOFF_PILOT_RUNBOOK.md`
 
 Frontend core:
 
 - `components/dashboard/export/ShipmentExportPortal.tsx`
+- `components/dashboard/export/VnCustomsHandoffPanel.tsx`
 - `lib/weave-v2/shipmentExportApi.ts`
+- `lib/weave-v2/shipmentVnCustomsApi.test.ts`
 - `components/dashboard/export/ExportConfigurationPortalV2.tsx`
 - `components/dashboard/cbam/CbamReportSection.tsx`
 - `lib/cbam/applicability.ts`
@@ -1009,3 +1037,26 @@ Backend carbon trace core:
   WeaveCarbon generates only the supplementary Carbon Annex; B/L, FBL, AWB, CMR and CIM must remain authentic
   carrier/forwarder documents. The status may change only after the genuine-document, qualified-operator and named
   approval gate above is completed with exact evidence checksums.
+
+### 2026-09-10 — R04 Vietnam customs broker-handoff implementation
+
+- Status moved from `NOT_STARTED` to `PARTIAL`, not to `READY_TO_ISSUE`. This increment creates a controlled internal
+  broker-handoff envelope and evidence lifecycle; it does not implement a VNACCS client or claim customs acceptance.
+- Regulatory basis identity is stored as `TT38/2015+TT39/2018+TT121/2025@2026-02-01`. The implementation uses official
+  Vietnam legal/customs sources listed in section 11, while exact broker code lists and mapping rules remain an external
+  business dependency and are therefore mandatory configurable values rather than fabricated defaults.
+- Migration 025 adds the shipment customs profile and append-only external-event ledger with tenant-bound composite foreign
+  keys and pinned payload/file/evidence hashes. Backend services, shipment-scoped API routes, OpenAPI request contracts,
+  JSON/XLSX generation and named customs-review role were added. The frontend adds a dedicated R04 panel for profile,
+  reconciliation, evidence upload/lock and event recording.
+- R04 now fails closed unless current issued R01/R02 documents and current confirmed R03 carrier metadata reconcile. It
+  re-reads exact supporting and carrier files before generation/issue. Generated JSON always states
+  `notForDirectSubmission=true` and `authorityStatus=NOT_SUBMITTED`; an authority event requires a locked
+  `customs_authority_response` of the correct type with matching bytes and checksum.
+- Unit, migration-contract, API-client, type and lint checks cover 25-line processing, 8-digit HS codes, conditional
+  permits/inspection/tax fields, issued-support dependencies, explicit non-submission markers, SQL binding, endpoint
+  encoding, wrong evidence type and immutable checksum identities. The enhanced guarded PostgreSQL pilot now exercises
+  R01/R02/R03/R04 together and writes a dedicated R04 artifact.
+- Remaining release gates: complete full repository checks and CI, apply migration 025 to isolated staging after backup and
+  restore drill, retain the passing pilot artifact/checksum, then obtain an exact broker schema plus a named real-shipment
+  customs-specialist review. Do not merge/deploy or change the status based only on synthetic results.
