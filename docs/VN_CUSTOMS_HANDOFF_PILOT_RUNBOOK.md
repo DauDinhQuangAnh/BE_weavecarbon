@@ -9,7 +9,7 @@ named customs broker must map to and approve against its exact target schema.
 
 - Use a dedicated non-production PostgreSQL database and uploads directory.
 - Confirm `NODE_ENV` is not `production`.
-- Apply all migrations through `025_r04_vn_customs_broker_handoff.sql`.
+- Apply all migrations through `026_r04_export_document_json_format.sql`.
 - Set the database-name guard to the exact value returned by `SELECT current_database()`.
 - Never use authentic credentials, real authority endpoints or production shipment data in this pilot.
 

@@ -8,7 +8,7 @@ production or on a database that is not explicitly approved for retained synthet
 
 - Use a dedicated non-production database and uploads directory.
 - Confirm `NODE_ENV` is not `production`.
-- Apply all migrations through `025_r04_vn_customs_broker_handoff.sql`.
+- Apply all migrations through `026_r04_export_document_json_format.sql`.
 - Set the database name guard to the exact value returned by `SELECT current_database()`.
 
 PowerShell example:

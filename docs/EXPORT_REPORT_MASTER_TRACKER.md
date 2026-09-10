@@ -43,6 +43,8 @@ This tracker separates four facts that must never be conflated:
 | Frontend R14 signed-sharing/assurance commit | `c52fa9b7fdc1f57405925d77930aaa07864a8aa8` |
 | Backend R03 carrier-document/Carbon Annex commit | `51d568c2c765c59977b11066febe7ed4de27eef3` |
 | Frontend R03 carrier-document/Carbon Annex commit | `9bd4c58f58cfff8b32a2bea580675b170931c751` |
+| Backend R04 broker-handoff technical-gate commit | `0d8cc4ecb68d63bc52d86406e0659b971a0f8038` |
+| Frontend R04 broker-handoff commit | `dbeb7f181f6248834fd89d076cde779bff4c135e` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
 | Backend R01/R02 staging-pilot commit | `002aea9` |
@@ -56,7 +58,7 @@ This tracker separates four facts that must never be conflated:
 | Frontend latest application-bearing production commit | `9bd4c58f58cfff8b32a2bea580675b170931c751` |
 | Production site | `https://weavecarbon.com` |
 | Production state verified at 2026-09-10 | R01/R02 review controls, R14 signed sharing/assurance controls and R03 carrier-document/Carbon Annex controls are deployed from `main`; all production containers are healthy, migrations 001-024 are current, and `/health`, `/`, `/audit` and `/export` return HTTP 200. An unauthenticated structured-carrier API request returns 401. R03 remains `EXTERNAL_DOCUMENT` and R14 remains `PARTIAL` until their real-human/evidence gates pass. Later documentation-only commits may advance a checkout without changing application code. |
-| Isolated staging verified at 2026-09-10 | `/opt/weavecarbon-staging`; backend `7bc8c8947a43e143505d334a72e44d5f99f5a11a`; frontend `9bd4c58f58cfff8b32a2bea580675b170931c751`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migration 024 applied; DB/BE/FE healthy; guarded R03 carrier-document/Carbon Annex pilot passed all 9 gates |
+| Isolated staging verified at 2026-09-11 | `/opt/weavecarbon-staging`; backend source `0d8cc4ecb68d63bc52d86406e0659b971a0f8038`; frontend `dbeb7f181f6248834fd89d076cde779bff4c135e`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migrations through 026 applied; DB/BE/FE healthy; guarded combined R03/R04 pilot passed all 14 checks. This is a synthetic technical gate, not broker or customs acceptance. |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
 Never put server passwords, database credentials, tokens or `.env` values in this file.
@@ -69,6 +71,10 @@ git -C BE_weavecarbon switch main
 git clone https://github.com/DauDinhQuangAnh/weavecarbon.git
 git -C weavecarbon switch main
 ```
+
+While R04 PRs 29/32 are still open, fetch and switch both clones to
+`feat/r04-vn-customs-handoff` before continuing. After merge, use `main` and verify that it contains the R04 commit hashes
+recorded in the table above.
 
 Then give the next AI this instruction:
 
@@ -236,7 +242,8 @@ number/container/seal/packages/weights match Invoice and Packing List; Carbon An
 exchange rate/origin/destination; transport; packages/weights; permits/inspection; taxes; acceptance/MRN-like reference,
 amendments and messages.
 
-**Implemented:** additive migration 025 adds a typed shipment customs profile and append-only external-event ledger. The
+**Implemented:** additive migration 025 adds a typed shipment customs profile and append-only external-event ledger;
+migration 026 extends the controlled export-document format constraint to permit the R04 JSON artifact. The
 internal `weavecarbon.vn-export-broker-handoff@1.0.0` JSON/XLSX envelope validates the declarant and broker identities,
 customs/procedure/transport/location/invoice/payment codes, non-Vietnam destination, positive exchange rate, 8-digit
 confirmed Vietnam tariff lines, value/currency, line/package weights, permit/inspection decisions and export-duty
@@ -555,7 +562,7 @@ Before merging or deploying this branch:
 
 1. Back up PostgreSQL and the uploads directory and verify restoration instructions.
 2. Apply every export/audit migration from `017_shipment_export_workflow.sql` through
-   `025_r04_vn_customs_broker_handoff.sql` to staging cloned from a safe schema/data fixture.
+   `026_r04_export_document_json_format.sql` to staging cloned from a safe schema/data fixture.
 3. Run migration rollback/forward compatibility checks appropriate to the environment.
 4. Create one real-like Vietnam-to-EU shipment with more than 20 lines and multiple/partial packages.
 5. Upload and approve a real-like carrier document; fill profile, package and carbon data without placeholders.
@@ -632,6 +639,7 @@ Backend core:
 - `migrations/022_export_document_business_review.sql`
 - `migrations/024_r03_carrier_document_controls.sql`
 - `migrations/025_r04_vn_customs_broker_handoff.sql`
+- `migrations/026_r04_export_document_json_format.sql`
 - `src/services/exportShipmentService.js`
 - `src/services/vnCustomsHandoffControls.js`
 - `src/services/exportDocumentPdf.js`
@@ -1057,6 +1065,34 @@ Backend carbon trace core:
   permits/inspection/tax fields, issued-support dependencies, explicit non-submission markers, SQL binding, endpoint
   encoding, wrong evidence type and immutable checksum identities. The enhanced guarded PostgreSQL pilot now exercises
   R01/R02/R03/R04 together and writes a dedicated R04 artifact.
-- Remaining release gates: complete full repository checks and CI, apply migration 025 to isolated staging after backup and
-  restore drill, retain the passing pilot artifact/checksum, then obtain an exact broker schema plus a named real-shipment
-  customs-specialist review. Do not merge/deploy or change the status based only on synthetic results.
+- Remaining business gates: obtain an exact broker schema/version and effective code lists, then complete a named,
+  real-shipment customs-specialist/broker review with authentic acknowledgements. Do not merge/deploy or change the status
+  based only on the synthetic technical result recorded below.
+
+### 2026-09-11 — R04 isolated staging technical gate
+
+- Backend `0d8cc4ecb68d63bc52d86406e0659b971a0f8038` and frontend
+  `dbeb7f181f6248834fd89d076cde779bff4c135e` remain on `feat/r04-vn-customs-handoff` in PRs 29 and 32. Both PRs are
+  mergeable and every reported GitHub check passed: backend build, unit, integration, security, syntax/lint and audit;
+  frontend build, tests, type/lint, contract, security and Compose policy.
+- Backend `npm run verify:full` passed 103 suites/650 tests after the pilot corrections. Frontend `npm run verify:full`
+  previously passed 40 files/173 tests and its production build completed all 62 routes. The R04 frontend files add no
+  lint error; the repository still reports 20 pre-existing warnings.
+- Before migration, the dedicated staging database and uploads were backed up at
+  `/opt/weavecarbon-staging/backups/pre-025-20260910T160002Z`. The PostgreSQL dump SHA-256 is
+  `212363afea3b50ad59dac2d1942bf2e466b13e0e5abef25bc3d2d0de832794ab`; the uploads archive SHA-256 is
+  `6ccba7252bef2798061b9cdb1c8c48196a9b043e849935ca41a22914136b1493`. A disposable PostgreSQL 16 restore recovered
+  76 public tables with migration head 024 before it was removed.
+- Migrations 025 and 026 were applied only to `weavecarbon_staging`. The first guarded run correctly exposed that an HS
+  classification change requires a separate confirmation action; the pilot was corrected to exercise that control. The
+  next run exposed the pre-existing output-format constraint, so additive migration 026 was added instead of modifying the
+  already-applied migration 025.
+- The final combined R01/R02/R03/R04 pilot passed all 14 checks with `productionDataTouched=false`. Its retained result is
+  `/opt/weavecarbon-staging/artifacts/vn-customs-handoff-026-20260910T230243Z/result.json`, SHA-256
+  `9f4a65addb1eafafe1e2ea64926c5c853d9b94dee8a4d3d96dbd4d61e8f45bd5`. The issued R04 JSON was reopened from the
+  uploads volume and confirmed to state `notForDirectSubmission=true` and `authorityStatus=NOT_SUBMITTED`.
+- Staging DB/BE/FE are healthy; `/ready`, `/`, `/audit` and `/export` return HTTP 200 and an unauthenticated R04 request
+  returns 401. No staging application error appeared after deployment. Production was not changed and its DB/BE/FE/RAG
+  remain healthy; public `/`, `/audit` and `/export` return HTTP 200.
+- R04 remains `PARTIAL`. The automated and isolated-staging controls are proven, but the exact broker target schema,
+  authentic shipment, qualified review and real broker/authority acknowledgements are still absent.
