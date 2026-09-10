@@ -1,6 +1,6 @@
 # Carrier document and Carbon Annex isolated pilot
 
-This guarded pilot validates R03 controls against PostgreSQL and real files. It creates synthetic
+This guarded pilot validates R03 controls and the dependent R04 broker-handoff controls against PostgreSQL and real files. It creates synthetic
 companies, shipment, carrier evidence, calculation snapshot and export documents. Never run it on
 production or on a database that is not explicitly approved for retained synthetic rows.
 
@@ -8,7 +8,7 @@ production or on a database that is not explicitly approved for retained synthet
 
 - Use a dedicated non-production database and uploads directory.
 - Confirm `NODE_ENV` is not `production`.
-- Apply all migrations through `024_r03_carrier_document_controls.sql`.
+- Apply all migrations through `026_r04_export_document_json_format.sql`.
 - Set the database name guard to the exact value returned by `SELECT current_database()`.
 
 PowerShell example:
@@ -32,8 +32,11 @@ The pilot verifies that:
 - Carbon Annex is clearly supplementary and contains methodology/boundary/factor provenance;
 - a changed shipment seal invalidates readiness; and
 - an explicitly linked replacement version supersedes the old metadata and restores readiness.
+- current issued R01/R02 files are pinned into a non-submittable R04 JSON handoff; and
+- authority events require exact locked evidence, reject tampering/wrong evidence types and remain append-only.
 
-The result is written to `artifacts/carrier-document-pilot/result.json`. CI retains the artifact for
+The result is written to `artifacts/carrier-document-pilot/result.json` and
+`artifacts/vn-customs-handoff-pilot/result.json`. CI retains the artifacts for
 14 days. A pass proves technical controls only. It does not prove that a real carrier issued the file,
 that a signature is genuine, or that the document is legally usable.
 

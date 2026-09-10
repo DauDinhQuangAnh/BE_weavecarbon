@@ -28,6 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
+| Active R04 implementation branch in both repositories | `feat/r04-vn-customs-handoff` |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -42,6 +43,8 @@ This tracker separates four facts that must never be conflated:
 | Frontend R14 signed-sharing/assurance commit | `c52fa9b7fdc1f57405925d77930aaa07864a8aa8` |
 | Backend R03 carrier-document/Carbon Annex commit | `51d568c2c765c59977b11066febe7ed4de27eef3` |
 | Frontend R03 carrier-document/Carbon Annex commit | `9bd4c58f58cfff8b32a2bea580675b170931c751` |
+| Backend R04 broker-handoff technical-gate commit | `0d8cc4ecb68d63bc52d86406e0659b971a0f8038` |
+| Frontend R04 broker-handoff commit | `dbeb7f181f6248834fd89d076cde779bff4c135e` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
 | Backend R01/R02 staging-pilot commit | `002aea9` |
@@ -55,7 +58,7 @@ This tracker separates four facts that must never be conflated:
 | Frontend latest application-bearing production commit | `9bd4c58f58cfff8b32a2bea580675b170931c751` |
 | Production site | `https://weavecarbon.com` |
 | Production state verified at 2026-09-10 | R01/R02 review controls, R14 signed sharing/assurance controls and R03 carrier-document/Carbon Annex controls are deployed from `main`; all production containers are healthy, migrations 001-024 are current, and `/health`, `/`, `/audit` and `/export` return HTTP 200. An unauthenticated structured-carrier API request returns 401. R03 remains `EXTERNAL_DOCUMENT` and R14 remains `PARTIAL` until their real-human/evidence gates pass. Later documentation-only commits may advance a checkout without changing application code. |
-| Isolated staging verified at 2026-09-10 | `/opt/weavecarbon-staging`; backend `7bc8c8947a43e143505d334a72e44d5f99f5a11a`; frontend `9bd4c58f58cfff8b32a2bea580675b170931c751`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migration 024 applied; DB/BE/FE healthy; guarded R03 carrier-document/Carbon Annex pilot passed all 9 gates |
+| Isolated staging verified at 2026-09-11 | `/opt/weavecarbon-staging`; backend source `0d8cc4ecb68d63bc52d86406e0659b971a0f8038`; frontend `dbeb7f181f6248834fd89d076cde779bff4c135e`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migrations through 026 applied; DB/BE/FE healthy; guarded combined R03/R04 pilot passed all 14 checks. This is a synthetic technical gate, not broker or customs acceptance. |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
 Never put server passwords, database credentials, tokens or `.env` values in this file.
@@ -68,6 +71,10 @@ git -C BE_weavecarbon switch main
 git clone https://github.com/DauDinhQuangAnh/weavecarbon.git
 git -C weavecarbon switch main
 ```
+
+While R04 PRs 29/32 are still open, fetch and switch both clones to
+`feat/r04-vn-customs-handoff` before continuing. After merge, use `main` and verify that it contains the R04 commit hashes
+recorded in the table above.
 
 Then give the next AI this instruction:
 
@@ -135,7 +142,7 @@ Known overall checks at the latest feature commits:
 | 1 | Commercial Invoice | Almost every sale shipment | `READY_TO_PILOT` | PDF/XLSX, EORI/VAT, customs value, HS provenance and checksum-bound named review/issue | Real export-operator review against an actual invoice and buyer/destination rules |
 | 2 | Packing List | Normal customs/transport practice | `READY_TO_PILOT` | PDF/XLSX, hierarchy, explicit measurement basis, carrier display and checksum-bound named review/issue | Real warehouse review against the physical package ledger |
 | 3 | B/L, AWB, CMR, CIM or FBL | Depends on transport mode | `EXTERNAL_DOCUMENT` | Structured immutable carrier metadata, exact-file verification, mode/totals/equipment reconciliation and versioned replacement; WeaveCarbon generates only Carbon Annex | Real carrier-document pilot and issuer/authenticity review |
-| 4 | Vietnam export declaration/VNACCS | Normally mandatory | `NOT_STARTED` | Stores declaration number only | Build broker/VNACCS support dataset and response lifecycle |
+| 4 | Vietnam export declaration/VNACCS | Normally mandatory | `PARTIAL` | Versioned internal broker-handoff JSON/XLSX, R01/R02/R03 reconciliation, named review and evidence-backed append-only external events; no VNACCS submission | Obtain and validate an exact broker target schema/code list, then complete a named real-shipment broker pilot |
 | 5 | EU import declaration/SAD/EUCDM | Importer/declarant responsibility | `NOT_STARTED` | No declaration dataset | Build declarant handoff dataset; never label it customs-accepted |
 | 6 | ENS/ICS2 support dataset | Goods entering EU | `PARTIAL` | Basic per-line CSV | Mode/release-specific schema, house/master consignment and schema validation |
 | 7 | EVFTA EUR.1/origin declaration support | Only when claiming preference | `PARTIAL` | Basic Origin Workbook plus locked supporting evidence gate | BOM-origin rules engine and official-form/wording workflow |
@@ -235,7 +242,22 @@ number/container/seal/packages/weights match Invoice and Packing List; Carbon An
 exchange rate/origin/destination; transport; packages/weights; permits/inspection; taxes; acceptance/MRN-like reference,
 amendments and messages.
 
-**Current gap:** only a text declaration reference is stored. No submission is authorised in this phase.
+**Implemented:** additive migration 025 adds a typed shipment customs profile and append-only external-event ledger;
+migration 026 extends the controlled export-document format constraint to permit the R04 JSON artifact. The
+internal `weavecarbon.vn-export-broker-handoff@1.0.0` JSON/XLSX envelope validates the declarant and broker identities,
+customs/procedure/transport/location/invoice/payment codes, non-Vietnam destination, positive exchange rate, 8-digit
+confirmed Vietnam tariff lines, value/currency, line/package weights, permit/inspection decisions and export-duty
+treatment. Readiness requires current issued Commercial Invoice and Packing List plus current confirmed R03 carrier
+metadata; exact supporting/carrier file bytes are checked again before generation and issue. A named
+`customs_declaration_reviewer` approval is checksum-bound. Generated JSON is always marked
+`notForDirectSubmission=true` and `authorityStatus=NOT_SUBMITTED`. Broker/authority events are separate, tenant-bound,
+append-only records pinned to exact issued-document and approved-evidence hashes; authority outcomes accept only a locked
+`customs_authority_response` whose stored bytes still match its SHA-256.
+
+**Remaining:** no broker has yet supplied or approved a real target schema, code lists, validation rules or acknowledgement
+samples. The configurable target-schema identity is mandatory and has no demo fallback, but WeaveCarbon does not claim
+its internal envelope is a VNACCS import message. Procedure/HS/tax/permit decisions still require a qualified customs
+specialist and an authentic shipment pilot. Direct submission remains out of scope.
 
 **Definition of Done:** versioned broker-handoff dataset passes an agreed schema, reconciles against R01/R02/R03, records
 broker/authority response and never claims `AUTHORITY_ACCEPTED` without external evidence.
@@ -540,7 +562,7 @@ Before merging or deploying this branch:
 
 1. Back up PostgreSQL and the uploads directory and verify restoration instructions.
 2. Apply every export/audit migration from `017_shipment_export_workflow.sql` through
-   `024_r03_carrier_document_controls.sql` to staging cloned from a safe schema/data fixture.
+   `026_r04_export_document_json_format.sql` to staging cloned from a safe schema/data fixture.
 3. Run migration rollback/forward compatibility checks appropriate to the environment.
 4. Create one real-like Vietnam-to-EU shipment with more than 20 lines and multiple/partial packages.
 5. Upload and approve a real-like carrier document; fill profile, package and carbon data without placeholders.
@@ -566,6 +588,7 @@ npm run test:migration-snapshots
 npm run test:export-documents-pilot # isolated PostgreSQL only; see docs/EXPORT_DOCUMENTS_PILOT_RUNBOOK.md
 npm run test:audit-bundle-pilot # isolated PostgreSQL only; see docs/AUDIT_PACK_PILOT_RUNBOOK.md
 npm run test:carrier-document-pilot # isolated PostgreSQL only; see docs/CARRIER_DOCUMENT_PILOT_RUNBOOK.md
+npm run test:vn-customs-handoff-pilot # same guarded R03/R04 fixture; see docs/VN_CUSTOMS_HANDOFF_PILOT_RUNBOOK.md
 git diff --check
 ```
 
@@ -597,6 +620,10 @@ Recheck these official sources at the start of the related report work and store
 - CBAM legal text: https://eur-lex.europa.eu/eli/reg/2023/956
 - GHG Protocol standards/guidance: https://ghgprotocol.org/standards-guidance
 - ISO 14067 catalogue entry: https://www.iso.org/standard/71206.html
+- Vietnam customs procedures, Circular 38/2015/TT-BTC official legal database entry:
+  https://vbpl.vn/botaichinh/Pages/vbpq-toanvan.aspx?ItemID=58638
+- Circular 121/2025/TT-BTC amending customs procedures, effective 2026-02-01, official Customs PDF:
+  https://files.customs.gov.vn/CustomsCMS/DONG_NAI/2025/12/26/121_2025_TT_BTC_18_12_2025.pdf
 
 Official sources define legal requirements; this tracker is an engineering control document, not legal advice.
 
@@ -610,22 +637,31 @@ Backend core:
 - `migrations/020_audit_bundle_review_lifecycle.sql`
 - `migrations/021_export_container_hierarchy_pdf.sql`
 - `migrations/022_export_document_business_review.sql`
+- `migrations/024_r03_carrier_document_controls.sql`
+- `migrations/025_r04_vn_customs_broker_handoff.sql`
+- `migrations/026_r04_export_document_json_format.sql`
 - `src/services/exportShipmentService.js`
+- `src/services/vnCustomsHandoffControls.js`
 - `src/services/exportDocumentPdf.js`
 - `src/routes/exportV2.js`
 - `src/utils/simpleXlsx.js`
 - `src/modules/evidence/`
 - `src/modules/reports/`
 - `tests/services/exportShipmentService.test.js`
+- `tests/services/vnCustomsHandoffControls.test.js`
+- `tests/config/vnCustomsHandoffMigrationContract.test.js`
 - `tests/config/exportWorkflowMigrationContract.test.js`
 - `tests/config/exportDocumentBusinessReviewMigrationContract.test.js`
 - `scripts/render-export-document-pdf-qa.js`
 - `docs/EXPORT_WORKFLOW.md`
+- `docs/VN_CUSTOMS_HANDOFF_PILOT_RUNBOOK.md`
 
 Frontend core:
 
 - `components/dashboard/export/ShipmentExportPortal.tsx`
+- `components/dashboard/export/VnCustomsHandoffPanel.tsx`
 - `lib/weave-v2/shipmentExportApi.ts`
+- `lib/weave-v2/shipmentVnCustomsApi.test.ts`
 - `components/dashboard/export/ExportConfigurationPortalV2.tsx`
 - `components/dashboard/cbam/CbamReportSection.tsx`
 - `lib/cbam/applicability.ts`
@@ -1009,3 +1045,54 @@ Backend carbon trace core:
   WeaveCarbon generates only the supplementary Carbon Annex; B/L, FBL, AWB, CMR and CIM must remain authentic
   carrier/forwarder documents. The status may change only after the genuine-document, qualified-operator and named
   approval gate above is completed with exact evidence checksums.
+
+### 2026-09-10 — R04 Vietnam customs broker-handoff implementation
+
+- Status moved from `NOT_STARTED` to `PARTIAL`, not to `READY_TO_ISSUE`. This increment creates a controlled internal
+  broker-handoff envelope and evidence lifecycle; it does not implement a VNACCS client or claim customs acceptance.
+- Regulatory basis identity is stored as `TT38/2015+TT39/2018+TT121/2025@2026-02-01`. The implementation uses official
+  Vietnam legal/customs sources listed in section 11, while exact broker code lists and mapping rules remain an external
+  business dependency and are therefore mandatory configurable values rather than fabricated defaults.
+- Migration 025 adds the shipment customs profile and append-only external-event ledger with tenant-bound composite foreign
+  keys and pinned payload/file/evidence hashes. Backend services, shipment-scoped API routes, OpenAPI request contracts,
+  JSON/XLSX generation and named customs-review role were added. The frontend adds a dedicated R04 panel for profile,
+  reconciliation, evidence upload/lock and event recording.
+- R04 now fails closed unless current issued R01/R02 documents and current confirmed R03 carrier metadata reconcile. It
+  re-reads exact supporting and carrier files before generation/issue. Generated JSON always states
+  `notForDirectSubmission=true` and `authorityStatus=NOT_SUBMITTED`; an authority event requires a locked
+  `customs_authority_response` of the correct type with matching bytes and checksum.
+- Unit, migration-contract, API-client, type and lint checks cover 25-line processing, 8-digit HS codes, conditional
+  permits/inspection/tax fields, issued-support dependencies, explicit non-submission markers, SQL binding, endpoint
+  encoding, wrong evidence type and immutable checksum identities. The enhanced guarded PostgreSQL pilot now exercises
+  R01/R02/R03/R04 together and writes a dedicated R04 artifact.
+- Remaining business gates: obtain an exact broker schema/version and effective code lists, then complete a named,
+  real-shipment customs-specialist/broker review with authentic acknowledgements. Do not merge/deploy or change the status
+  based only on the synthetic technical result recorded below.
+
+### 2026-09-11 — R04 isolated staging technical gate
+
+- Backend `0d8cc4ecb68d63bc52d86406e0659b971a0f8038` and frontend
+  `dbeb7f181f6248834fd89d076cde779bff4c135e` remain on `feat/r04-vn-customs-handoff` in PRs 29 and 32. Both PRs are
+  mergeable and every reported GitHub check passed: backend build, unit, integration, security, syntax/lint and audit;
+  frontend build, tests, type/lint, contract, security and Compose policy.
+- Backend `npm run verify:full` passed 103 suites/650 tests after the pilot corrections. Frontend `npm run verify:full`
+  previously passed 40 files/173 tests and its production build completed all 62 routes. The R04 frontend files add no
+  lint error; the repository still reports 20 pre-existing warnings.
+- Before migration, the dedicated staging database and uploads were backed up at
+  `/opt/weavecarbon-staging/backups/pre-025-20260910T160002Z`. The PostgreSQL dump SHA-256 is
+  `212363afea3b50ad59dac2d1942bf2e466b13e0e5abef25bc3d2d0de832794ab`; the uploads archive SHA-256 is
+  `6ccba7252bef2798061b9cdb1c8c48196a9b043e849935ca41a22914136b1493`. A disposable PostgreSQL 16 restore recovered
+  76 public tables with migration head 024 before it was removed.
+- Migrations 025 and 026 were applied only to `weavecarbon_staging`. The first guarded run correctly exposed that an HS
+  classification change requires a separate confirmation action; the pilot was corrected to exercise that control. The
+  next run exposed the pre-existing output-format constraint, so additive migration 026 was added instead of modifying the
+  already-applied migration 025.
+- The final combined R01/R02/R03/R04 pilot passed all 14 checks with `productionDataTouched=false`. Its retained result is
+  `/opt/weavecarbon-staging/artifacts/vn-customs-handoff-026-20260910T230243Z/result.json`, SHA-256
+  `9f4a65addb1eafafe1e2ea64926c5c853d9b94dee8a4d3d96dbd4d61e8f45bd5`. The issued R04 JSON was reopened from the
+  uploads volume and confirmed to state `notForDirectSubmission=true` and `authorityStatus=NOT_SUBMITTED`.
+- Staging DB/BE/FE are healthy; `/ready`, `/`, `/audit` and `/export` return HTTP 200 and an unauthenticated R04 request
+  returns 401. No staging application error appeared after deployment. Production was not changed and its DB/BE/FE/RAG
+  remain healthy; public `/`, `/audit` and `/export` return HTTP 200.
+- R04 remains `PARTIAL`. The automated and isolated-staging controls are proven, but the exact broker target schema,
+  authentic shipment, qualified review and real broker/authority acknowledgements are still absent.

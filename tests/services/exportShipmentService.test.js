@@ -14,7 +14,9 @@ const { buildSimpleXlsx } = require('../../src/utils/simpleXlsx');
 
 function readySnapshot(lineCount = 1) {
   const snapshot = {
-    shipment: { id: 'shipment-1', referenceNumber: 'VN-EU-1' },
+    shipment: {
+      id: 'shipment-1', referenceNumber: 'VN-EU-1', originCountry: 'VN', destinationCountry: 'FR'
+    },
     profile: {
       invoiceNumber: 'INV-1', invoiceDate: '2026-09-07', poContractId: 'PO-1',
       invoiceIssuePlace: 'Ho Chi Minh City', packingListNumber: 'PL-1', packingListDate: '2026-09-07',
@@ -63,6 +65,23 @@ function readySnapshot(lineCount = 1) {
       lengthCm: 60, widthCm: 40, heightCm: 40,
       contents: Array.from({ length: lineCount }, (_, index) => ({ lineNumber: index + 1, quantity: 10 }))
     }],
+    vnCustomsProfile: {
+      schemaId: 'weavecarbon.vn-export-broker-handoff', schemaVersion: '1.0.0',
+      rulesetVersion: 'R04-VN-CUSTOMS-HANDOFF-2026.09.1',
+      regulatoryBasisVersion: 'TT38/2015+TT39/2018+TT121/2025@2026-02-01',
+      filingPurpose: 'broker_handoff',
+      declarant: { name: 'Exporter', taxId: '0312345678', address: 'HCMC', role: 'exporter' },
+      customsBroker: { name: 'Broker Co', taxId: '0300000001' },
+      customsOfficeCode: '02CI', declarationTypeCode: 'B11', cargoClassificationCode: 'A',
+      transportMethodCode: '1', exitCustomsOfficeCode: '02CI', loadingLocationCode: 'VNSGN',
+      destinationCountryCode: 'FR', invoiceClassificationCode: 'A', invoicePaymentMethodCode: 'TTR',
+      exchangeRate: 25000, permitRequirementStatus: 'not_required', permitReferences: [],
+      inspectionRequirementStatus: 'not_required', inspectionReferences: [],
+      taxTreatment: 'not_subject', exportDutyRate: null, exportDutyAmount: null, taxBasis: '',
+      supportingDocuments: [{ type: 'commercial_invoice' }, { type: 'packing_list' }],
+      brokerTargetSchemaId: 'broker.vnaccs-import', brokerTargetSchemaVersion: '2026.1',
+      declarationNotes: '', metadata: {}
+    },
     carrierDocuments: [{
       id: 'ev-1', type: 'carrier_bill_of_lading', status: 'locked', approvedBy: 'user-1', validTo: null,
       checksumSha256: 'b'.repeat(64), fileSizeBytes: 100,
@@ -87,6 +106,19 @@ function readySnapshot(lineCount = 1) {
     status: 'passed', rulesetVersion: CARRIER_RULESET_VERSION,
     sourceSnapshotSha256: carrierReconciliationSha256(snapshot, snapshot.carrierDocuments[0])
   };
+  const supportingSourceHash = sourceSnapshotSha256(snapshot);
+  snapshot.documents = [
+    {
+      id: 'invoice-doc-1', type: 'commercial_invoice', version: 1, status: 'issued',
+      payloadSha256: 'c'.repeat(64), fileSha256: 'd'.repeat(64),
+      sourceSnapshotSha256: supportingSourceHash, filename: 'invoice.pdf', issuedAt: '2026-09-07T00:00:00Z'
+    },
+    {
+      id: 'packing-doc-1', type: 'packing_list', version: 1, status: 'issued',
+      payloadSha256: 'e'.repeat(64), fileSha256: 'f'.repeat(64),
+      sourceSnapshotSha256: supportingSourceHash, filename: 'packing.pdf', issuedAt: '2026-09-07T00:00:00Z'
+    }
+  ];
   return snapshot;
 }
 
@@ -206,6 +238,24 @@ describe('simple XLSX export', () => {
     expect(packingXml).toMatch(/<v>0\.096<\/v>/);
   });
 
+  test('builds an explicitly non-submittable R04 JSON payload pinned to issued support documents', async () => {
+    const service = createExportShipmentService({ database: {} });
+    const buffer = await service._buildDocumentBuffer('vn_customs_handoff', readySnapshot(2), false, 'json');
+    const dataset = JSON.parse(buffer.toString('utf8'));
+
+    expect(dataset).toMatchObject({
+      authorityStatus: 'NOT_SUBMITTED',
+      notForDirectSubmission: true,
+      schema: { id: 'weavecarbon.vn-export-broker-handoff', version: '1.0.0' }
+    });
+    expect(dataset.goods).toHaveLength(2);
+    expect(dataset.supportingDocuments.controlledIssuedDocuments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'commercial_invoice', fileSha256: 'd'.repeat(64) }),
+      expect.objectContaining({ type: 'packing_list', fileSha256: 'f'.repeat(64) })
+    ]));
+    expect(dataset.reconciliation.status).toBe('passed');
+  });
+
   test.each(['commercial_invoice', 'packing_list'])('creates a printable PDF for %s', async (type) => {
     const service = createExportShipmentService({ database: {} });
     const buffer = await service._buildDocumentBuffer(type, readySnapshot(25), false, 'pdf');
@@ -311,6 +361,9 @@ describe('shipment export persistence safety', () => {
         .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
     };
     const service = createExportShipmentService({ database });
 
@@ -334,6 +387,22 @@ describe('shipment export persistence safety', () => {
     const placeholders = [...sql.matchAll(/\$(\d+)/g)].map((match) => Number(match[1]));
     expect(Math.max(...placeholders)).toBe(values.length);
     expect(values).toHaveLength(41);
+  });
+
+  test('Vietnam customs profile upsert has a bound value for every SQL placeholder', async () => {
+    const database = {
+      query: jest.fn()
+        .mockResolvedValueOnce({ rows: [{ id: shipmentId }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'customs-profile-1', shipment_id: shipmentId }] })
+    };
+    const service = createExportShipmentService({ database });
+
+    await service.upsertVnCustomsProfile(companyId, shipmentId, userId, {});
+
+    const [sql, values] = database.query.mock.calls[1];
+    const placeholders = [...sql.matchAll(/\$(\d+)/g)].map((match) => Number(match[1]));
+    expect(Math.max(...placeholders)).toBe(values.length);
+    expect(values).toHaveLength(32);
   });
 
   test('uses the authenticated user for a new HS confirmation', async () => {
