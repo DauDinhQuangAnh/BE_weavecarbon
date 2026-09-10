@@ -1639,7 +1639,7 @@ class ExportShipmentService {
         ['calculationSnapshot','Calculation snapshot ID'],['calculationVersion','Calculation version'],
         ['methodology','Methodology version'],['boundary','Boundary'],['factorRegistry','Factor registry version'],
         ['factorProvenance','Factor provenance'],['gwpBasis','GWP basis'],['allocationMethod','Allocation method'],
-        ['canonicalInputSha256','Calculation input SHA-256']
+        ['canonicalInputSha256','Canonical input SHA-256']
       ],
       origin_workbook: [
         ['lineNumber','Line'],['sku','SKU'],['description','Description'],['hsCode','HS/CN'],
