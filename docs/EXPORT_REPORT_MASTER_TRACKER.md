@@ -49,10 +49,10 @@ This tracker separates four facts that must never be conflated:
 | Backend R01/R02 business-review commit | `241fd0f39f286b585589bc7e3543d832c4444d4f` |
 | Frontend R01/R02 business-review commit | `a74495460a9a37f6f63bc6ab577738f6b70be815` |
 | Frontend critical dependency patch commit | `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` |
-| Backend latest application-bearing production commit | `241fd0f39f286b585589bc7e3543d832c4444d4f` (production `main` checkout `aceca26d552848c1bb913139b56eeef993d5e611`) |
-| Frontend latest application-bearing production commit | `a74495460a9a37f6f63bc6ab577738f6b70be815` |
+| Backend latest application-bearing production commit | `c9565caf2273745dc1ec2a2a7b7b7595e8b521fb` |
+| Frontend latest application-bearing production commit | `c52fa9b7fdc1f57405925d77930aaa07864a8aa8` |
 | Production site | `https://weavecarbon.com` |
-| Production state verified at 2026-09-10 | R01/R02 checksum-bound business review controls are deployed from `main`; all production containers are healthy, migrations 001-022 are current, `/health` is healthy and `/` returns HTTP 200. Later documentation-only commits may advance a checkout without changing application code. |
+| Production state verified at 2026-09-10 | R01/R02 review controls and R14 signed sharing/assurance controls are deployed from `main`; all production containers are healthy, migrations 001-023 are current, and `/health`, `/` and `/audit` return HTTP 200. R14 remains `PARTIAL` until the real-human/evidence gate passes. Later documentation-only commits may advance a checkout without changing application code. |
 | Isolated staging verified at 2026-09-10 | `/opt/weavecarbon-staging`; backend `c79c1f358f4eb4196c1b072f7d6e70add3fe4ef1`; frontend `c52fa9b7fdc1f57405925d77930aaa07864a8aa8`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migration 023 applied; DB/BE/FE healthy; expanded 24-check signed-share/assurance pilot passed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
@@ -422,14 +422,14 @@ QA/QC, approvals/exceptions; assumptions/allocation/uncertainty/change history; 
 - The frontend now has a structured multi-row QA exception editor, explicit signature acknowledgement, one-time share-token
   handling, revocation controls and append-only assurance entry tied to eligible evidence.
 
-**Remaining:** merge and deploy the staging-accepted technical controls. R14 still requires a representative real-evidence
-pack, two distinct named users to perform review and internal issue, and an authentic external
+**Remaining:** R14 still requires a representative real-evidence pack, two distinct named users to perform review and
+internal issue, and an authentic external
 statement/provider/scope/checksum validation before any external-assurance or legal-usability claim.
 
 **Definition of Done:** production fails closed without a real product/calculation/evidence; no sample fallback; raw AD x EF
 and units are preserved; lock/approval comes from backend state; server stores a checksummed manifest and evidence bundle;
-missing evidence and assurance are visibly disclosed. The technical gate still requires staging and production verification;
-the assurance gate additionally requires authentic third-party evidence and named human review.
+missing evidence and assurance are visibly disclosed. The technical staging/production gate passed on 2026-09-10; the
+assurance gate additionally requires authentic third-party evidence and named human review.
 
 ### R15 — Apparel & Footwear PEF/PEFCR
 
@@ -932,7 +932,21 @@ Backend carbon trace core:
   share URL is retained in the artifact.
 - Staging DB, BE and FE are healthy; `/ready`, `/` and `/audit` return HTTP 200 and an invalid public share returns 404.
   The staging FE image is `sha256:4399c0bf5acdd88bdeeb248d16dc0c9d12e789d38963c670569838b2e772bbf46`.
-- Passing this synthetic technical gate does not establish independent assurance. R14 remains `PARTIAL`. Exact next release
-  gate: take a fresh production backup/restore drill, pass branch CI, fast-forward both repositories, verify migration 023
-  and production health. Exact business gate: use authentic evidence, two distinct named human actors and an authentic
-  third-party statement before changing the status or presenting an external-assurance conclusion.
+- Immediately before the `main` merge, production state was captured under
+  `/opt/weavecarbon/FE/backups/state-20260910T000223Z`. Database SHA-256 is
+  `724555c0d92cd9215743175cdf751bba2f8c9bbc3eaabe1b47a878344a7cdfb8`, uploads SHA-256 is
+  `5e9942c65a71de04d7f110bec101478eda6344a3bfaeba6ca76549b151d6714b`, and RAG SHA-256 is
+  `05fa68a48bb3473b19a27484ebd52fb3e5ae24854281c0b4dae8ae02e6e11db8`. The full isolated drill report at
+  `/opt/weavecarbon/FE/restore-drills/weavecarbon_restore_20260910_000301/restore-report.txt` records `PASS`,
+  `production_data_touched=false`, RPO 36 seconds and RTO 22 seconds.
+- Backend was fast-forwarded to `main` at `c9565caf2273745dc1ec2a2a7b7b7595e8b521fb`; CI run `34419712072`
+  and deploy run `34419764716` passed. Production applied migration 023 and the backend container is healthy. Frontend was
+  fast-forwarded to `main` at `c52fa9b7fdc1f57405925d77930aaa07864a8aa8`; CI run `34420076166` and
+  deploy run `34420176681` passed, and the frontend container is healthy.
+- Final production smoke checks returned HTTP 200 from `/health`, `/` and `/audit`; an invalid public share returned the
+  controlled `AUDIT_SHARE_NOT_FOUND` response with HTTP 404. Database, backend, RAG and frontend containers were healthy;
+  recent BE/FE logs contained no fatal, unhandled or migration failure.
+- Passing these synthetic technical gates does not establish independent assurance. R14 remains `PARTIAL`. Exact business
+  gate: use authentic evidence, two distinct named human actors and an authentic third-party statement before changing the
+  status or presenting an external-assurance conclusion. The next technical report increment is R03 carrier evidence and
+  Carbon Annex validation, while the real R01/R02/R14 human pilots can proceed independently when source data is available.
