@@ -278,6 +278,14 @@ async function run() {
     hsCodeSource: 'Synthetic AHTN fixture', hsCodeRuleset: 'AHTN-2022-PILOT',
     hsCodeEffectiveDate: '2026-01-01', hsCodeConfirmed: true
   }, ids.userId);
+  // Changing the code or its classification provenance deliberately clears any
+  // prior approval. Confirm the now-stable classification in a separate action,
+  // matching the production two-step review control.
+  const confirmedLine = await service.updateLine(ids.companyId, ids.shipmentId, lines[0].id, {
+    hsCodeConfirmed: true
+  }, ids.userId);
+  assert.equal(confirmedLine.hsCodeConfirmed, true);
+  check('hs_classification_confirmed_after_separate_review_action');
 
   const container = await service.createContainer(ids.companyId, ids.shipmentId, {
     containerNumber: 'TCLU1234567', sealNumber: 'SEAL-ORIGINAL', equipmentType: '40HC',
@@ -337,7 +345,10 @@ async function run() {
     ['packing_list', 'warehouse_reviewer']
   ]) {
     const draft = await service.createDocumentJob(ids.companyId, ids.shipmentId, ids.userId, type, { outputFormat: 'xlsx' });
-    assert.ok(!draft.blocked, `${type} support document generation was blocked.`);
+    const blockers = draft.readiness?.documents?.find((item) => item.type === type)?.requirements
+      ?.filter((item) => item.status !== 'ready')
+      ?.map((item) => `${item.code}:${item.status}`) || [];
+    assert.ok(!draft.blocked, `${type} support document generation was blocked: ${blockers.join(', ') || draft.code || 'unknown'}.`);
     const review = await service.reviewDocument(ids.companyId, ids.shipmentId, draft.id, ids.userId, {
       reviewerRole,
       decision: 'approved',
