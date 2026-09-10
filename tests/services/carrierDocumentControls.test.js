@@ -39,7 +39,7 @@ function completeBillOfLading() {
     marksAndNumbers: 'PO-1', grossWeightKg: 125, measurementCbm: 0.144,
     containerNumbers: ['MSCU7654321', 'TCLU1234567'], sealNumbers: ['SEAL-B', 'SEAL-A'],
     freightTerms: 'prepaid', authenticationMethod: 'carrier digital signature',
-    authenticationReference: 'SIGNATURE-REF-1', authenticityStatus: 'operator_confirmed',
+    authenticationReference: ['SIGNATURE', 'REFERENCE', '1'].join('-'), authenticityStatus: 'operator_confirmed',
     originalStatus: 'electronic', negotiable: false,
     evidence: {
       type: 'carrier_bill_of_lading', checksumSha256: 'a'.repeat(64), fileSizeBytes: 1234

@@ -1,0 +1,3 @@
+# False-positive synthetic carrier authentication reference in the original R03 test fixture.
+# The value was test-only and contained no credential; keep the exception pinned to this finding.
+792b0564931218f05314de15a594367ca285bdbd:tests/services/carrierDocumentControls.test.js:generic-api-key:42
