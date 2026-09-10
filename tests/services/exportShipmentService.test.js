@@ -178,7 +178,7 @@ describe('simple XLSX export', () => {
   test.each([
     ['commercial_invoice', ['Line value', 'Unit price', 'Invoice total', 'Payment terms', 'Issue place', 'Style', 'Lot']],
     ['packing_list', ['Container', 'Seal', 'Pallet', 'Package', 'Marks', 'Net kg', 'Gross kg', 'L x W x H cm', 'CBM', 'Total quantity']],
-    ['carbon_annex', ['Embedded kg CO2e', 'Carrier document', 'Container']]
+    ['carbon_annex', ['Embedded kg CO2e', 'Carrier document', 'Container', 'Methodology version', 'Factor registry version']]
   ])('uses document-specific columns for %s', async (type, labels) => {
     const service = createExportShipmentService({ database: {} });
     const buffer = await service._buildDocumentBuffer(type, readySnapshot(2), false);

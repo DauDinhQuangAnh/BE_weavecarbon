@@ -1637,7 +1637,7 @@ class ExportShipmentService {
         ['carrierDocumentNo','Carrier document'],['carrierIssuer','Carrier issuer'],
         ['carrierFileSha256','Carrier file SHA-256'],['containerNo','Container'],
         ['calculationSnapshot','Calculation snapshot ID'],['calculationVersion','Calculation version'],
-        ['methodology','Methodology'],['boundary','Boundary'],['factorRegistry','Factor registry'],
+        ['methodology','Methodology version'],['boundary','Boundary'],['factorRegistry','Factor registry version'],
         ['factorProvenance','Factor provenance'],['gwpBasis','GWP basis'],['allocationMethod','Allocation method'],
         ['canonicalInputSha256','Calculation input SHA-256']
       ],
