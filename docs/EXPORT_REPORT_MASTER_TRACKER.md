@@ -40,6 +40,8 @@ This tracker separates four facts that must never be conflated:
 | Backend R14 isolated-pilot commit | `e2c03ad50e0ff9856d9c64cd4843bc175b0080d3` |
 | Backend R14 signed-sharing/assurance commit | `c79c1f358f4eb4196c1b072f7d6e70add3fe4ef1` |
 | Frontend R14 signed-sharing/assurance commit | `c52fa9b7fdc1f57405925d77930aaa07864a8aa8` |
+| Backend R03 carrier-document/Carbon Annex commit | `51d568c2c765c59977b11066febe7ed4de27eef3` |
+| Frontend R03 carrier-document/Carbon Annex commit | `9bd4c58f58cfff8b32a2bea580675b170931c751` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
 | Backend R01/R02 staging-pilot commit | `002aea9` |
@@ -49,10 +51,10 @@ This tracker separates four facts that must never be conflated:
 | Backend R01/R02 business-review commit | `241fd0f39f286b585589bc7e3543d832c4444d4f` |
 | Frontend R01/R02 business-review commit | `a74495460a9a37f6f63bc6ab577738f6b70be815` |
 | Frontend critical dependency patch commit | `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` |
-| Backend latest application-bearing production commit | `c9565caf2273745dc1ec2a2a7b7b7595e8b521fb` |
-| Frontend latest application-bearing production commit | `c52fa9b7fdc1f57405925d77930aaa07864a8aa8` |
+| Backend latest application-bearing production commit | `51d568c2c765c59977b11066febe7ed4de27eef3` |
+| Frontend latest application-bearing production commit | `9bd4c58f58cfff8b32a2bea580675b170931c751` |
 | Production site | `https://weavecarbon.com` |
-| Production state verified at 2026-09-10 | R01/R02 review controls and R14 signed sharing/assurance controls are deployed from `main`; all production containers are healthy, migrations 001-023 are current, and `/health`, `/` and `/audit` return HTTP 200. R14 remains `PARTIAL` until the real-human/evidence gate passes. Later documentation-only commits may advance a checkout without changing application code. |
+| Production state verified at 2026-09-10 | R01/R02 review controls, R14 signed sharing/assurance controls and R03 carrier-document/Carbon Annex controls are deployed from `main`; all production containers are healthy, migrations 001-024 are current, and `/health`, `/`, `/audit` and `/export` return HTTP 200. An unauthenticated structured-carrier API request returns 401. R03 remains `EXTERNAL_DOCUMENT` and R14 remains `PARTIAL` until their real-human/evidence gates pass. Later documentation-only commits may advance a checkout without changing application code. |
 | Isolated staging verified at 2026-09-10 | `/opt/weavecarbon-staging`; backend `7bc8c8947a43e143505d334a72e44d5f99f5a11a`; frontend `9bd4c58f58cfff8b32a2bea580675b170931c751`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migration 024 applied; DB/BE/FE healthy; guarded R03 carrier-document/Carbon Annex pilot passed all 9 gates |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
@@ -986,3 +988,24 @@ Backend carbon trace core:
 - This does not make a B/L/AWB/CMR/CIM/FBL legally issued by WeaveCarbon. R03 stays `EXTERNAL_DOCUMENT`. Exact business
   gate: a qualified operator must process a genuine carrier/forwarder document, independently verify issuer/authentication
   and original status, reconcile it with the real R01/R02 dossier and record the named decision and exact checksums.
+
+### 2026-09-10 — R03 production rollout
+
+- Immediately before the `main` merge, production was backed up under
+  `/opt/weavecarbon/FE/backups/state-20260910T145029Z`. Database SHA-256 is
+  `753942eecaf4a8c2134ddf0e4967156873259f4b199c6a942c15f279670be77d`, uploads SHA-256 is
+  `5e9942c65a71de04d7f110bec101478eda6344a3bfaeba6ca76549b151d6714b`, and RAG SHA-256 is
+  `84435011f2ec0a7818b65f60ac1bd07cf83ff1c83c07fcaeaebaed738c2a267b`. The isolated full restore report at
+  `/opt/weavecarbon/FE/restore-drills/weavecarbon_restore_20260910_145044/restore-report.txt` records `PASS`,
+  `production_data_touched=false`, RPO 14 seconds and RTO 21 seconds.
+- Backend was fast-forwarded to `main` at `51d568c2c765c59977b11066febe7ed4de27eef3`; main CI run
+  `34491903707` and deploy run `34491977500` passed. Frontend was fast-forwarded to `main` at
+  `9bd4c58f58cfff8b32a2bea580675b170931c751`; main CI run `34492210152` and deploy run `34492350288`
+  passed. Both production checkouts matched these exact SHAs at acceptance time.
+- Production applied `024_r03_carrier_document_controls.sql`. Database, backend, frontend and RAG containers were
+  healthy. `/health`, `/`, `/audit` and `/export` returned HTTP 200; an unauthenticated request to the structured
+  carrier-document API returned 401. The recent backend/frontend fatal, unhandled and migration-failure scan was empty.
+- R03 technical controls are therefore deployed, but its legal/business status remains `EXTERNAL_DOCUMENT`.
+  WeaveCarbon generates only the supplementary Carbon Annex; B/L, FBL, AWB, CMR and CIM must remain authentic
+  carrier/forwarder documents. The status may change only after the genuine-document, qualified-operator and named
+  approval gate above is completed with exact evidence checksums.
