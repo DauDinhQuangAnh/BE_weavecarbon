@@ -53,7 +53,7 @@ This tracker separates four facts that must never be conflated:
 | Frontend latest application-bearing production commit | `c52fa9b7fdc1f57405925d77930aaa07864a8aa8` |
 | Production site | `https://weavecarbon.com` |
 | Production state verified at 2026-09-10 | R01/R02 review controls and R14 signed sharing/assurance controls are deployed from `main`; all production containers are healthy, migrations 001-023 are current, and `/health`, `/` and `/audit` return HTTP 200. R14 remains `PARTIAL` until the real-human/evidence gate passes. Later documentation-only commits may advance a checkout without changing application code. |
-| Isolated staging verified at 2026-09-10 | `/opt/weavecarbon-staging`; backend `c79c1f358f4eb4196c1b072f7d6e70add3fe4ef1`; frontend `c52fa9b7fdc1f57405925d77930aaa07864a8aa8`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migration 023 applied; DB/BE/FE healthy; expanded 24-check signed-share/assurance pilot passed |
+| Isolated staging verified at 2026-09-10 | `/opt/weavecarbon-staging`; backend `7bc8c8947a43e143505d334a72e44d5f99f5a11a`; frontend `9bd4c58f58cfff8b32a2bea580675b170931c751`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migration 024 applied; DB/BE/FE healthy; guarded R03 carrier-document/Carbon Annex pilot passed all 9 gates |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
 Never put server passwords, database credentials, tokens or `.env` values in this file.
@@ -115,8 +115,8 @@ The report increment merged to `main` completed the shared shipment-document fou
 
 Known overall checks at the latest feature commits:
 
-- Backend: 96/96 suites and 605/605 tests passed; `npm run verify:full` passed.
-- Frontend: 38/38 files and 167/167 tests passed; `npm run check` and production build passed.
+- Backend: 101/101 suites and 638/638 tests passed; `npm run verify:full` passed.
+- Frontend: 39/39 files and 171/171 tests passed; `npm run check` and the 62-page production build passed.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
@@ -958,3 +958,31 @@ Backend carbon trace core:
   gate: use authentic evidence, two distinct named human actors and an authentic third-party statement before changing the
   status or presenting an external-assurance conclusion. The next technical report increment is R03 carrier evidence and
   Carbon Annex validation, while the real R01/R02/R14 human pilots can proceed independently when source data is available.
+
+### 2026-09-10 — R03 carrier-document and Carbon Annex staging gate
+
+- Backend feature head `7bc8c8947a43e143505d334a72e44d5f99f5a11a` implements migration 024, structured
+  carrier-document lifecycle/reconciliation, byte-level evidence verification and authoritative Carbon Annex provenance.
+  Frontend feature head `9bd4c58f58cfff8b32a2bea580675b170931c751` implements upload-to-draft, mode-specific
+  metadata, live reconciliation, explicit confirmation and replacement controls. Both worktrees were clean after push.
+- Local release gates passed: backend `npm run verify:full` with 101 suites/638 tests; frontend `npm run verify:full`
+  with 39 files/171 tests and its 62-page production build. The 20 frontend warnings pre-date this increment; the changed
+  carrier-document files produced no lint error.
+- Isolated staging was backed up before migration under
+  `/opt/weavecarbon-staging/backups/pre-024-20260910T134246Z`. PostgreSQL dump SHA-256 is
+  `51337ad8b272e0244c115761a04859c4eb8dbcbf6d81adec5b338bf6b3cdcbf5`; uploads archive SHA-256 is
+  `ebe0f4f6f2044f4abeab3dcdd75551fe3945d1883d23ee8ef18dbff83a1b13fa`. A corrected disposable PostgreSQL 16
+  restore drill loaded 75 public tables with migration 023 as the backed-up head; the temporary container was removed.
+- Migration 024 applied to the dedicated `weavecarbon_staging` database. The final guarded pilot artifact is
+  `/opt/weavecarbon-staging/artifacts/carrier-document-pilot-024-20260910T135728Z/carrier-document-pilot/result.json`,
+  SHA-256 `f37a7bb8afcd04d77e2c4bb826151b3a4e55c8a77126ff23372ae5f0336764393`. It records `passed`,
+  `productionDataTouched=false` and all 9 checks: calculation provenance, 39-field reconciliation, tamper blocking,
+  immutability/tenant isolation, Carbon Annex issue, stale-seal blocking and versioned replacement.
+- The first two pilot attempts deliberately remained failed and exposed ambiguous XLSX headings. The implementation was
+  corrected to label methodology/factor registry as versions and to identify the canonical input SHA-256; the final pilot
+  passed without relaxing its assertions.
+- Staging database, backend and frontend are healthy; `/ready`, `/` and `/audit` return HTTP 200. An unauthenticated carrier
+  API call returns 401 rather than exposing data. Production remained HTTP 200 with clean production checkouts throughout.
+- This does not make a B/L/AWB/CMR/CIM/FBL legally issued by WeaveCarbon. R03 stays `EXTERNAL_DOCUMENT`. Exact business
+  gate: a qualified operator must process a genuine carrier/forwarder document, independently verify issuer/authentication
+  and original status, reconcile it with the real R01/R02 dossier and record the named decision and exact checksums.
