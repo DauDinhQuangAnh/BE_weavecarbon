@@ -38,6 +38,8 @@ This tracker separates four facts that must never be conflated:
 | Backend R14 evidence-review commit | `acec186b82ea7ff8691298e16af7c76793ddc6c7` |
 | Frontend R14 evidence-review commit | `56f2bf07afa3f455473502808d324e85411ca890` |
 | Backend R14 isolated-pilot commit | `e2c03ad50e0ff9856d9c64cd4843bc175b0080d3` |
+| Backend R14 signed-sharing/assurance commit | `c79c1f358f4eb4196c1b072f7d6e70add3fe4ef1` |
+| Frontend R14 signed-sharing/assurance commit | `c52fa9b7fdc1f57405925d77930aaa07864a8aa8` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
 | Backend R01/R02 staging-pilot commit | `002aea9` |
@@ -51,7 +53,7 @@ This tracker separates four facts that must never be conflated:
 | Frontend latest application-bearing production commit | `a74495460a9a37f6f63bc6ab577738f6b70be815` |
 | Production site | `https://weavecarbon.com` |
 | Production state verified at 2026-09-10 | R01/R02 checksum-bound business review controls are deployed from `main`; all production containers are healthy, migrations 001-022 are current, `/health` is healthy and `/` returns HTTP 200. Later documentation-only commits may advance a checkout without changing application code. |
-| Isolated staging verified at 2026-09-10 | `/opt/weavecarbon-staging`; backend `aceca26d552848c1bb913139b56eeef993d5e611`; frontend `a74495460a9a37f6f63bc6ab577738f6b70be815`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migration 022 applied; DB/BE/FE healthy; guarded checksum-bound two-container PDF/XLSX pilot passed |
+| Isolated staging verified at 2026-09-10 | `/opt/weavecarbon-staging`; backend `c79c1f358f4eb4196c1b072f7d6e70add3fe4ef1`; frontend `c52fa9b7fdc1f57405925d77930aaa07864a8aa8`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migration 023 applied; DB/BE/FE healthy; expanded 24-check signed-share/assurance pilot passed |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
 Never put server passwords, database credentials, tokens or `.env` values in this file.
@@ -405,7 +407,7 @@ QA/QC, approvals/exceptions; assumptions/allocation/uncertainty/change history; 
 - The machine-readable result is uploaded as a CI artifact. See `docs/AUDIT_PACK_PILOT_RUNBOOK.md` for safety guards,
   execution and interpretation.
 
-**Signed delivery and assurance-record increment implemented (pending staging):**
+**Signed delivery and assurance-record increment implemented and accepted on isolated staging:**
 
 - Migration 023 adds reviewer/signer identity snapshots, complete Ed25519 attestation fields, checksum-bound expiring share
   records and append-only external-assurance records. Only the opaque share token's SHA-256 is stored.
@@ -420,9 +422,9 @@ QA/QC, approvals/exceptions; assumptions/allocation/uncertainty/change history; 
 - The frontend now has a structured multi-row QA exception editor, explicit signature acknowledgement, one-time share-token
   handling, revocation controls and append-only assurance entry tied to eligible evidence.
 
-**Remaining:** pass migration 023, the expanded signed-share/assurance pilot and restore gate on isolated staging, then merge
-and deploy the technical controls. R14 still requires a representative real-evidence pack, a named reviewer decision and an
-authentic external statement/provider/scope/checksum validation before any external-assurance or legal-usability claim.
+**Remaining:** merge and deploy the staging-accepted technical controls. R14 still requires a representative real-evidence
+pack, two distinct named users to perform review and internal issue, and an authentic external
+statement/provider/scope/checksum validation before any external-assurance or legal-usability claim.
 
 **Definition of Done:** production fails closed without a real product/calculation/evidence; no sample fallback; raw AD x EF
 and units are preserved; lock/approval comes from backend state; server stores a checksummed manifest and evidence bundle;
@@ -908,3 +910,29 @@ Backend carbon trace core:
   recorded against those exact payload, snapshot and file checksums.
 - Exact next business gate: enter one real Vietnam-to-EU shipment, attach its approved trade and packing evidence, generate
   both formats, reconcile values/quantities/weights/packages with the source records, and collect the two named decisions.
+
+### 2026-09-10 — R14 signed Audit Pack delivery and assurance staging gate
+
+- Backend commit `c79c1f358f4eb4196c1b072f7d6e70add3fe4ef1` adds migration 023, Ed25519-bound internal
+  attestations, checksum-bound expiring/revocable download links, append-only external-assurance records and the expanded
+  guarded pilot. Frontend commit `c52fa9b7fdc1f57405925d77930aaa07864a8aa8` adds structured QA exceptions,
+  explicit signature acknowledgement, one-time token handling, link revocation and evidence-bound assurance entry.
+- Local gates passed before staging: backend `npm run verify:full` with 99 suites/624 tests; frontend `npm run verify:full`
+  and production build. Frontend retained 20 pre-existing warnings and introduced no warning in the modified Audit files.
+- Isolated staging was backed up before migration under
+  `/opt/weavecarbon-staging/backups/pre-023-20260909T234547Z`. PostgreSQL dump SHA-256 is
+  `e0a9513110a5c1103a53617f63fcb5ad618dfa5f524eb80678bad84e12988319`; uploads archive SHA-256 is
+  `1cfe74fe407f7e3a9bcf2726e7cf92d28e74070c1b12c9883f7482f8b89bc13d`. A disposable PostgreSQL
+  restore loaded 72 public tables and the uploads archive passed its integrity check; the disposable resources were removed.
+- Migration 023 applied successfully. The expanded pilot artifact is
+  `/opt/weavecarbon-staging/artifacts/audit-pilot-023-20260909T235131Z/result.json`, SHA-256
+  `fb61f937f76801c403dce51ddce7bb85c695451f428ab9bd00b9e887430f65e4`. It records `passed`,
+  `productionDataTouched=false`, 24 checks, immutable signed issuance, one-time/revoked/superseded share behaviour,
+  evidence-bound assurance, tenant isolation, database immutability and existing-queue compatibility. No share token or
+  share URL is retained in the artifact.
+- Staging DB, BE and FE are healthy; `/ready`, `/` and `/audit` return HTTP 200 and an invalid public share returns 404.
+  The staging FE image is `sha256:4399c0bf5acdd88bdeeb248d16dc0c9d12e789d38963c670569838b2e772bbf46`.
+- Passing this synthetic technical gate does not establish independent assurance. R14 remains `PARTIAL`. Exact next release
+  gate: take a fresh production backup/restore drill, pass branch CI, fast-forward both repositories, verify migration 023
+  and production health. Exact business gate: use authentic evidence, two distinct named human actors and an authentic
+  third-party statement before changing the status or presenting an external-assurance conclusion.
