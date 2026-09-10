@@ -11,11 +11,14 @@ products belong to a shipment.
 - `superseded`: a newer version of the same document type was issued.
 - `blocked`: mandatory shipment data or approved evidence is missing.
 
-`Carbon Annex` is supplementary data. It is never a carrier-issued bill of lading, air
-waybill or CMR. Carrier documents must be uploaded through `/api/evidence/upload` with a
-`shipmentId`, then approved/locked before Carbon Annex or ICS2 support data can be issued.
-An uploaded file alone never satisfies readiness. The approval identity and validity period
-are retained with the evidence record.
+`Carbon Annex` is supplementary data. It is never a carrier-issued bill of lading, FBL, air
+waybill, CMR or CIM. Carrier documents must be uploaded through `/api/evidence/upload` with a
+`shipmentId`, then linked to structured carrier metadata. A company administrator must explicitly
+confirm the metadata after all mode-specific fields, parties, route, packages, weights, measurement,
+container and seal values reconcile with the live shipment. Confirmation rereads the exact stored
+file and verifies its size and SHA-256 before locking it. An uploaded or manually locked file alone
+never satisfies readiness. A changed shipment makes the saved reconciliation stale and requires a
+replacement carrier-document version.
 
 Commercial Invoice and Packing List require a named, append-only business review before issue.
 Only a company administrator may record the workflow decision. Commercial Invoice requires the
@@ -44,6 +47,9 @@ and gross weights are reconciled, and CBM is calculated using that declared basi
 - `POST /api/export/shipments/:shipmentId/lines/sync`
 - `POST|PATCH|DELETE /api/export/shipments/:shipmentId/lines[/:lineId]`
 - `POST|PATCH|DELETE /api/export/shipments/:shipmentId/packages[/:packageId]`
+- `POST|PATCH|DELETE /api/export/shipments/:shipmentId/carrier-documents[/:carrierDocumentId]`
+- `GET /api/export/shipments/:shipmentId/carrier-documents/:carrierDocumentId/reconciliation`
+- `POST /api/export/shipments/:shipmentId/carrier-documents/:carrierDocumentId/confirm`
 - `GET /api/export/shipments/:shipmentId/readiness`
 - `POST /api/export/shipments/:shipmentId/documents/:type/generate`
 - `GET|POST /api/export/shipments/:shipmentId/documents/:id/reviews`
@@ -55,10 +61,10 @@ Generated files use the existing durable report queue and `/api/reports/:id/stat
 ## Release checklist
 
 1. Back up PostgreSQL and the uploads directory.
-2. Apply migrations 017 through `022_export_document_business_review.sql` in staging.
+2. Apply migrations 017 through `024_r03_carrier_document_controls.sql` in staging.
 3. Create a Vietnam-to-EU shipment with more than 20 lines.
 4. Complete parties, invoice, Incoterm, EORI, ports, line prices/weights and packages.
-5. Upload and lock a real carrier document linked to the shipment.
+5. Upload a real carrier document, enter/confirm its structured metadata and obtain a passing current reconciliation.
 6. Fill package marks/dimensions and allocate the exact quantity of each goods line.
 7. Confirm readiness, generate each applicable document, download the controlled copy, record the
    required named review, then issue it and verify that approved and issued SHA-256 values are identical.

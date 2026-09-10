@@ -5,8 +5,15 @@ const pool = require('../config/database');
 const { UPLOADS_ROOT } = require('../config/runtime');
 const { buildSimpleXlsx } = require('../utils/simpleXlsx');
 const { buildExportDocumentPdf } = require('./exportDocumentPdf');
+const {
+  DOCUMENT_TYPES: CARRIER_DOCUMENT_TYPES,
+  TRANSPORT_MODES: CARRIER_TRANSPORT_MODES,
+  normalizeCarrierDocument,
+  validateCarrierDocument
+} = require('./carrierDocumentControls');
 
-const RULESET_VERSION = 'VN-EU-TEXTILE-2026.09.2';
+const RULESET_VERSION = 'VN-EU-TEXTILE-2026.09.3';
+const CARRIER_RULESET_VERSION = 'R03-CARRIER-RECONCILIATION-2026.09.1';
 const DOCUMENT_TYPES = new Set([
   'commercial_invoice', 'packing_list', 'carbon_annex', 'origin_workbook', 'ics2_dataset'
 ]);
@@ -18,7 +25,10 @@ const DOCUMENT_FORMATS = {
   ics2_dataset: new Set(['csv'])
 };
 const CORE_DOCUMENT_TYPES = ['commercial_invoice', 'packing_list', 'carbon_annex', 'ics2_dataset'];
-const CARRIER_EVIDENCE_TYPES = ['bill_of_lading', 'carrier_bill_of_lading', 'air_waybill', 'awb', 'cmr'];
+const CARRIER_EVIDENCE_TYPES = [
+  'bill_of_lading', 'carrier_bill_of_lading', 'fbl', 'carrier_fbl',
+  'air_waybill', 'airway_bill', 'awb', 'cmr', 'carrier_cmr', 'cim', 'carrier_cim'
+];
 const INCOTERMS_2020 = new Set(['EXW', 'FCA', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP', 'FAS', 'FOB', 'CFR', 'CIF']);
 const TRANSPORT_MODES = new Set(['sea', 'air', 'road', 'rail', 'multimodal']);
 const EU_COUNTRY_CODES = new Set([
@@ -31,6 +41,11 @@ const REVIEW_ROLE_BY_DOCUMENT = {
 };
 const REVIEW_DECISIONS = new Set(['approved', 'rejected', 'changes_requested']);
 const MEASUREMENT_BASES = new Set(['per_package', 'group_total']);
+const CARRIER_CONTRACT_LEVELS = new Set(['master', 'house', 'direct']);
+const CARRIER_METADATA_SOURCES = new Set(['manual', 'ocr_confirmed', 'carrier_api']);
+const CARRIER_AUTHENTICITY_STATUSES = new Set(['unverified', 'operator_confirmed', 'issuer_verified', 'rejected']);
+const CARRIER_ORIGINAL_STATUSES = new Set(['original', 'copy', 'electronic', 'sea_waybill', 'non_negotiable', 'unknown']);
+const CARRIER_FREIGHT_TERMS = new Set(['', 'prepaid', 'collect', 'other']);
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Versioned, conservative heading-level gate. It deliberately excludes textile/apparel/footwear
@@ -169,6 +184,19 @@ function lineFromRow(row) {
     unit: row.unit, unitPrice: numberOrNull(row.unit_price), currency: row.currency || '',
     netWeightKg: numberOrNull(row.net_weight_kg), grossWeightKg: numberOrNull(row.gross_weight_kg),
     embeddedCo2eKg: numberOrNull(row.embedded_co2e_kg), packageRefs: row.package_refs || [],
+    carbonAuthority: row.carbon_snapshot_id ? {
+      authoritative: true,
+      snapshotId: row.carbon_snapshot_id,
+      snapshotVersion: numberOrNull(row.carbon_snapshot_version),
+      engineVersion: row.carbon_engine_version || '',
+      methodologyVersion: row.carbon_methodology_version || '',
+      factorRegistryVersion: row.carbon_factor_registry_version || '',
+      gwpBasis: row.carbon_gwp_basis || '',
+      boundary: row.carbon_boundary || '',
+      canonicalInputHash: row.carbon_canonical_input_hash || '',
+      factorSnapshot: row.carbon_factor_snapshot || [],
+      allocationMethod: row.carbon_allocation_method || ''
+    } : null,
     metadata: row.metadata || {}
   };
 }
@@ -196,6 +224,115 @@ function containerFromRow(row) {
     marksAndNumbers: row.marks_and_numbers || '', tareWeightKg: numberOrNull(row.tare_weight_kg),
     maxGrossWeightKg: numberOrNull(row.max_gross_weight_kg), metadata: row.metadata || {}
   };
+}
+
+function carrierDocumentFromRow(row) {
+  const value = row.carrier_metadata || null;
+  const reconciliation = row.carrier_reconciliation || null;
+  const evidence = {
+    id: row.id,
+    type: row.evidence_type,
+    name: row.original_filename || row.document_name,
+    status: row.status,
+    validFrom: dateOnly(row.valid_from),
+    validTo: dateOnly(row.valid_to),
+    checksumSha256: row.checksum_sha256 || null,
+    fileSizeBytes: Number(row.file_size_bytes || 0),
+    mimeType: row.mime_type || null,
+    uploadedAt: row.uploaded_at,
+    approvedAt: row.locked_at,
+    approvedBy: row.approved_by,
+    approvalNote: row.approval_note
+  };
+  if (!value) return { ...evidence, structured: null, latestReconciliation: null };
+  return {
+    ...evidence,
+    structured: {
+      id: value.id,
+      evidenceDocumentId: value.evidence_document_id,
+      documentType: value.document_type,
+      contractLevel: value.contract_level,
+      transportMode: value.transport_mode,
+      documentNumber: value.document_number,
+      version: Number(value.version),
+      status: value.status,
+      issuerName: value.issuer_name || '',
+      issuerIdentifier: value.issuer_identifier || '',
+      issueDate: dateOnly(value.issue_date),
+      issuePlace: value.issue_place || '',
+      onBoardDate: dateOnly(value.on_board_date),
+      shipper: value.shipper || {},
+      consignee: value.consignee || {},
+      notifyParty: value.notify_party || {},
+      vesselName: value.vessel_name || '',
+      voyageNumber: value.voyage_number || '',
+      flightNumber: value.flight_number || '',
+      vehicleRegistration: value.vehicle_registration || '',
+      trainNumber: value.train_number || '',
+      placeOfReceipt: value.place_of_receipt || '',
+      placeOfLoading: value.place_of_loading || '',
+      placeOfDischarge: value.place_of_discharge || '',
+      placeOfDelivery: value.place_of_delivery || '',
+      goodsDescription: value.goods_description || '',
+      packageCount: numberOrNull(value.package_count),
+      packageType: value.package_type || '',
+      marksAndNumbers: value.marks_and_numbers || '',
+      grossWeightKg: numberOrNull(value.gross_weight_kg),
+      measurementCbm: numberOrNull(value.measurement_cbm),
+      containerNumbers: value.container_numbers || [],
+      sealNumbers: value.seal_numbers || [],
+      freightTerms: value.freight_terms || '',
+      paymentTerms: value.payment_terms || '',
+      authenticationMethod: value.authentication_method || '',
+      authenticationReference: value.authentication_reference || '',
+      authenticityStatus: value.authenticity_status,
+      originalStatus: value.original_status,
+      negotiable: value.negotiable,
+      metadataSource: value.metadata_source,
+      metadata: value.metadata || {},
+      supersedesId: value.supersedes_id || null,
+      confirmedBy: value.metadata_confirmed_by || null,
+      confirmerName: value.metadata_confirmer_name_snapshot || null,
+      confirmerEmail: value.metadata_confirmer_email_snapshot || null,
+      confirmationNote: value.metadata_confirmation_note || null,
+      confirmedAt: value.metadata_confirmed_at || null,
+      createdAt: value.created_at,
+      updatedAt: value.updated_at
+    },
+    latestReconciliation: reconciliation ? {
+      id: reconciliation.id,
+      rulesetVersion: reconciliation.ruleset_version,
+      sourceSnapshotSha256: reconciliation.source_snapshot_sha256,
+      status: reconciliation.status,
+      checks: reconciliation.checks || [],
+      reconciledBy: reconciliation.reconciled_by,
+      reconcilerName: reconciliation.reconciler_name_snapshot,
+      reconcilerEmail: reconciliation.reconciler_email_snapshot || null,
+      reconciledAt: reconciliation.reconciled_at
+    } : null
+  };
+}
+
+function carrierReconciliationSha256(snapshot, carrierDocument) {
+  const structured = carrierDocument?.structured || carrierDocument || {};
+  return sha256(JSON.stringify({
+    shipment: snapshot?.shipment || null,
+    profile: snapshot?.profile || null,
+    lines: snapshot?.lines || [],
+    containers: snapshot?.containers || [],
+    packages: snapshot?.packages || [],
+    carrier: {
+      id: structured.id || null,
+      version: Number(structured.version || 0),
+      ...normalizeCarrierDocument(structured)
+    },
+    evidence: {
+      id: carrierDocument?.id || structured.evidenceDocumentId || null,
+      type: carrierDocument?.type || null,
+      checksumSha256: carrierDocument?.checksumSha256 || null,
+      fileSizeBytes: Number(carrierDocument?.fileSizeBytes || 0)
+    }
+  }));
 }
 
 function requirement(documentType, code, status, fieldPath, message, applicable = true, evidenceIds = []) {
@@ -236,11 +373,27 @@ class ExportShipmentService {
          ORDER BY c.container_number NULLS LAST, p.sequence_no NULLS LAST, p.package_number`, [shipmentId, companyId]
       ),
       this.database.query(
-        `SELECT id, evidence_type, document_name, original_filename, status, valid_from, valid_to,
-                checksum_sha256, uploaded_at, locked_at, approved_by, approval_note
-         FROM evidence_documents
-         WHERE shipment_id = $1 AND company_id = $2 AND evidence_type = ANY($3::text[])
-         ORDER BY created_at DESC`, [shipmentId, companyId, [...CARRIER_EVIDENCE_TYPES, 'origin_support']]
+        `SELECT evidence.id, evidence.evidence_type, evidence.document_name, evidence.original_filename,
+                evidence.status, evidence.valid_from, evidence.valid_to, evidence.checksum_sha256,
+                evidence.file_size_bytes, evidence.mime_type, evidence.uploaded_at, evidence.locked_at,
+                evidence.approved_by, evidence.approval_note,
+                to_jsonb(carrier) AS carrier_metadata,
+                to_jsonb(latest_reconciliation) AS carrier_reconciliation
+         FROM evidence_documents evidence
+         LEFT JOIN shipment_carrier_documents carrier
+           ON carrier.evidence_document_id = evidence.id
+          AND carrier.company_id = evidence.company_id
+          AND carrier.shipment_id = evidence.shipment_id
+         LEFT JOIN LATERAL (
+           SELECT reconciliation.* FROM carrier_document_reconciliations reconciliation
+           WHERE reconciliation.carrier_document_id = carrier.id
+             AND reconciliation.company_id = carrier.company_id
+             AND reconciliation.shipment_id = carrier.shipment_id
+           ORDER BY reconciliation.reconciled_at DESC, reconciliation.id DESC LIMIT 1
+         ) latest_reconciliation ON true
+         WHERE evidence.shipment_id = $1 AND evidence.company_id = $2
+           AND evidence.evidence_type = ANY($3::text[])
+         ORDER BY evidence.created_at DESC`, [shipmentId, companyId, [...CARRIER_EVIDENCE_TYPES, 'origin_support']]
       ),
       this.database.query(
         `SELECT ed.*, r.status AS report_status, r.download_url,
@@ -277,12 +430,7 @@ class ExportShipmentService {
       lines: linesResult.rows.map(lineFromRow),
       containers: containersResult.rows.map(containerFromRow),
       packages: packagesResult.rows.map(packageFromRow),
-      carrierDocuments: evidenceResult.rows.map((row) => ({
-        id: row.id, type: row.evidence_type, name: row.original_filename || row.document_name,
-        status: row.status, validFrom: row.valid_from, validTo: row.valid_to,
-        checksumSha256: row.checksum_sha256, uploadedAt: row.uploaded_at, approvedAt: row.locked_at,
-        approvedBy: row.approved_by, approvalNote: row.approval_note
-      })),
+      carrierDocuments: evidenceResult.rows.map(carrierDocumentFromRow),
       documents: documentsResult.rows.map((row) => this._formatDocument(row))
     };
     const currentSnapshotHash = sourceSnapshotSha256(snapshot);
@@ -372,10 +520,43 @@ class ExportShipmentService {
     const shipment = await this._assertShipment(companyId, shipmentId);
     if (!shipment) return null;
     await this.database.query(
+      `UPDATE shipment_export_lines line SET
+         embedded_co2e_kg = shipment_product.allocated_co2e,
+         carbon_snapshot_id = snapshot.id,
+         carbon_snapshot_version = snapshot.version,
+         carbon_engine_version = snapshot.engine_version,
+         carbon_methodology_version = snapshot.methodology_version,
+         carbon_factor_registry_version = snapshot.factor_registry_version,
+         carbon_gwp_basis = snapshot.gwp_basis,
+         carbon_boundary = COALESCE(
+           snapshot.payload #>> '{carbonResults,methodology,boundaryType}',
+           (snapshot.payload #> '{carbonResults,boundary}')::text
+         ),
+         carbon_canonical_input_hash = snapshot.canonical_input_hash,
+         carbon_factor_snapshot = COALESCE(snapshot.factor_snapshot, '[]'::jsonb),
+         carbon_allocation_method = 'shipment_products.allocated_co2e',
+         updated_at = now()
+       FROM shipment_products shipment_product
+       LEFT JOIN LATERAL (
+         SELECT assessment.* FROM product_assessment_snapshots assessment
+         WHERE assessment.product_id = shipment_product.product_id
+           AND assessment.company_id = $2
+           AND assessment.is_legacy = false
+         ORDER BY assessment.version DESC LIMIT 1
+       ) snapshot ON true
+       WHERE line.shipment_id = $1 AND line.company_id = $2
+         AND shipment_product.shipment_id = line.shipment_id
+         AND shipment_product.product_id = line.source_product_id`,
+      [shipmentId, companyId]
+    );
+    await this.database.query(
       `INSERT INTO shipment_export_lines (
          company_id, shipment_id, source_product_id, line_number, sku, goods_description,
          hs_code, origin_country, quantity, unit, net_weight_kg, gross_weight_kg, embedded_co2e_kg,
-         style_code, size_label, color_label, lot_number
+         style_code, size_label, color_label, lot_number,
+         carbon_snapshot_id, carbon_snapshot_version, carbon_engine_version, carbon_methodology_version,
+         carbon_factor_registry_version, carbon_gwp_basis, carbon_boundary, carbon_canonical_input_hash,
+         carbon_factor_snapshot, carbon_allocation_method
        )
        SELECT $2, sp.shipment_id, p.id,
               ROW_NUMBER() OVER (ORDER BY sp.created_at, sp.id)::integer,
@@ -386,11 +567,21 @@ class ExportShipmentService {
               COALESCE(NULLIF(ps.payload->>'styleCode',''), NULLIF(ps.payload->>'style_code','')),
               COALESCE(NULLIF(ps.payload->>'size',''), NULLIF(ps.payload->>'sizeLabel','')),
               COALESCE(NULLIF(ps.payload->>'color',''), NULLIF(ps.payload->>'colorLabel','')),
-              COALESCE(NULLIF(ps.payload->>'lotNumber',''), NULLIF(ps.payload->>'batchNumber',''))
+              COALESCE(NULLIF(ps.payload->>'lotNumber',''), NULLIF(ps.payload->>'batchNumber','')),
+              ps.id, ps.version, ps.engine_version, ps.methodology_version, ps.factor_registry_version,
+              ps.gwp_basis,
+              COALESCE(ps.payload #>> '{carbonResults,methodology,boundaryType}',
+                       (ps.payload #> '{carbonResults,boundary}')::text),
+              ps.canonical_input_hash, COALESCE(ps.factor_snapshot, '[]'::jsonb),
+              'shipment_products.allocated_co2e'
        FROM shipment_products sp
        JOIN shipments s ON s.id = sp.shipment_id AND s.company_id = $2
        JOIN products p ON p.id = sp.product_id AND p.company_id = $2
-       LEFT JOIN product_assessment_snapshots ps ON ps.product_id = p.id
+       LEFT JOIN LATERAL (
+         SELECT assessment.* FROM product_assessment_snapshots assessment
+         WHERE assessment.product_id = p.id AND assessment.company_id = $2 AND assessment.is_legacy = false
+         ORDER BY assessment.version DESC LIMIT 1
+       ) ps ON true
        WHERE sp.shipment_id = $1
        ON CONFLICT (shipment_id, line_number) DO NOTHING`,
       [shipmentId, companyId]
@@ -451,6 +642,7 @@ class ExportShipmentService {
       || hsCodeSource !== text(current.rows[0].hs_code_source)
       || hsCodeRuleset !== text(current.rows[0].hs_code_ruleset)
       || hsCodeEffectiveDate !== dateOnly(current.rows[0].hs_code_effective_date);
+    const carbonChanged = numberOrNull(merged.embeddedCo2eKg) !== numberOrNull(current.rows[0].embedded_co2e_kg);
     // A classification change always invalidates the prior approval. A second explicit save is
     // required so the audit identity/time can never describe a different HS/CN code.
     const hsCodeConfirmed = Boolean(userId) && !hsCodeChanged && merged.hsCodeConfirmed === true
@@ -463,15 +655,25 @@ class ExportShipmentService {
          hs_code_confirmed=$20,
          hs_code_confirmed_by=CASE WHEN $20 THEN COALESCE($21, hs_code_confirmed_by) ELSE NULL END,
          hs_code_confirmed_at=CASE WHEN $20 THEN COALESCE(hs_code_confirmed_at, now()) ELSE NULL END,
-         package_refs=$22::jsonb, metadata=$23::jsonb, updated_at=now()
-       WHERE id=$24 AND shipment_id=$25 AND company_id=$26 RETURNING *`,
+         carbon_snapshot_id=CASE WHEN $22 THEN NULL ELSE carbon_snapshot_id END,
+         carbon_snapshot_version=CASE WHEN $22 THEN NULL ELSE carbon_snapshot_version END,
+         carbon_engine_version=CASE WHEN $22 THEN NULL ELSE carbon_engine_version END,
+         carbon_methodology_version=CASE WHEN $22 THEN NULL ELSE carbon_methodology_version END,
+         carbon_factor_registry_version=CASE WHEN $22 THEN NULL ELSE carbon_factor_registry_version END,
+         carbon_gwp_basis=CASE WHEN $22 THEN NULL ELSE carbon_gwp_basis END,
+         carbon_boundary=CASE WHEN $22 THEN NULL ELSE carbon_boundary END,
+         carbon_canonical_input_hash=CASE WHEN $22 THEN NULL ELSE carbon_canonical_input_hash END,
+         carbon_factor_snapshot=CASE WHEN $22 THEN '[]'::jsonb ELSE carbon_factor_snapshot END,
+         carbon_allocation_method=CASE WHEN $22 THEN NULL ELSE carbon_allocation_method END,
+         package_refs=$23::jsonb, metadata=$24::jsonb, updated_at=now()
+       WHERE id=$25 AND shipment_id=$26 AND company_id=$27 RETURNING *`,
       [merged.lineNumber, text(merged.sku), text(merged.goodsDescription), normalizedHsCode,
         text(merged.originCountry), numberOrNull(merged.quantity), text(merged.unit), numberOrNull(merged.unitPrice),
         text(merged.currency).toUpperCase() || null, numberOrNull(merged.netWeightKg), numberOrNull(merged.grossWeightKg),
         numberOrNull(merged.embeddedCo2eKg), text(merged.styleCode) || null, text(merged.sizeLabel) || null,
         text(merged.colorLabel) || null, text(merged.lotNumber) || null,
         hsCodeSource || null, hsCodeRuleset || null, hsCodeEffectiveDate, hsCodeConfirmed,
-        userId, JSON.stringify(merged.packageRefs || []), JSON.stringify(merged.metadata || {}),
+        userId, carbonChanged, JSON.stringify(merged.packageRefs || []), JSON.stringify(merged.metadata || {}),
         lineId, shipmentId, companyId]
     );
     return lineFromRow(result.rows[0]);
@@ -592,6 +794,311 @@ class ExportShipmentService {
       [packageId, shipmentId, companyId]
     );
     return Boolean(result.rows[0]);
+  }
+
+  _carrierColumnValues(rawInput) {
+    const input = normalizeCarrierDocument(rawInput);
+    return [
+      ['document_type', input.documentType], ['contract_level', input.contractLevel],
+      ['transport_mode', input.transportMode], ['document_number', input.documentNumber],
+      ['issuer_name', input.issuerName], ['issuer_identifier', input.issuerIdentifier || null],
+      ['issue_date', input.issueDate], ['issue_place', input.issuePlace || null],
+      ['on_board_date', input.onBoardDate], ['shipper', JSON.stringify(input.shipper)],
+      ['consignee', JSON.stringify(input.consignee)], ['notify_party', JSON.stringify(input.notifyParty)],
+      ['vessel_name', input.vesselName || null], ['voyage_number', input.voyageNumber || null],
+      ['flight_number', input.flightNumber || null], ['vehicle_registration', input.vehicleRegistration || null],
+      ['train_number', input.trainNumber || null], ['place_of_receipt', input.placeOfReceipt || null],
+      ['place_of_loading', input.placeOfLoading || null], ['place_of_discharge', input.placeOfDischarge || null],
+      ['place_of_delivery', input.placeOfDelivery || null], ['goods_description', input.goodsDescription || null],
+      ['package_count', input.packageCount], ['package_type', input.packageType || null],
+      ['marks_and_numbers', input.marksAndNumbers || null], ['gross_weight_kg', input.grossWeightKg],
+      ['measurement_cbm', input.measurementCbm], ['container_numbers', JSON.stringify(input.containerNumbers)],
+      ['seal_numbers', JSON.stringify(input.sealNumbers)], ['freight_terms', input.freightTerms || null],
+      ['payment_terms', input.paymentTerms || null], ['authentication_method', input.authenticationMethod || null],
+      ['authentication_reference', input.authenticationReference || null],
+      ['authenticity_status', input.authenticityStatus], ['original_status', input.originalStatus],
+      ['negotiable', input.negotiable], ['metadata_source', input.metadataSource],
+      ['metadata', JSON.stringify(input.metadata)]
+    ];
+  }
+
+  _carrierDraftError(input) {
+    if (!CARRIER_DOCUMENT_TYPES.has(input.documentType)) return 'CARRIER_DOCUMENT_TYPE_INVALID';
+    if (!CARRIER_TRANSPORT_MODES.has(input.transportMode) || !text(input.documentNumber)) {
+      return 'CARRIER_DOCUMENT_IDENTITY_REQUIRED';
+    }
+    if (!CARRIER_CONTRACT_LEVELS.has(input.contractLevel)
+      || !CARRIER_METADATA_SOURCES.has(input.metadataSource)
+      || !CARRIER_AUTHENTICITY_STATUSES.has(input.authenticityStatus)
+      || !CARRIER_ORIGINAL_STATUSES.has(input.originalStatus)
+      || !CARRIER_FREIGHT_TERMS.has(input.freightTerms)) return 'CARRIER_DOCUMENT_VALUE_INVALID';
+    if (input.packageCount !== null && (!Number.isInteger(input.packageCount) || input.packageCount <= 0)) {
+      return 'CARRIER_DOCUMENT_VALUE_INVALID';
+    }
+    if (input.grossWeightKg !== null && input.grossWeightKg <= 0) return 'CARRIER_DOCUMENT_VALUE_INVALID';
+    if (input.measurementCbm !== null && input.measurementCbm < 0) return 'CARRIER_DOCUMENT_VALUE_INVALID';
+    return null;
+  }
+
+  async getCarrierDocument(companyId, shipmentId, carrierDocumentId, queryable = this.database) {
+    if (!UUID_REGEX.test(String(carrierDocumentId || ''))) return null;
+    const result = await queryable.query(
+      `SELECT evidence.id, evidence.evidence_type, evidence.document_name, evidence.original_filename,
+              evidence.status, evidence.valid_from, evidence.valid_to, evidence.checksum_sha256,
+              evidence.file_size_bytes, evidence.mime_type, evidence.uploaded_at, evidence.locked_at,
+              evidence.approved_by, evidence.approval_note,
+              to_jsonb(carrier) AS carrier_metadata,
+              to_jsonb(latest_reconciliation) AS carrier_reconciliation
+       FROM shipment_carrier_documents carrier
+       JOIN evidence_documents evidence
+         ON evidence.id = carrier.evidence_document_id AND evidence.company_id = carrier.company_id
+        AND evidence.shipment_id = carrier.shipment_id
+       LEFT JOIN LATERAL (
+         SELECT reconciliation.* FROM carrier_document_reconciliations reconciliation
+         WHERE reconciliation.carrier_document_id = carrier.id
+           AND reconciliation.company_id = carrier.company_id
+           AND reconciliation.shipment_id = carrier.shipment_id
+         ORDER BY reconciliation.reconciled_at DESC, reconciliation.id DESC LIMIT 1
+       ) latest_reconciliation ON true
+       WHERE carrier.id=$1 AND carrier.shipment_id=$2 AND carrier.company_id=$3`,
+      [carrierDocumentId, shipmentId, companyId]
+    );
+    return result.rows[0] ? carrierDocumentFromRow(result.rows[0]) : null;
+  }
+
+  async createCarrierDocument(companyId, shipmentId, userId, rawInput = {}) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const input = normalizeCarrierDocument(rawInput);
+    const inputError = this._carrierDraftError(input);
+    if (inputError) return { error: inputError };
+    if (!UUID_REGEX.test(input.evidenceDocumentId)) return { error: 'CARRIER_EVIDENCE_NOT_FOUND' };
+    const evidence = await this.database.query(
+      `SELECT id FROM evidence_documents WHERE id=$1 AND company_id=$2 AND shipment_id=$3
+       AND evidence_type=ANY($4::text[])`,
+      [input.evidenceDocumentId, companyId, shipmentId, CARRIER_EVIDENCE_TYPES]
+    );
+    if (!evidence.rows[0]) return { error: 'CARRIER_EVIDENCE_NOT_FOUND' };
+    const alreadyLinked = await this.database.query(
+      'SELECT id FROM shipment_carrier_documents WHERE evidence_document_id=$1', [input.evidenceDocumentId]
+    );
+    if (alreadyLinked.rows[0]) return { error: 'CARRIER_EVIDENCE_ALREADY_LINKED' };
+
+    let version = 1;
+    if (input.supersedesId) {
+      if (!UUID_REGEX.test(input.supersedesId)) return { error: 'CARRIER_SUPERSEDES_NOT_FOUND' };
+      const prior = await this.database.query(
+        `SELECT id, version FROM shipment_carrier_documents
+         WHERE id=$1 AND company_id=$2 AND shipment_id=$3 AND status='confirmed'`,
+        [input.supersedesId, companyId, shipmentId]
+      );
+      if (!prior.rows[0]) return { error: 'CARRIER_SUPERSEDES_NOT_FOUND' };
+      version = Number(prior.rows[0].version) + 1;
+    } else {
+      const existing = await this.database.query(
+        `SELECT COALESCE(MAX(version),0) AS version FROM shipment_carrier_documents
+         WHERE company_id=$1 AND shipment_id=$2 AND document_type=$3 AND document_number=$4`,
+        [companyId, shipmentId, input.documentType, input.documentNumber]
+      );
+      version = Number(existing.rows[0]?.version || 0) + 1;
+    }
+
+    const pairs = this._carrierColumnValues(input);
+    const columns = ['company_id', 'shipment_id', 'evidence_document_id', 'version', 'supersedes_id', 'created_by', ...pairs.map(([column]) => column)];
+    const values = [companyId, shipmentId, input.evidenceDocumentId, version, input.supersedesId, userId, ...pairs.map(([, value]) => value)];
+    const jsonColumns = new Set(['shipper', 'consignee', 'notify_party', 'container_numbers', 'seal_numbers', 'metadata']);
+    const placeholders = values.map((_value, index) => `$${index + 1}${index >= 6 && jsonColumns.has(pairs[index - 6]?.[0]) ? '::jsonb' : ''}`);
+    const result = await this.database.query(
+      `INSERT INTO shipment_carrier_documents (${columns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING id`,
+      values
+    );
+    return this.getCarrierDocument(companyId, shipmentId, result.rows[0].id);
+  }
+
+  async updateCarrierDocument(companyId, shipmentId, carrierDocumentId, rawInput = {}) {
+    const current = await this.getCarrierDocument(companyId, shipmentId, carrierDocumentId);
+    if (!current) return null;
+    if (current.structured.status !== 'draft') return { error: 'CARRIER_DOCUMENT_IMMUTABLE' };
+    const input = normalizeCarrierDocument({ ...current.structured, ...rawInput,
+      evidenceDocumentId: current.id, supersedesId: current.structured.supersedesId });
+    const inputError = this._carrierDraftError(input);
+    if (inputError) return { error: inputError };
+    const pairs = this._carrierColumnValues(input);
+    const jsonColumns = new Set(['shipper', 'consignee', 'notify_party', 'container_numbers', 'seal_numbers', 'metadata']);
+    const assignments = pairs.map(([column], index) => `${column}=$${index + 1}${jsonColumns.has(column) ? '::jsonb' : ''}`);
+    const values = [...pairs.map(([, value]) => value), carrierDocumentId, shipmentId, companyId];
+    await this.database.query(
+      `UPDATE shipment_carrier_documents SET ${assignments.join(', ')}, updated_at=now()
+       WHERE id=$${pairs.length + 1} AND shipment_id=$${pairs.length + 2} AND company_id=$${pairs.length + 3}
+         AND status='draft'`, values
+    );
+    return this.getCarrierDocument(companyId, shipmentId, carrierDocumentId);
+  }
+
+  async deleteCarrierDocument(companyId, shipmentId, carrierDocumentId) {
+    if (!UUID_REGEX.test(String(carrierDocumentId || ''))) return false;
+    const result = await this.database.query(
+      `DELETE FROM shipment_carrier_documents WHERE id=$1 AND shipment_id=$2 AND company_id=$3 AND status='draft'
+       RETURNING id`, [carrierDocumentId, shipmentId, companyId]
+    );
+    return Boolean(result.rows[0]);
+  }
+
+  async reconcileCarrierDocument(companyId, shipmentId, carrierDocumentId) {
+    const snapshot = await this.getProfile(companyId, shipmentId);
+    if (!snapshot) return null;
+    const document = snapshot.carrierDocuments.find((item) => item.structured?.id === carrierDocumentId);
+    if (!document) return null;
+    const reconciliation = validateCarrierDocument(snapshot, { ...document.structured, evidence: document });
+    const sourceHash = carrierReconciliationSha256(snapshot, document);
+    return {
+      ...reconciliation,
+      rulesetVersion: CARRIER_RULESET_VERSION,
+      sourceSnapshotSha256: sourceHash,
+      confirmedAndCurrent: document.structured.status === 'confirmed'
+        && document.latestReconciliation?.status === 'passed'
+        && document.latestReconciliation?.rulesetVersion === CARRIER_RULESET_VERSION
+        && document.latestReconciliation?.sourceSnapshotSha256 === sourceHash
+    };
+  }
+
+  async _verifyCarrierEvidenceFile(evidence) {
+    if (evidence.storage_provider !== 'local') {
+      return { error: 'CARRIER_EVIDENCE_STORAGE_UNSUPPORTED' };
+    }
+    const storageKey = text(evidence.storage_key);
+    if (!storageKey || !/^[a-f0-9]{64}$/i.test(text(evidence.checksum_sha256))
+      || Number(evidence.file_size_bytes || 0) <= 0) {
+      return { error: 'CARRIER_EVIDENCE_FILE_UNAVAILABLE' };
+    }
+    const uploadsRoot = path.resolve(this.uploadsRoot);
+    const filePath = path.resolve(uploadsRoot, storageKey);
+    const relative = path.relative(uploadsRoot, filePath);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+      return { error: 'CARRIER_EVIDENCE_FILE_UNAVAILABLE' };
+    }
+    try {
+      const [buffer, stat] = await Promise.all([
+        fs.promises.readFile(filePath),
+        fs.promises.stat(filePath)
+      ]);
+      if (!stat.isFile() || buffer.length !== Number(evidence.file_size_bytes)
+        || sha256(buffer) !== text(evidence.checksum_sha256).toLowerCase()) {
+        return { error: 'CARRIER_EVIDENCE_FILE_TAMPERED' };
+      }
+      return { buffer, sha256: sha256(buffer), fileSizeBytes: buffer.length };
+    } catch (_error) {
+      return { error: 'CARRIER_EVIDENCE_FILE_UNAVAILABLE' };
+    }
+  }
+
+  async _verifyCurrentCarrierEvidence(companyId, shipmentId, snapshot) {
+    const carrier = (snapshot?.carrierDocuments || []).find((item) => item.structured?.status === 'confirmed'
+      && item.latestReconciliation?.status === 'passed'
+      && item.latestReconciliation?.rulesetVersion === CARRIER_RULESET_VERSION
+      && item.latestReconciliation?.sourceSnapshotSha256 === carrierReconciliationSha256(snapshot, item));
+    if (!carrier) return { error: 'CARRIER_RECONCILIATION_NOT_CURRENT' };
+    const result = await this.database.query(
+      `SELECT evidence.storage_provider, evidence.storage_key, evidence.checksum_sha256,
+              evidence.file_size_bytes
+       FROM shipment_carrier_documents carrier
+       JOIN evidence_documents evidence ON evidence.id=carrier.evidence_document_id
+         AND evidence.company_id=carrier.company_id AND evidence.shipment_id=carrier.shipment_id
+       WHERE carrier.id=$1 AND carrier.company_id=$2 AND carrier.shipment_id=$3
+         AND carrier.status='confirmed'`,
+      [carrier.structured.id, companyId, shipmentId]
+    );
+    if (!result.rows[0]) return { error: 'CARRIER_EVIDENCE_FILE_UNAVAILABLE' };
+    return this._verifyCarrierEvidenceFile(result.rows[0]);
+  }
+
+  async confirmCarrierDocument(companyId, shipmentId, carrierDocumentId, userId, payload = {}) {
+    if (payload.metadataConfirmed !== true || !text(payload.confirmationNote)) {
+      return { error: 'CARRIER_CONFIRMATION_ACKNOWLEDGEMENT_REQUIRED' };
+    }
+    const snapshot = await this.getProfile(companyId, shipmentId);
+    if (!snapshot) return null;
+    const document = snapshot.carrierDocuments.find((item) => item.structured?.id === carrierDocumentId);
+    if (!document) return null;
+    if (document.structured.status !== 'draft') return { error: 'CARRIER_DOCUMENT_IMMUTABLE' };
+    const activeConflict = snapshot.carrierDocuments.find((item) => item.structured
+      && item.structured.id !== carrierDocumentId
+      && item.structured.status === 'confirmed'
+      && item.structured.documentType === document.structured.documentType
+      && text(item.structured.documentNumber).toUpperCase() === text(document.structured.documentNumber).toUpperCase());
+    if (activeConflict && document.structured.supersedesId !== activeConflict.structured.id) {
+      return { error: 'CARRIER_REPLACEMENT_LINK_REQUIRED' };
+    }
+    const reconciliation = validateCarrierDocument(snapshot, { ...document.structured, evidence: document });
+    if (reconciliation.status !== 'passed') {
+      return { error: 'CARRIER_RECONCILIATION_FAILED', reconciliation: {
+        ...reconciliation, rulesetVersion: CARRIER_RULESET_VERSION,
+        sourceSnapshotSha256: carrierReconciliationSha256(snapshot, document)
+      } };
+    }
+    const sourceHash = carrierReconciliationSha256(snapshot, document);
+    const client = await this.database.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await client.query(
+        `SELECT carrier.id, carrier.status, carrier.supersedes_id, evidence.id AS evidence_id,
+                evidence.storage_provider, evidence.storage_key, evidence.checksum_sha256,
+                evidence.file_size_bytes
+         FROM shipment_carrier_documents carrier
+         JOIN evidence_documents evidence ON evidence.id=carrier.evidence_document_id
+           AND evidence.company_id=carrier.company_id AND evidence.shipment_id=carrier.shipment_id
+         WHERE carrier.id=$1 AND carrier.company_id=$2 AND carrier.shipment_id=$3 FOR UPDATE`,
+        [carrierDocumentId, companyId, shipmentId]
+      );
+      if (!locked.rows[0] || locked.rows[0].status !== 'draft') {
+        await client.query('ROLLBACK');
+        return locked.rows[0] ? { error: 'CARRIER_DOCUMENT_IMMUTABLE' } : null;
+      }
+      const fileVerification = await this._verifyCarrierEvidenceFile(locked.rows[0]);
+      if (fileVerification.error) {
+        await client.query('ROLLBACK');
+        return fileVerification;
+      }
+      const user = await client.query('SELECT id, email, full_name FROM users WHERE id=$1', [userId]);
+      const actor = user.rows[0];
+      if (!actor || !text(actor.full_name || actor.email)) {
+        await client.query('ROLLBACK');
+        return { error: 'CARRIER_CONFIRMATION_IDENTITY_REQUIRED' };
+      }
+      if (locked.rows[0].supersedes_id) {
+        await client.query(
+          `UPDATE shipment_carrier_documents SET status='superseded', updated_at=now()
+           WHERE id=$1 AND company_id=$2 AND shipment_id=$3 AND status='confirmed'`,
+          [locked.rows[0].supersedes_id, companyId, shipmentId]
+        );
+      }
+      await client.query(
+        `UPDATE evidence_documents SET status='locked', locked_at=COALESCE(locked_at,now()),
+           locked_by=$1, approved_by=$1, approval_note=$2, updated_at=now()
+         WHERE id=$3 AND company_id=$4 AND shipment_id=$5`,
+        [userId, text(payload.confirmationNote), locked.rows[0].evidence_id, companyId, shipmentId]
+      );
+      await client.query(
+        `UPDATE shipment_carrier_documents SET status='confirmed', metadata_confirmed_by=$1,
+           metadata_confirmer_name_snapshot=$2, metadata_confirmer_email_snapshot=$3,
+           metadata_confirmation_note=$4, metadata_confirmed_at=now(), updated_at=now()
+         WHERE id=$5 AND company_id=$6 AND shipment_id=$7 AND status='draft'`,
+        [userId, text(actor.full_name || actor.email), text(actor.email) || null,
+          text(payload.confirmationNote), carrierDocumentId, companyId, shipmentId]
+      );
+      await client.query(
+        `INSERT INTO carrier_document_reconciliations (
+           company_id, shipment_id, carrier_document_id, ruleset_version, source_snapshot_sha256,
+           status, checks, reconciled_by, reconciler_name_snapshot, reconciler_email_snapshot
+         ) VALUES ($1,$2,$3,$4,$5,'passed',$6::jsonb,$7,$8,$9)`,
+        [companyId, shipmentId, carrierDocumentId, CARRIER_RULESET_VERSION, sourceHash,
+          JSON.stringify(reconciliation.checks), userId, text(actor.full_name || actor.email), text(actor.email) || null]
+      );
+      await client.query('COMMIT');
+      return this.getCarrierDocument(companyId, shipmentId, carrierDocumentId);
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally { client.release(); }
   }
 
   _validateSnapshot(snapshot) {
@@ -800,11 +1307,29 @@ class ExportShipmentService {
       const allocationMismatch = unknownReference || lines.some((line) => Math.abs(Number(line.quantity) - Number(allocations.get(line.id) || 0)) > 0.0001);
       results.push(requirement('packing_list', 'quantity_allocation_reconciliation', allocationMismatch ? 'invalid' : 'ready', 'packages[].contents', allocationMismatch ? 'Package contents must allocate the full quantity of every shipment line exactly once.' : null));
     }
-    const approvedCarriers = carriers.filter((doc) => ['locked', 'third_party_verified'].includes(doc.status) && doc.approvedBy && (!doc.validTo || new Date(doc.validTo) >= new Date(new Date().toISOString().slice(0, 10))));
-    results.push(requirement('carbon_annex', 'carrier_document', approvedCarriers.length ? 'ready' : 'missing', 'carrierDocuments', approvedCarriers.length ? null : 'An approved, non-expired carrier B/L/AWB/CMR is required.', true, approvedCarriers.map((doc) => doc.id)));
+    const today = new Date().toISOString().slice(0, 10);
+    const approvedCarriers = carriers.filter((doc) => doc.structured?.status === 'confirmed'
+      && ['locked', 'third_party_verified'].includes(doc.status)
+      && doc.approvedBy
+      && (!doc.validTo || dateOnly(doc.validTo) >= today)
+      && doc.latestReconciliation?.status === 'passed'
+      && doc.latestReconciliation?.rulesetVersion === CARRIER_RULESET_VERSION
+      && doc.latestReconciliation?.sourceSnapshotSha256 === carrierReconciliationSha256(snapshot, doc));
+    results.push(requirement('carbon_annex', 'carrier_document', approvedCarriers.length ? 'ready' : 'missing', 'carrierDocuments', approvedCarriers.length ? null : 'A structured, confirmed, non-expired and currently reconciled carrier B/L/FBL/AWB/CMR/CIM is required.', true, approvedCarriers.map((doc) => doc.id)));
     need('carbon_annex', 'bill_of_lading_no', profile.billOfLadingNo, 'profile.billOfLadingNo', 'Carrier document number');
     const hasCarbon = lines.length > 0 && lines.every((line) => line.embeddedCo2eKg !== null);
     results.push(requirement('carbon_annex', 'carbon_values', hasCarbon ? 'ready' : 'missing', 'lines[].embeddedCo2eKg', hasCarbon ? null : 'Every line requires server-authoritative embedded CO2e.'));
+    lines.forEach((line, index) => {
+      const authority = line.carbonAuthority;
+      const complete = Boolean(authority?.authoritative && authority.snapshotId && authority.snapshotVersion
+        && text(authority.engineVersion) && text(authority.methodologyVersion)
+        && text(authority.factorRegistryVersion) && text(authority.gwpBasis)
+        && text(authority.boundary) && /^[a-f0-9]{64}$/i.test(text(authority.canonicalInputHash))
+        && Array.isArray(authority.factorSnapshot) && authority.factorSnapshot.length > 0
+        && text(authority.allocationMethod));
+      results.push(requirement('carbon_annex', `line_${index + 1}_carbon_provenance`, complete ? 'ready' : 'missing',
+        `lines[${index}].carbonAuthority`, complete ? null : `Carbon line ${index + 1} must be synchronized from a non-legacy authoritative calculation with methodology, boundary and factor provenance.`));
+    });
     party('ics2_dataset', 'exporter', profile.exporter);
     party('ics2_dataset', 'importer', profile.importer);
     need('ics2_dataset', 'importer_eori', profile.importerEori, 'profile.importerEori', 'Importer EORI');
@@ -812,7 +1337,7 @@ class ExportShipmentService {
     need('ics2_dataset', 'port_of_loading', profile.portOfLoading, 'profile.portOfLoading', 'Port/place of loading');
     need('ics2_dataset', 'port_of_discharge', profile.portOfDischarge, 'profile.portOfDischarge', 'Port/place of discharge');
     results.push(requirement('ics2_dataset', 'goods_lines', lines.length ? 'ready' : 'missing', 'lines', lines.length ? null : 'Goods lines are required.'));
-    results.push(requirement('ics2_dataset', 'carrier_document', approvedCarriers.length ? 'ready' : 'missing', 'carrierDocuments', approvedCarriers.length ? null : 'An approved carrier document is required.', true, approvedCarriers.map((doc) => doc.id)));
+    results.push(requirement('ics2_dataset', 'carrier_document', approvedCarriers.length ? 'ready' : 'missing', 'carrierDocuments', approvedCarriers.length ? null : 'A structured, confirmed and currently reconciled carrier document is required.', true, approvedCarriers.map((doc) => doc.id)));
     lines.forEach((line, index) => {
       const complete = text(line.goodsDescription) && text(line.hsCode) && text(line.originCountry) && line.grossWeightKg !== null;
       results.push(requirement('ics2_dataset', `goods_line_${index + 1}`, complete ? 'ready' : 'missing', `lines[${index}]`, complete ? null : `ICS2 goods line ${index + 1} requires description, HS code, origin and gross weight.`));
@@ -902,6 +1427,17 @@ class ExportShipmentService {
       return { blocked: true, readiness };
     }
     const snapshot = await this.getProfile(companyId, shipmentId);
+    if (['carbon_annex', 'ics2_dataset'].includes(documentType)) {
+      const evidenceVerification = await this._verifyCurrentCarrierEvidence(companyId, shipmentId, snapshot);
+      if (evidenceVerification.error) {
+        return {
+          blocked: true,
+          code: evidenceVerification.error,
+          message: 'Current carrier evidence bytes could not be verified.',
+          readiness
+        };
+      }
+    }
     const client = await this.database.connect();
     try {
       await client.query('BEGIN');
@@ -985,11 +1521,22 @@ class ExportShipmentService {
       dimensions: [pkg.lengthCm, pkg.widthCm, pkg.heightCm].filter((v) => v !== null).join(' x '),
       contents: JSON.stringify(pkg.contents || [])
     }));
-    if (type === 'carbon_annex') return lines.map((line) => ({
+    if (type === 'carbon_annex') {
+      const carrier = (payload.carrierDocuments || []).find((item) => item.structured?.status === 'confirmed');
+      return lines.map((line) => ({
       lineNumber: line.lineNumber, sku: line.sku, hsCode: line.hsCode, quantity: line.quantity,
       embeddedCo2eKg: line.embeddedCo2eKg, carrierDocumentNo: payload.profile.billOfLadingNo,
-      containerNo: containerNumbers
-    }));
+      carrierDocumentType: carrier?.structured?.documentType || '', carrierIssuer: carrier?.structured?.issuerName || '',
+      carrierFileSha256: carrier?.checksumSha256 || '', containerNo: containerNumbers,
+      calculationSnapshot: line.carbonAuthority?.snapshotId || '',
+      calculationVersion: line.carbonAuthority?.snapshotVersion || '',
+      methodology: line.carbonAuthority?.methodologyVersion || '',
+      boundary: line.carbonAuthority?.boundary || '', factorRegistry: line.carbonAuthority?.factorRegistryVersion || '',
+      factorProvenance: JSON.stringify(line.carbonAuthority?.factorSnapshot || []),
+      gwpBasis: line.carbonAuthority?.gwpBasis || '', allocationMethod: line.carbonAuthority?.allocationMethod || '',
+      canonicalInputSha256: line.carbonAuthority?.canonicalInputHash || ''
+      }));
+    }
     return lines.map((line) => ({
       lineNumber: line.lineNumber, sku: line.sku, description: line.goodsDescription,
       styleCode: line.styleCode, sizeLabel: line.sizeLabel, colorLabel: line.colorLabel, lotNumber: line.lotNumber,
@@ -1056,7 +1603,9 @@ class ExportShipmentService {
       carbon_annex: {
         ...commonMetadata, 'Carrier document no.': p.billOfLadingNo || '',
         'Containers / seals': containers.map((item) => `${item.containerNumber} / ${item.sealNumber}`).join('; '),
-        'Transport mode': p.transportMode || '', 'Total quantity': totalQuantity
+        'Transport mode': p.transportMode || '', 'Total quantity': totalQuantity,
+        'Document nature': 'SUPPLEMENTARY CARBON ANNEX - NOT A BILL OF LADING / AWB / CMR / CIM',
+        'Authority warning': 'Carrier-issued transport document remains authoritative. WeaveCarbon does not issue it.'
       },
       origin_workbook: {
         ...commonMetadata, 'Exporter': party(p.exporter), 'Invoice number': p.invoiceNumber || '',
@@ -1084,7 +1633,13 @@ class ExportShipmentService {
       ],
       carbon_annex: [
         ['lineNumber','Line'],['sku','SKU'],['hsCode','HS/CN'],['quantity','Quantity'],
-        ['embeddedCo2eKg','Embedded kg CO2e'],['carrierDocumentNo','Carrier document'],['containerNo','Container']
+        ['embeddedCo2eKg','Embedded kg CO2e'],['carrierDocumentType','Carrier document type'],
+        ['carrierDocumentNo','Carrier document'],['carrierIssuer','Carrier issuer'],
+        ['carrierFileSha256','Carrier file SHA-256'],['containerNo','Container'],
+        ['calculationSnapshot','Calculation snapshot ID'],['calculationVersion','Calculation version'],
+        ['methodology','Methodology'],['boundary','Boundary'],['factorRegistry','Factor registry'],
+        ['factorProvenance','Factor provenance'],['gwpBasis','GWP basis'],['allocationMethod','Allocation method'],
+        ['canonicalInputSha256','Calculation input SHA-256']
       ],
       origin_workbook: [
         ['lineNumber','Line'],['sku','SKU'],['description','Description'],['hsCode','HS/CN'],
@@ -1257,6 +1812,17 @@ class ExportShipmentService {
         readiness
       };
     }
+    if (['carbon_annex', 'ics2_dataset'].includes(document.document_type)) {
+      const evidenceVerification = await this._verifyCurrentCarrierEvidence(companyId, shipmentId, currentSnapshot);
+      if (evidenceVerification.error) {
+        return {
+          blocked: true,
+          code: evidenceVerification.error,
+          message: 'Current carrier evidence bytes could not be verified before issue.',
+          readiness
+        };
+      }
+    }
     const requiredReviewRole = REVIEW_ROLE_BY_DOCUMENT[document.document_type];
     if (requiredReviewRole) {
       const reviewResult = await this.database.query(
@@ -1389,4 +1955,6 @@ module.exports.createExportShipmentService = (dependencies) => new ExportShipmen
 module.exports.isCbamApplicable = isCbamApplicable;
 module.exports.CBAM_RULESET = CBAM_RULESET;
 module.exports.sourceSnapshotSha256 = sourceSnapshotSha256;
+module.exports.carrierReconciliationSha256 = carrierReconciliationSha256;
+module.exports.CARRIER_RULESET_VERSION = CARRIER_RULESET_VERSION;
 module.exports.RULESET_VERSION = RULESET_VERSION;

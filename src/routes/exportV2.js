@@ -217,6 +217,97 @@ router.delete('/shipments/:shipmentId/packages/:packageId', asyncHandler(async (
   return sendSuccess(res, { data: { deleted: true } });
 }));
 
+router.post('/shipments/:shipmentId/carrier-documents', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.createCarrierDocument(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (!result) return sendNotFound(res);
+  if (result.error) {
+    const messages = {
+      CARRIER_DOCUMENT_TYPE_INVALID: 'Unsupported carrier document type.',
+      CARRIER_DOCUMENT_IDENTITY_REQUIRED: 'Document type, compatible transport mode and document number are required.',
+      CARRIER_DOCUMENT_VALUE_INVALID: 'Carrier metadata contains an unsupported value or invalid total.',
+      CARRIER_EVIDENCE_NOT_FOUND: 'Carrier evidence file was not found for this shipment.',
+      CARRIER_EVIDENCE_ALREADY_LINKED: 'This evidence file already has structured carrier metadata.',
+      CARRIER_SUPERSEDES_NOT_FOUND: 'The carrier document selected for replacement is not an active confirmed version.'
+    };
+    return sendError(res, { status: result.error.includes('NOT_FOUND') ? 404 : 400, code: result.error, message: messages[result.error] });
+  }
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.carrier_document.draft_created', newValue: result.structured.id,
+    reason: 'export.carrier_document.create', notes: `${result.structured.documentType}:${result.structured.documentNumber}`
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
+router.patch('/shipments/:shipmentId/carrier-documents/:carrierDocumentId', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.updateCarrierDocument(
+    companyId, req.params.shipmentId, req.params.carrierDocumentId, req.body || {}
+  );
+  if (!result) return sendError(res, { status: 404, code: 'CARRIER_DOCUMENT_NOT_FOUND', message: 'Carrier document metadata not found.' });
+  if (result.error) return sendError(res, {
+    status: result.error === 'CARRIER_DOCUMENT_IMMUTABLE' ? 409 : 400,
+    code: result.error,
+    message: result.error === 'CARRIER_DOCUMENT_IMMUTABLE'
+      ? 'Confirmed carrier document metadata is immutable.'
+      : 'Carrier metadata contains an unsupported value or incomplete identity.'
+  });
+  return sendSuccess(res, { data: result });
+}));
+
+router.delete('/shipments/:shipmentId/carrier-documents/:carrierDocumentId', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const deleted = await exportShipmentService.deleteCarrierDocument(
+    companyId, req.params.shipmentId, req.params.carrierDocumentId
+  );
+  if (!deleted) return sendError(res, { status: 409, code: 'CARRIER_DOCUMENT_NOT_DRAFT', message: 'Only draft carrier metadata can be deleted.' });
+  return sendSuccess(res, { data: { deleted: true } });
+}));
+
+router.get('/shipments/:shipmentId/carrier-documents/:carrierDocumentId/reconciliation', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.reconcileCarrierDocument(
+    companyId, req.params.shipmentId, req.params.carrierDocumentId
+  );
+  if (!result) return sendError(res, { status: 404, code: 'CARRIER_DOCUMENT_NOT_FOUND', message: 'Carrier document metadata not found.' });
+  return sendSuccess(res, { data: result });
+}));
+
+router.post('/shipments/:shipmentId/carrier-documents/:carrierDocumentId/confirm', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.confirmCarrierDocument(
+    companyId, req.params.shipmentId, req.params.carrierDocumentId, req.userId, req.body || {}
+  );
+  if (!result) return sendError(res, { status: 404, code: 'CARRIER_DOCUMENT_NOT_FOUND', message: 'Carrier document metadata not found.' });
+  if (result.error) {
+    const messages = {
+      CARRIER_CONFIRMATION_ACKNOWLEDGEMENT_REQUIRED: 'Explicit metadata confirmation and a confirmation note are required.',
+      CARRIER_RECONCILIATION_FAILED: 'Carrier metadata does not reconcile with the shipment dossier.',
+      CARRIER_DOCUMENT_IMMUTABLE: 'Confirmed carrier document metadata is immutable.',
+      CARRIER_REPLACEMENT_LINK_REQUIRED: 'Link this draft to the active carrier document that it replaces.',
+      CARRIER_CONFIRMATION_IDENTITY_REQUIRED: 'The confirming user requires a stable name or email.',
+      CARRIER_EVIDENCE_STORAGE_UNSUPPORTED: 'Carrier evidence must be available in verified local storage before confirmation.',
+      CARRIER_EVIDENCE_FILE_UNAVAILABLE: 'Carrier evidence file is missing or cannot be read.',
+      CARRIER_EVIDENCE_FILE_TAMPERED: 'Carrier evidence bytes no longer match the stored size and SHA-256.'
+    };
+    return sendError(res, { status: 409, code: result.error, message: messages[result.error], details: result.reconciliation });
+  }
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.carrier_document.confirmed', newValue: result.structured.id,
+    reason: 'export.carrier_document.confirm', notes: `${result.structured.documentType}:${result.structured.documentNumber}`
+  });
+  return sendSuccess(res, { data: result });
+}));
+
 router.get('/shipments/:shipmentId/readiness', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
@@ -231,7 +322,12 @@ router.post('/shipments/:shipmentId/documents/:type/generate', asyncHandler(asyn
   try {
     const result = await exportShipmentService.createDocumentJob(companyId, req.params.shipmentId, req.userId, req.params.type, req.body || {});
     if (!result) return sendNotFound(res);
-    if (result.blocked) return sendError(res, { status: 409, code: 'EXPORT_DOCUMENT_BLOCKED', message: 'Required shipment data is incomplete.', details: result.readiness });
+    if (result.blocked) return sendError(res, {
+      status: 409,
+      code: result.code || 'EXPORT_DOCUMENT_BLOCKED',
+      message: result.message || 'Required shipment data is incomplete.',
+      details: result.readiness
+    });
     await logAuditTrail({ companyId, userId: req.userId, dataGroup: 'exports', changedField: 'shipment_export.document.generated', newValue: result.id, reason: 'export.document.generate', notes: `${req.params.type}:${result.outputFormat || 'default'}` });
     return sendSuccess(res, { status: 202, data: result });
   } catch (error) {

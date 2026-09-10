@@ -253,6 +253,22 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Run isolated carrier-document and Carbon Annex pilot
+        env:
+          ALLOW_CARRIER_DOCUMENT_PILOT: "1"
+          CARRIER_PILOT_CONFIRM_ISOLATED: I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA
+          CARRIER_PILOT_DATABASE: weavecarbon
+        run: npm run test:carrier-document-pilot
+
+      - name: Upload carrier-document pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: carrier-document-pilot-${{ github.run_id }}
+          path: artifacts/carrier-document-pilot/result.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Audit representative hot-query plans
         run: npm run db:audit-hot-queries
 

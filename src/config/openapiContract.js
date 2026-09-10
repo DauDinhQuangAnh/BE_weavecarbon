@@ -147,6 +147,49 @@ const CARBON_ENGINE_INPUT_SCHEMA = {
   additionalProperties: false
 };
 
+const CARRIER_DOCUMENT_PROPERTIES = {
+  evidenceDocumentId: { type: 'string', format: 'uuid' },
+  documentType: { type: 'string', enum: ['bill_of_lading', 'fbl', 'air_waybill', 'cmr', 'cim'] },
+  contractLevel: { type: 'string', enum: ['master', 'house', 'direct'] },
+  transportMode: { type: 'string', enum: ['sea', 'air', 'road', 'rail', 'multimodal'] },
+  documentNumber: { type: 'string', minLength: 1, maxLength: 200 },
+  issuerName: { type: 'string', maxLength: 500 },
+  issuerIdentifier: { type: 'string', maxLength: 300 },
+  issueDate: { type: 'string', format: 'date' },
+  issuePlace: { type: 'string', maxLength: 500 },
+  onBoardDate: { type: 'string', format: 'date' },
+  shipper: { type: 'object', additionalProperties: true },
+  consignee: { type: 'object', additionalProperties: true },
+  notifyParty: { type: 'object', additionalProperties: true },
+  vesselName: { type: 'string', maxLength: 300 },
+  voyageNumber: { type: 'string', maxLength: 200 },
+  flightNumber: { type: 'string', maxLength: 200 },
+  vehicleRegistration: { type: 'string', maxLength: 200 },
+  trainNumber: { type: 'string', maxLength: 200 },
+  placeOfReceipt: { type: 'string', maxLength: 500 },
+  placeOfLoading: { type: 'string', maxLength: 500 },
+  placeOfDischarge: { type: 'string', maxLength: 500 },
+  placeOfDelivery: { type: 'string', maxLength: 500 },
+  goodsDescription: { type: 'string', maxLength: 5000 },
+  packageCount: { type: 'integer', minimum: 1 },
+  packageType: { type: 'string', maxLength: 200 },
+  marksAndNumbers: { type: 'string', maxLength: 2000 },
+  grossWeightKg: { type: 'number', minimum: 0, exclusiveMinimum: true },
+  measurementCbm: { type: 'number', minimum: 0 },
+  containerNumbers: { type: 'array', maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 100 } },
+  sealNumbers: { type: 'array', maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 100 } },
+  freightTerms: { type: 'string', enum: ['prepaid', 'collect', 'other'] },
+  paymentTerms: { type: 'string', maxLength: 1000 },
+  authenticationMethod: { type: 'string', maxLength: 500 },
+  authenticationReference: { type: 'string', maxLength: 1000 },
+  authenticityStatus: { type: 'string', enum: ['unverified', 'operator_confirmed', 'issuer_verified', 'rejected'] },
+  originalStatus: { type: 'string', enum: ['original', 'copy', 'electronic', 'sea_waybill', 'non_negotiable', 'unknown'] },
+  negotiable: { type: 'boolean', nullable: true },
+  metadataSource: { type: 'string', enum: ['manual', 'ocr_confirmed', 'carrier_api'] },
+  supersedesId: { type: 'string', format: 'uuid', nullable: true },
+  metadata: { type: 'object', additionalProperties: true }
+};
+
 const REQUEST_BODY_OVERRIDES = {
   'POST /reports/v2/snapshots': {
     type: 'object',
@@ -250,6 +293,27 @@ const REQUEST_BODY_OVERRIDES = {
     },
     additionalProperties: false,
     description: 'Product carbon values are always loaded from the authoritative server snapshot.'
+  },
+  'POST /export/shipments/{shipmentId}/carrier-documents': {
+    type: 'object',
+    required: ['evidenceDocumentId', 'documentType', 'transportMode', 'documentNumber'],
+    properties: CARRIER_DOCUMENT_PROPERTIES,
+    additionalProperties: false
+  },
+  'PATCH /export/shipments/{shipmentId}/carrier-documents/{carrierDocumentId}': {
+    type: 'object',
+    minProperties: 1,
+    properties: CARRIER_DOCUMENT_PROPERTIES,
+    additionalProperties: false
+  },
+  'POST /export/shipments/{shipmentId}/carrier-documents/{carrierDocumentId}/confirm': {
+    type: 'object',
+    required: ['metadataConfirmed', 'confirmationNote'],
+    properties: {
+      metadataConfirmed: { type: 'boolean', enum: [true] },
+      confirmationNote: { type: 'string', minLength: 1, maxLength: 5000 }
+    },
+    additionalProperties: false
   },
   'POST /carbon-calculations': {
     type: 'object',

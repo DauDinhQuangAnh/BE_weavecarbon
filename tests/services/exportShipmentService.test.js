@@ -3,11 +3,17 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { createExportShipmentService, isCbamApplicable, sourceSnapshotSha256 } = require('../../src/services/exportShipmentService');
+const {
+  CARRIER_RULESET_VERSION,
+  carrierReconciliationSha256,
+  createExportShipmentService,
+  isCbamApplicable,
+  sourceSnapshotSha256
+} = require('../../src/services/exportShipmentService');
 const { buildSimpleXlsx } = require('../../src/utils/simpleXlsx');
 
 function readySnapshot(lineCount = 1) {
-  return {
+  const snapshot = {
     shipment: { id: 'shipment-1', referenceNumber: 'VN-EU-1' },
     profile: {
       invoiceNumber: 'INV-1', invoiceDate: '2026-09-07', poContractId: 'PO-1',
@@ -29,7 +35,14 @@ function readySnapshot(lineCount = 1) {
       hsCodeSource: 'EU TARIC', hsCodeRuleset: 'TARIC-2026-09', hsCodeEffectiveDate: '2026-09-01',
       hsCodeConfirmed: true, styleCode: 'ST-1', sizeLabel: 'M', colorLabel: 'Blue', lotNumber: 'LOT-1',
       quantity: 10, unit: 'pcs', unitPrice: 5, currency: 'USD',
-      netWeightKg: 2, grossWeightKg: 2.2, embeddedCo2eKg: 40
+      netWeightKg: 2, grossWeightKg: 2.2, embeddedCo2eKg: 40,
+      carbonAuthority: {
+        authoritative: true, snapshotId: `carbon-snapshot-${index + 1}`, snapshotVersion: 1,
+        engineVersion: 'engine-v1', methodologyVersion: 'textile-pcf-v2.1',
+        factorRegistryVersion: 'factors-v1', gwpBasis: 'IPCC_AR5_100y',
+        boundary: 'cradle_to_gate_plus_gate_to_market_extension', canonicalInputHash: 'a'.repeat(64),
+        factorSnapshot: [{ id: 'cotton-v1', value: 5 }], allocationMethod: 'shipment_products.allocated_co2e'
+      }
     })),
     containers: [{
       id: 'container-1', containerNumber: 'TCLU1234567', sealNumber: 'SEAL-1', equipmentType: '40HC'
@@ -50,12 +63,60 @@ function readySnapshot(lineCount = 1) {
       lengthCm: 60, widthCm: 40, heightCm: 40,
       contents: Array.from({ length: lineCount }, (_, index) => ({ lineNumber: index + 1, quantity: 10 }))
     }],
-    carrierDocuments: [{ id: 'ev-1', type: 'carrier_bill_of_lading', status: 'locked', approvedBy: 'user-1', validTo: null }],
+    carrierDocuments: [{
+      id: 'ev-1', type: 'carrier_bill_of_lading', status: 'locked', approvedBy: 'user-1', validTo: null,
+      checksumSha256: 'b'.repeat(64), fileSizeBytes: 100,
+      structured: {
+        id: 'carrier-1', evidenceDocumentId: 'ev-1', documentType: 'bill_of_lading',
+        contractLevel: 'direct', transportMode: 'sea', documentNumber: 'BL-1', version: 1,
+        status: 'confirmed', issuerName: 'Ocean Carrier', issueDate: '2026-09-07', issuePlace: 'HCMC',
+        shipper: { name: 'Exporter' }, consignee: { name: 'Consignee' }, notifyParty: {},
+        vesselName: 'MV Green', voyageNumber: 'V001', placeOfLoading: 'Cat Lai',
+        placeOfDischarge: 'Rotterdam', goodsDescription: 'Cotton shirts', packageCount: 1,
+        packageType: 'carton', marksAndNumbers: 'PO-1', grossWeightKg: lineCount * 2.2,
+        measurementCbm: 0.096, containerNumbers: ['TCLU1234567'], sealNumbers: ['SEAL-1'],
+        freightTerms: 'prepaid', authenticationMethod: 'carrier digital signature',
+        authenticationReference: 'SIG-1', authenticityStatus: 'operator_confirmed',
+        originalStatus: 'electronic', negotiable: false, metadataSource: 'manual', metadata: {}
+      },
+      latestReconciliation: null
+    }],
     documents: []
   };
+  snapshot.carrierDocuments[0].latestReconciliation = {
+    status: 'passed', rulesetVersion: CARRIER_RULESET_VERSION,
+    sourceSnapshotSha256: carrierReconciliationSha256(snapshot, snapshot.carrierDocuments[0])
+  };
+  return snapshot;
 }
 
 describe('shipment export readiness', () => {
+  test('verifies the exact carrier evidence bytes before confirmation', async () => {
+    const uploadsRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'weave-carrier-evidence-'));
+    const storageKey = 'evidence/company/shipment/carrier.pdf';
+    const filePath = path.join(uploadsRoot, storageKey);
+    const buffer = Buffer.from('%PDF-1.7\nsynthetic carrier document\n');
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.promises.writeFile(filePath, buffer);
+    const service = createExportShipmentService({ database: {}, uploadsRoot });
+
+    try {
+      await expect(service._verifyCarrierEvidenceFile({
+        storage_provider: 'local', storage_key: storageKey,
+        checksum_sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
+        file_size_bytes: buffer.length
+      })).resolves.toMatchObject({ fileSizeBytes: buffer.length });
+      await fs.promises.appendFile(filePath, 'tampered');
+      await expect(service._verifyCarrierEvidenceFile({
+        storage_provider: 'local', storage_key: storageKey,
+        checksum_sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
+        file_size_bytes: buffer.length
+      })).resolves.toEqual({ error: 'CARRIER_EVIDENCE_FILE_TAMPERED' });
+    } finally {
+      await fs.promises.rm(uploadsRoot, { recursive: true, force: true });
+    }
+  });
+
   test('textile and footwear codes do not trigger CBAM while an Annex-I heading does', () => {
     expect(isCbamApplicable('6109.10.00')).toBe(false);
     expect(isCbamApplicable('6205 20 00')).toBe(false);

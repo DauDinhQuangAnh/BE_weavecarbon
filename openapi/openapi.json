@@ -6768,6 +6768,765 @@
         ]
       }
     },
+    "/export/shipments/{shipmentId}/carrier-documents": {
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdCarrierDocuments",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "authenticationMethod": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "authenticationReference": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "authenticityStatus": {
+                    "enum": [
+                      "unverified",
+                      "operator_confirmed",
+                      "issuer_verified",
+                      "rejected"
+                    ],
+                    "type": "string"
+                  },
+                  "consignee": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "containerNumbers": {
+                    "items": {
+                      "maxLength": 100,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "contractLevel": {
+                    "enum": [
+                      "master",
+                      "house",
+                      "direct"
+                    ],
+                    "type": "string"
+                  },
+                  "documentNumber": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "documentType": {
+                    "enum": [
+                      "bill_of_lading",
+                      "fbl",
+                      "air_waybill",
+                      "cmr",
+                      "cim"
+                    ],
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "flightNumber": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "freightTerms": {
+                    "enum": [
+                      "prepaid",
+                      "collect",
+                      "other"
+                    ],
+                    "type": "string"
+                  },
+                  "goodsDescription": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "grossWeightKg": {
+                    "exclusiveMinimum": true,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "issueDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "issuePlace": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "issuerIdentifier": {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "issuerName": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "marksAndNumbers": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "measurementCbm": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "metadataSource": {
+                    "enum": [
+                      "manual",
+                      "ocr_confirmed",
+                      "carrier_api"
+                    ],
+                    "type": "string"
+                  },
+                  "negotiable": {
+                    "nullable": true,
+                    "type": "boolean"
+                  },
+                  "notifyParty": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "onBoardDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "originalStatus": {
+                    "enum": [
+                      "original",
+                      "copy",
+                      "electronic",
+                      "sea_waybill",
+                      "non_negotiable",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  "packageCount": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "packageType": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "paymentTerms": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "placeOfDelivery": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "placeOfDischarge": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "placeOfLoading": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "placeOfReceipt": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "sealNumbers": {
+                    "items": {
+                      "maxLength": 100,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "shipper": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "supersedesId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "trainNumber": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "transportMode": {
+                    "enum": [
+                      "sea",
+                      "air",
+                      "road",
+                      "rail",
+                      "multimodal"
+                    ],
+                    "type": "string"
+                  },
+                  "vehicleRegistration": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "vesselName": {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "voyageNumber": {
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "evidenceDocumentId",
+                  "documentType",
+                  "transportMode",
+                  "documentNumber"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/carrier-documents",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/carrier-documents/{carrierDocumentId}": {
+      "delete": {
+        "operationId": "deleteExportShipmentsByShipmentIdCarrierDocumentsByCarrierDocumentId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "carrierDocumentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "DELETE /export/shipments/{shipmentId}/carrier-documents/{carrierDocumentId}",
+        "tags": [
+          "Export"
+        ]
+      },
+      "patch": {
+        "operationId": "patchExportShipmentsByShipmentIdCarrierDocumentsByCarrierDocumentId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "carrierDocumentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "authenticationMethod": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "authenticationReference": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "authenticityStatus": {
+                    "enum": [
+                      "unverified",
+                      "operator_confirmed",
+                      "issuer_verified",
+                      "rejected"
+                    ],
+                    "type": "string"
+                  },
+                  "consignee": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "containerNumbers": {
+                    "items": {
+                      "maxLength": 100,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "contractLevel": {
+                    "enum": [
+                      "master",
+                      "house",
+                      "direct"
+                    ],
+                    "type": "string"
+                  },
+                  "documentNumber": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "documentType": {
+                    "enum": [
+                      "bill_of_lading",
+                      "fbl",
+                      "air_waybill",
+                      "cmr",
+                      "cim"
+                    ],
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "flightNumber": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "freightTerms": {
+                    "enum": [
+                      "prepaid",
+                      "collect",
+                      "other"
+                    ],
+                    "type": "string"
+                  },
+                  "goodsDescription": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "grossWeightKg": {
+                    "exclusiveMinimum": true,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "issueDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "issuePlace": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "issuerIdentifier": {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "issuerName": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "marksAndNumbers": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "measurementCbm": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "metadataSource": {
+                    "enum": [
+                      "manual",
+                      "ocr_confirmed",
+                      "carrier_api"
+                    ],
+                    "type": "string"
+                  },
+                  "negotiable": {
+                    "nullable": true,
+                    "type": "boolean"
+                  },
+                  "notifyParty": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "onBoardDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "originalStatus": {
+                    "enum": [
+                      "original",
+                      "copy",
+                      "electronic",
+                      "sea_waybill",
+                      "non_negotiable",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  "packageCount": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "packageType": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "paymentTerms": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "placeOfDelivery": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "placeOfDischarge": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "placeOfLoading": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "placeOfReceipt": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "sealNumbers": {
+                    "items": {
+                      "maxLength": 100,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "shipper": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "supersedesId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "trainNumber": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "transportMode": {
+                    "enum": [
+                      "sea",
+                      "air",
+                      "road",
+                      "rail",
+                      "multimodal"
+                    ],
+                    "type": "string"
+                  },
+                  "vehicleRegistration": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "vesselName": {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "voyageNumber": {
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "PATCH /export/shipments/{shipmentId}/carrier-documents/{carrierDocumentId}",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/carrier-documents/{carrierDocumentId}/confirm": {
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdCarrierDocumentsByCarrierDocumentIdConfirm",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "carrierDocumentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "confirmationNote": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "metadataConfirmed": {
+                    "enum": [
+                      true
+                    ],
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "metadataConfirmed",
+                  "confirmationNote"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/carrier-documents/{carrierDocumentId}/confirm",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/carrier-documents/{carrierDocumentId}/reconciliation": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdCarrierDocumentsByCarrierDocumentIdReconciliation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "carrierDocumentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/carrier-documents/{carrierDocumentId}/reconciliation",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
     "/export/shipments/{shipmentId}/containers": {
       "post": {
         "operationId": "postExportShipmentsByShipmentIdContainers",

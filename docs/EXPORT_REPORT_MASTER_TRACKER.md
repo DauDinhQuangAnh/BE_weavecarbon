@@ -132,7 +132,7 @@ Known overall checks at the latest feature commits:
 |---:|---|---|---|---|---|
 | 1 | Commercial Invoice | Almost every sale shipment | `READY_TO_PILOT` | PDF/XLSX, EORI/VAT, customs value, HS provenance and checksum-bound named review/issue | Real export-operator review against an actual invoice and buyer/destination rules |
 | 2 | Packing List | Normal customs/transport practice | `READY_TO_PILOT` | PDF/XLSX, hierarchy, explicit measurement basis, carrier display and checksum-bound named review/issue | Real warehouse review against the physical package ledger |
-| 3 | B/L, AWB, CMR or FBL | Depends on transport mode | `EXTERNAL_DOCUMENT` | Upload, link and approve carrier evidence; WeaveCarbon generates only Carbon Annex | Carrier metadata validation and real document pilot |
+| 3 | B/L, AWB, CMR, CIM or FBL | Depends on transport mode | `EXTERNAL_DOCUMENT` | Structured immutable carrier metadata, exact-file verification, mode/totals/equipment reconciliation and versioned replacement; WeaveCarbon generates only Carbon Annex | Real carrier-document pilot and issuer/authenticity review |
 | 4 | Vietnam export declaration/VNACCS | Normally mandatory | `NOT_STARTED` | Stores declaration number only | Build broker/VNACCS support dataset and response lifecycle |
 | 5 | EU import declaration/SAD/EUCDM | Importer/declarant responsibility | `NOT_STARTED` | No declaration dataset | Build declarant handoff dataset; never label it customs-accepted |
 | 6 | ENS/ICS2 support dataset | Goods entering EU | `PARTIAL` | Basic per-line CSV | Mode/release-specific schema, house/master consignment and schema validation |
@@ -211,11 +211,18 @@ authorised forwarder. WeaveCarbon must never issue a legal B/L.
 vessel/voyage/flight/vehicle; receipt/loading/discharge/delivery places; goods/packages/marks/gross/measurement;
 container/seal; freight/payment terms; signature/authentication; original/negotiability status where applicable; file hash.
 
-**Implemented:** shipment-linked upload, approval/current-validity gate, immutable evidence linkage and Carbon Annex XLSX
-containing line carbon, carrier reference and container.
+**Implemented:** shipment-linked upload plus structured B/L/FBL/AWB/CMR/CIM metadata; document/mode compatibility;
+party, route and conveyance requirements; exact package-count/gross/CBM/container/seal reconciliation; explicit
+authenticity/original/negotiability and metadata-source state; company-admin confirmation with a named identity and note;
+byte-level storage path/size/SHA-256 verification before evidence lock; immutable confirmed metadata and append-only
+reconciliation pinned to a ruleset and live shipment hash; stale reconciliation blocking; explicit superseding versions;
+tenant-bound evidence foreign keys; and a supplementary Carbon Annex containing calculation snapshot, engine,
+methodology, boundary, factor-registry/factor provenance, GWP basis, allocation and canonical input hash.
 
-**Remaining:** structured carrier metadata/OCR confirmation; mode-specific validation; carrier totals reconciliation;
-issuer/signature authenticity state; document replacement/version; Carbon Annex methodology/boundary/factor provenance.
+**Remaining:** run the workflow against a real carrier/forwarder document with a qualified operator; independently verify
+issuer/signature/authentication rather than relying only on operator confirmation; add assisted OCR/API extraction while
+retaining human field confirmation; define retention/original-control rules for each carrier/buyer and route. The legal
+transport document remains external and R03 therefore stays `EXTERNAL_DOCUMENT` even after the technical pilot passes.
 
 **Definition of Done:** a real carrier document can be uploaded, approved and cross-checked without being altered; its
 number/container/seal/packages/weights match Invoice and Packing List; Carbon Annex is clearly supplementary.
@@ -531,7 +538,7 @@ Before merging or deploying this branch:
 
 1. Back up PostgreSQL and the uploads directory and verify restoration instructions.
 2. Apply every export/audit migration from `017_shipment_export_workflow.sql` through
-   `022_export_document_business_review.sql` to staging cloned from a safe schema/data fixture.
+   `024_r03_carrier_document_controls.sql` to staging cloned from a safe schema/data fixture.
 3. Run migration rollback/forward compatibility checks appropriate to the environment.
 4. Create one real-like Vietnam-to-EU shipment with more than 20 lines and multiple/partial packages.
 5. Upload and approve a real-like carrier document; fill profile, package and carbon data without placeholders.
@@ -556,6 +563,7 @@ npm run verify:full
 npm run test:migration-snapshots
 npm run test:export-documents-pilot # isolated PostgreSQL only; see docs/EXPORT_DOCUMENTS_PILOT_RUNBOOK.md
 npm run test:audit-bundle-pilot # isolated PostgreSQL only; see docs/AUDIT_PACK_PILOT_RUNBOOK.md
+npm run test:carrier-document-pilot # isolated PostgreSQL only; see docs/CARRIER_DOCUMENT_PILOT_RUNBOOK.md
 git diff --check
 ```
 
