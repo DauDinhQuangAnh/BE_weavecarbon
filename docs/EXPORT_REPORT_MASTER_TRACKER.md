@@ -47,6 +47,7 @@ This tracker separates four facts that must never be conflated:
 | Frontend R04 broker-handoff commit | `dbeb7f181f6248834fd89d076cde779bff4c135e` |
 | Backend R05 EU import declarant-handoff commit | `47c81c1a` |
 | Frontend R05 EU import declarant-handoff commit | `f46dd1ca` |
+| R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
 | Backend R01/R02 staging-pilot commit | `002aea9` |
@@ -1142,9 +1143,10 @@ Backend carbon trace core:
   the EU importer/declarant and the applicable authority system.
 - Local gates passed: backend `npm run verify:full` with 105 suites/664 tests; frontend `npm run check`, 41 files/175 tests
   and a production build of all 62 routes. The 20 frontend lint warnings pre-date R05; no R05 file introduces a lint error.
-- The guarded shared PostgreSQL pilot now covers R01 through R05, writes a dedicated R05 artifact and is included in
-  backend CI. It proves the technical lifecycle only after the exact pushed-head CI run passes; isolated staging migration
-  and pilot are still pending at this checkpoint. Production was not changed.
-- R05 is `READY_TO_PILOT`, not legally ready. Exact next gates: pass BE/FE feature-head CI, back up and migrate isolated
-  staging through 027, run/reopen the R05 artifact, then obtain a real Member-State/declarant schema and qualified
+- The guarded shared PostgreSQL pilot now covers R01 through R05 and writes a dedicated R05 artifact. Backend feature run
+  `34678619493` passed all six jobs, including migration/integration/pilot; frontend feature run `34678619634` passed all
+  six build/test/type/contract/security/Compose jobs. Both stacked PRs are cleanly mergeable at this checkpoint.
+  Isolated VPS staging migration and pilot are still pending. Production was not changed.
+- R05 is `READY_TO_PILOT`, not legally ready. Exact next gates: back up and migrate isolated staging through 027,
+  run/reopen the R05 artifact, then obtain a real Member-State/declarant schema and qualified
   specialist review before any real-shipment or external-status claim.
