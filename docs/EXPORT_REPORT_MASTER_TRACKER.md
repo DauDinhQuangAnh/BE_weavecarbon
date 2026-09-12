@@ -48,6 +48,7 @@ This tracker separates four facts that must never be conflated:
 | Backend R05 EU import declarant-handoff commit | `47c81c1b2d0cb60921d5716b423b09929d5db29c` |
 | Frontend R05 EU import declarant-handoff commit | `f46dd1c64d9a5abd5b3c0a7049c4558bf1db6b15` |
 | Frontend R06 ICS2 filer-handoff local commit | `ba5d70fd47c2bd010db1ac03753e4b0d584603e5` |
+| Frontend production-claim/CBAM scope-guard commit | `9323d96f7d20f62ba51b07cfaaf41233a5047ad2` |
 | R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
@@ -133,6 +134,8 @@ Known overall checks at the latest feature commits:
 - Frontend R05 local gate: 41/41 files and 175/175 tests passed; `npm run check` and the 62-page production build passed.
 - Backend R06 local gate: 107/107 suites and 677/677 tests passed; syntax, OpenAPI, architecture and lint gates passed.
 - Frontend R06 local gate: 42/42 files and 177/177 tests passed; TypeScript and the 62-page production build passed.
+- Frontend claim-safety gate: 43/43 files and 194/194 tests passed; `npm run check` and the 62-route production build
+  passed at `9323d96f7d20f62ba51b07cfaaf41233a5047ad2`. Lint retained 20 pre-existing warnings and reported no error.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
@@ -162,10 +165,10 @@ Known overall checks at the latest feature commits:
 | 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Immutable ZIP, exact term/factor evidence coverage, append-only review/internal issue, and isolated PostgreSQL pilot gate | Run human real-evidence staging review; signed share link and external assurance |
 | 15 | Apparel & Footwear PEF/PEFCR | Voluntary or buyer-specific | `NOT_STARTED` | Climate-only partial PCF is not PEF | Full life cycle, EF datasets/impact categories and validation statement |
 | 16 | ESPR Digital Product Passport | When product delegated act applies | `BLOCKED_BY_LAW` | Guarded prototype only | Registry/service/access/version architecture; wait for final product schema |
-| 17 | Textile/footwear EPR reporting | Member-State implementation | `BLOCKED_BY_LAW` | Static requirement label only | Country registry, producer/PRO identity and placed-on-market ledger |
-| 18 | Green-claim substantiation dossier | Whenever environmental claims are made | `NOT_STARTED` | Carbon output exists without claim controls | Claim register, evidence binding, approval and withdrawal triggers |
+| 17 | Textile/footwear EPR reporting | EU framework plus Member-State implementation | `PARTIAL` | EU framework is final; only static requirement labels exist in the application | Build EU-core producer/register/market-volume model, then country adapters before the 17 April 2028 scheme deadline |
+| 18 | Green-claim substantiation dossier | Whenever environmental claims are made | `PARTIAL` | P0 production-copy containment and CBAM/ISO/audit-readiness guards; no claim register yet | Claim register, evidence binding, legal approval and expiry/withdrawal triggers before external claims |
 | 19 | CBAM declaration/operator report | Annex-I CBAM goods only | `NOT_APPLICABLE_BASELINE` | Scope screening; old styled templates remain demo-only | Maintain versioned CN list; implement official fields only for Annex-I goods |
-| 20 | Specialist permits/certificates | Conditional by exact product and lane | `NOT_STARTED` | Static checklist only | Versioned applicability engine using exact SKU/lane attributes |
+| 20 | Specialist permits/certificates | Conditional by exact product and lane | `PARTIAL` | Minimum versioned CBAM/CN applicability primitive exists; other domains remain a static checklist | Generalise to source-versioned product/material/lane/market/effective-date rules with specialist review |
 
 No item in this matrix is currently confirmed `READY_TO_ISSUE` on production.
 
@@ -501,7 +504,8 @@ assurance gate additionally requires authentic third-party evidence and named hu
 **Required inputs:** PEFCR functional unit/reference flow; full lifecycle; EF-compliant LCI and Data Needs Matrix; data quality;
 all required impact categories and weighting; scenarios, allocation, use/end-of-life, supply-chain provenance; validation.
 
-**Current:** climate-only partial PCF, which must not be called PEF-compliant.
+**Current:** the Apparel & Footwear PEFCR published in 2025 provides an implementable category-rule basis, but the
+application still has only a climate-only partial PCF and must not call it PEF-compliant.
 
 **Definition of Done:** applicable PEFCR version is implemented end-to-end with compliant datasets and required independent
 validation for external communication.
@@ -522,7 +526,10 @@ interoperability, access, integrity, backup, version and registry interfaces; ad
 **Required baseline:** producer identity/tax/trade IDs; Member State; product/CN group; authorised representative and PRO;
 registration/status; quantities placed on market; fee/modulation; collection/treatment reporting; evidence/version.
 
-**Current:** static requirement label only; national implementation varies/evolves.
+**Current:** Directive (EU) 2025/1892 establishes the EU textile/textile-related/footwear EPR framework and requires
+Member-State schemes by 17 April 2028. The application still has only a static requirement label. EU-core producer,
+register, product/market-volume and reporting concepts can now be implemented; fee, PRO, registration and submission
+details still require versioned Member-State adapters.
 
 **Definition of Done:** country-versioned rule set and registrations exist; market quantities reconcile to sales/shipments;
 external registration/payment/submission status is backed by authority/PRO evidence.
@@ -533,7 +540,10 @@ external registration/payment/submission status is backed by authority/PRO evide
 method/PCR/standard; datasets/factor/calculation hash; evidence/assurance; limitations/exclusions/uncertainty/qualifiers;
 legal approval; update/withdrawal trigger.
 
-**Current:** carbon reports exist, but there is no claim register or claim-to-evidence approval control.
+**Current:** P0 containment removes unsupported `AUDIT-READY`, automatic verification and CBAM-liability wording from
+production report/data-gap/logistics surfaces. Baseline CN 61/62/64 reports emit `CBAM_NOT_APPLICABLE`; an Annex-I prefix
+only opens customs review and never creates a monetary liability estimate. Source-level tests guard these statements.
+There is still no claim register or claim-to-evidence legal approval workflow.
 
 **Definition of Done:** every public claim resolves to an approved, current dossier; prohibited/unqualified claims are blocked;
 expired or changed evidence automatically returns the claim to review.
@@ -543,8 +553,9 @@ expired or changed evidence automatically returns the claim to review.
 **Baseline decision:** standard apparel CN 61/62 and footwear CN 64 are outside current CBAM scope. Current CBAM sectors are
 cement, iron/steel, aluminium, fertilisers, electricity and hydrogen, subject to the exact Annex-I CN list and thresholds.
 
-**Implemented:** version-labelled prefix screening and `CBAM_NOT_APPLICABLE`; production page is a scope check; legacy
-CBAM-style workbook remains demo-only.
+**Implemented:** version-labelled prefix screening and `CBAM_NOT_APPLICABLE`; production page, preview and standard
+PDF/XLSX are scope checks. Baseline outputs contain no monetary CBAM simulation or populated filing tables; an Annex-I
+prefix only returns `REVIEW_ANNEX_I_MATCH` and requires customs/legal review. The legacy styled workbook remains demo-only.
 
 **Remaining:** use an exact versioned CN/TARIC table rather than broad prefixes; reviewer/override evidence; threshold and
 importer role logic; only for in-scope goods, official installation/operator/monitoring/process/source-stream/precursor/
@@ -559,22 +570,31 @@ rules and official fields; output is never called an annual declaration unless f
 consumer group, importer role, channel, shipment value and mode. Possible triggers include CITES/animal origin, PPE,
 children's products, biocidal treatment, chemical controls, packaging/waste, sanctions or safety standards.
 
-**Current:** static checklist cannot determine legal applicability.
+**Current:** the minimum reusable status pattern exists for CBAM (`not applicable`, `missing code`, `review match`) with a
+version/effective date and tests. It is only a conservative heading-prefix screen, not an exact TARIC decision. Other
+specialist domains still rely on a static checklist and cannot determine legal applicability.
 
 **Definition of Done:** source-versioned rules return explainable applicable/not-applicable decisions and required evidence;
 specialist reviewer approves high-risk classifications. Never claim the list is universally complete.
 
-## 7. Implementation order
+## 7. Remaining implementation order from 2026-09-12
 
-1. **Pilot R01 Commercial Invoice and R02 Packing List together** because they share shipment truth and reconciliation.
-2. **Fix R14 Audit/evidence pack P0** before any assurance or “audit-ready” claim remains accessible in production.
-3. **Complete R03 carrier ingestion/Carbon Annex**, then R06 ICS2 support because they share transport truth.
-4. **Complete R07 origin**, including BOM/rules/evidence, before generating EUR.1/origin-declaration drafts.
-5. **Complete active product obligations:** R08 textile label, R09 footwear label, R10 GPSR and R11 REACH.
-6. **Raise carbon assurance maturity:** R12 PCF and R13 corporate/facility GHG; implement R15 only when commercially needed.
-7. **Build future/conditional foundations:** R16 DPP, R17 EPR and R18 claims without pretending future schemas are final.
-8. **Maintain R19 scope screening**; do not build CBAM filing for the baseline goods.
-9. **Add R04/R05/R20 handoff workflows** when a customs broker and exact lanes provide accepted target schemas.
+1. **Finish R18 production-claim containment and build the minimum R20 applicability core** before adding another report.
+   Applicability must use exact product, CN/TARIC, material, lane, market and effective date rather than a static checklist.
+2. **Close the existing real-world gates:** R01/R02 operator and warehouse pilots; R03 authentic carrier pilot; R05/R06
+   isolated staging/CI. Keep R04 waiting for an exact broker schema instead of expanding a guessed mapping.
+3. **Build shared product-compliance primitives** for components/materials/substances, EU economic operators, languages,
+   market/effective-date rules and immutable evidence so R08-R11 do not create competing source-of-truth models.
+4. **Complete obligations already applicable to baseline consumer goods:** R10 GPSR, R08 textile label, R09 footwear label
+   and R11 REACH/SVHC. Select R08 or R09 by actual product type.
+5. **Complete R07 origin only when preferential treatment is claimed**, including BOM/rules/evidence before generating
+   EUR.1 or origin-declaration drafts.
+6. **Raise carbon maturity:** R12 PCF, R13 corporate/facility GHG and authentic R14 assurance. Implement R15 from the 2025
+   Apparel & Footwear PEFCR only when commercially required.
+7. **Build versioned future foundations:** R16 generic DPP architecture without inventing delegated-act product fields;
+   implement R17 EU-core EPR now and add Member-State adapters as national schemes are published.
+8. **Maintain R19 scope screening:** baseline CN 61/62/64 must remain `CBAM_NOT_APPLICABLE`; Annex-I matches require
+   customs review and may not generate a charge, filing or authority status from an internal calculation.
 
 ## 8. Required update protocol
 
@@ -660,6 +680,9 @@ Recheck these official sources at the start of the related report work and store
 - GPSR, Regulation (EU) 2023/988: https://eur-lex.europa.eu/eli/reg/2023/988/oj
 - REACH consolidated regulation: https://eur-lex.europa.eu/eli/reg/2006/1907
 - ESPR/DPP framework, Regulation (EU) 2024/1781: https://eur-lex.europa.eu/eli/reg/2024/1781/oj
+- Textile/footwear EPR framework, Directive (EU) 2025/1892: https://eur-lex.europa.eu/eli/dir/2025/1892/oj
+- Environmental-claim consumer rules, Directive (EU) 2024/825: https://eur-lex.europa.eu/eli/dir/2024/825/oj
+- Apparel & Footwear PEFCR publication (2025-06-25): https://environment.ec.europa.eu/news/new-eu-rules-measuring-environmental-impact-clothes-and-shoes-2025-06-25_en
 - CBAM definitive regime: https://taxation-customs.ec.europa.eu/carbon-border-adjustment-mechanism/cbam-definitive-regime_en
 - CBAM legal text: https://eur-lex.europa.eu/eli/reg/2023/956
 - GHG Protocol standards/guidance: https://ghgprotocol.org/standards-guidance
@@ -1191,3 +1214,21 @@ Backend carbon trace core:
 - R06 remains `PARTIAL`. Its isolated PostgreSQL pilot, exact-head CI and staging migration 028 have not yet run because
   the configured staging host is not resolvable from this workstation. A real filer/ITSP schema, technical package/code
   lists, conformance testing and named protected-shipment pilot are also still required. Production was not changed.
+
+### 2026-09-12 — Cross-phase compliance audit and production-claim containment
+
+- Frontend commit `9323d96f7d20f62ba51b07cfaaf41233a5047ad2` closes the P0 findings identified before starting R07. Uploading a
+  data-gap file no longer marks it low-risk or verified; completeness and verified-source percentages are separate.
+- Active overview, logistics, report, preview, PDF/XLSX and data-trace surfaces no longer present internal calculations as
+  audit-ready, certified, ISO-conformant or independently verified. Example certificate rows use explicit sample identities.
+- The product adapter no longer derives a fabricated CBAM amount from any EU destination. The report builder uses the
+  versioned CN screen: baseline textile/footwear is `CBAM_NOT_APPLICABLE`; a possible Annex-I prefix requires customs/legal
+  review. Neither path generates a CBAM charge, filed status or authority acceptance, and baseline filing tables stay empty.
+- Source-level claim guards and CBAM boundary tests were added. Local gates passed: 43/43 test files and 194/194 tests,
+  `npm run check`, `git diff --check` and the production build of all 62 routes. The 20 lint warnings are pre-existing;
+  there are no lint errors.
+- The roadmap now moves R18 containment and the R20 applicability core ahead of new reports, prioritises already-applicable
+  GPSR/product obligations, records the 2025 Apparel & Footwear PEFCR, and changes R17 from law-blocked to an implementable
+  EU core plus versioned Member-State adapters under Directive (EU) 2025/1892.
+- This is a local feature-branch correction only. It was not pushed, merged, deployed or tested in staging, and it does not
+  promote any report to legal, business, customs, assurance or filing readiness.
