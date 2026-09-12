@@ -28,7 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
-| Active R06 implementation branch in both repositories | `feat/r06-ics2-filing-handoff` (local, stacked on R05 while R04/R05 PRs remain open) |
+| Active R07 implementation branch in both repositories | `feat/r07-evfta-origin-handoff` (local, stacked on the R06 checkpoint while R04/R05 PRs remain open) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -77,10 +77,10 @@ git clone https://github.com/DauDinhQuangAnh/weavecarbon.git
 git -C weavecarbon switch main
 ```
 
-R06 is currently a local stack on `feat/r06-ics2-filing-handoff`; it contains R05, which contains R04. Preserve that
-dependency order until the existing R04/R05 pull requests merge, and do not merge or deploy the local R06 branch as a
-substitute for those reviews. After merge, rebase R06 onto `main` and verify that it still contains the recorded R04/R05
-implementation commits.
+R06 is preserved locally at `feat/r06-ics2-filing-handoff`; R07 is stacked on it at
+`feat/r07-evfta-origin-handoff`. Both contain R05, which contains R04. Preserve that dependency order until the existing
+R04/R05 pull requests merge, and do not merge or deploy R06/R07 as a substitute for those reviews. After merge, rebase
+R06 onto `main`, then rebase R07 onto R06 and verify the recorded implementation commits and migrations remain ordered.
 
 Then give the next AI this instruction:
 
@@ -153,9 +153,9 @@ Known overall checks at the latest feature commits:
 | 2 | Packing List | Normal customs/transport practice | `READY_TO_PILOT` | PDF/XLSX, hierarchy, explicit measurement basis, carrier display and checksum-bound named review/issue | Real warehouse review against the physical package ledger |
 | 3 | B/L, AWB, CMR, CIM or FBL | Depends on transport mode | `EXTERNAL_DOCUMENT` | Structured immutable carrier metadata, exact-file verification, mode/totals/equipment reconciliation and versioned replacement; WeaveCarbon generates only Carbon Annex | Real carrier-document pilot and issuer/authenticity review |
 | 4 | Vietnam export declaration/VNACCS | Normally mandatory | `PARTIAL` | Versioned internal broker-handoff JSON/XLSX, R01/R02/R03 reconciliation, named review and evidence-backed append-only external events; no VNACCS submission | Obtain and validate an exact broker target schema/code list, then complete a named real-shipment broker pilot |
-| 5 | EU import declaration/SAD/EUCDM | Importer/declarant responsibility | `READY_TO_PILOT` | Versioned internal EUCDM-referenced JSON/XLSX declarant handoff, TARIC decisions, R01/R02/R03 reconciliation, review and evidence-backed external events; no direct submission | Run isolated PostgreSQL pilot, obtain exact Member-State/declarant schema, then complete a named real-shipment specialist pilot |
-| 6 | ENS/ICS2 support dataset | Goods entering EU | `PARTIAL` | Controlled JSON/XLSX filer handoff with mode-specific Annex B dataset selection, master/house/goods/package reconciliation, named review and evidence-backed lifecycle; no STI submission | Run the guarded isolated PostgreSQL/CI pilot, then obtain and validate an exact filer/ITSP schema and complete required conformance testing |
-| 7 | EVFTA EUR.1/origin declaration support | Only when claiming preference | `PARTIAL` | Versioned BOM/rule/evidence handoff, controlled JSON/XLSX and specialist review; never proof of origin | Validate exact rules with a specialist and real BOM; supplier-declaration lifecycle and legally performed proof route remain |
+| 5 | EU import declaration/SAD/EUCDM | Importer/declarant responsibility | `READY_TO_PILOT` | Versioned internal EUCDM-referenced JSON/XLSX declarant handoff, TARIC decisions, R01/R02/R03 reconciliation, review, evidence-backed external events and a passing local isolated-PostgreSQL gate; no direct submission | Obtain exact Member-State/declarant schema, run exact-head CI/staging, then complete a named real-shipment specialist pilot |
+| 6 | ENS/ICS2 support dataset | Goods entering EU | `PARTIAL` | Controlled JSON/XLSX filer handoff with mode-specific Annex B dataset selection, master/house/goods/package reconciliation, named review, evidence-backed lifecycle and a passing local isolated-PostgreSQL gate; no STI submission | Run exact-head CI/staging, then obtain and validate an exact filer/ITSP schema and complete required conformance testing |
+| 7 | EVFTA EUR.1/origin declaration support | Only when claiming preference | `PARTIAL` | Versioned BOM/rule/evidence handoff, controlled JSON/XLSX, specialist review and a passing local isolated-PostgreSQL gate; never proof of origin | Run exact-head CI/staging; validate exact rules with a specialist and real BOM; supplier-declaration lifecycle and legally performed proof route remain |
 | 8 | EU textile fibre label | Textile products | `PARTIAL` | Generic material composition exists | Controlled Annex-I fibres, components, locale and label artifact |
 | 9 | EU footwear material label | Footwear products | `NOT_STARTED` | No three-part/80% model | Component model, 80% rule, pictogram/text and locale output |
 | 10 | GPSR technical file and traceability | Consumer products | `PARTIAL` | Some product identity/passport/evidence fields | Risk file, EU operator, warnings, tests and corrective-action records |
@@ -656,6 +656,7 @@ npm run test:carrier-document-pilot # isolated PostgreSQL only; see docs/CARRIER
 npm run test:vn-customs-handoff-pilot # same guarded R03/R04 fixture; see docs/VN_CUSTOMS_HANDOFF_PILOT_RUNBOOK.md
 npm run test:eu-import-handoff-pilot # same guarded R01-R05 fixture; see docs/EU_IMPORT_HANDOFF_PILOT_RUNBOOK.md
 npm run test:ics2-handoff-pilot # same guarded R01-R06 fixture; see docs/ICS2_HANDOFF_PILOT_RUNBOOK.md
+npm run test:origin-handoff-pilot # same guarded R01-R07 fixture; see docs/ORIGIN_HANDOFF_PILOT_RUNBOOK.md
 git diff --check
 ```
 
@@ -1254,8 +1255,23 @@ Backend carbon trace core:
   cumulation and locked SHA-bound evidence for every material.
 - Generated JSON/XLSX is an internal specialist handoff only. It cannot represent EUR.1 issuance, an origin declaration,
   authority endorsement or tariff preference; immutable issue requires a named origin-specialist approval of the exact file.
-- R07 remains `PARTIAL` pending an isolated PostgreSQL migration/pilot, real BOM and supplier evidence, qualified specialist
-  validation, and design of any external legally performed proof/revocation workflow. Nothing was pushed or deployed.
-- Local gates pass: backend syntax/OpenAPI/artifact/architecture/lint plus 109 suites and 690 tests; frontend check,
+- R07 remains `PARTIAL` pending exact-head CI/staging, real BOM and supplier evidence, qualified specialist validation,
+  and design of any external legally performed proof/revocation workflow. Nothing was pushed or deployed.
+- Local gates pass: backend syntax/OpenAPI/artifact/architecture/lint plus 110 suites and 694 tests; frontend check,
   44 files and 196 tests, and production build of all 62 routes. The 20 frontend lint warnings are pre-existing; there
   are no lint errors.
+- Branch boundaries were corrected locally on 2026-09-13: R06 now stops at its post-audit checkpoint and R07 is checked
+  out separately as `feat/r07-evfta-origin-handoff`. Remote R04/R05 pull requests remain open, so no rebase onto `main`,
+  remote merge, push or deployment was performed.
+- The guarded cumulative PostgreSQL fixture now exercises R07 after R01-R06: rule/BOM/value/evidence reconciliation,
+  tenant isolation, evidence-byte tamper blocks at generation and issue, specialist-only checksum review, and a reopened
+  JSON payload that remains `NOT_PROOF_OF_ORIGIN`, `NOT_ISSUED` and `NOT_GRANTED`. CI uploads dedicated ICS2 and R07
+  artifacts.
+- The final local isolated run used a dedicated PostgreSQL 18 database (`weavecarbon_r07_pilot`) and dedicated uploads
+  directory. It passed all 25 cumulative R01-R07 checks with `productionDataTouched=false`; the retained local result is
+  `artifacts/origin-handoff-pilot/result.json`, SHA-256
+  `e9d760967266d6c9c7faf2353068c0db81a4cd5f7237287f0b8e566ccb7c23e6`.
+- The first database-backed run exposed a real R05 timezone defect: PostgreSQL `DATE` values became JavaScript instants
+  and could shift to the preceding UTC day, preventing the unchanged second TARIC confirmation. The database driver now
+  preserves PostgreSQL `DATE` as a timezone-free ISO string, with a regression test; the pilot then passed without
+  weakening the two-step control.

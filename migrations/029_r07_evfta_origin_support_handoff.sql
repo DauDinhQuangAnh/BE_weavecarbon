@@ -47,3 +47,9 @@ CREATE TABLE IF NOT EXISTS public.shipment_origin_profiles (
 
 CREATE INDEX IF NOT EXISTS idx_shipment_origin_profiles_tenant
   ON public.shipment_origin_profiles(company_id, shipment_id);
+
+CREATE INDEX IF NOT EXISTS idx_shipment_origin_profiles_created_by
+  ON public.shipment_origin_profiles(created_by);
+
+CREATE INDEX IF NOT EXISTS idx_shipment_origin_profiles_updated_by
+  ON public.shipment_origin_profiles(updated_by);

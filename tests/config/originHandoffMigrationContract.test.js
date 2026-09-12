@@ -11,6 +11,8 @@ describe('R07 EVFTA origin-support handoff migration contract', () => {
     expect(sql).toMatch(/weavecarbon\.evfta-origin-support-handoff/i);
     expect(sql).toMatch(/profile_data JSONB NOT NULL/i);
     expect(sql).toMatch(/UNIQUE\(id, company_id, shipment_id\)/i);
+    expect(sql).toMatch(/idx_shipment_origin_profiles_created_by/i);
+    expect(sql).toMatch(/idx_shipment_origin_profiles_updated_by/i);
     expect(sql).not.toMatch(/DROP\s+TABLE|TRUNCATE/i);
   });
 

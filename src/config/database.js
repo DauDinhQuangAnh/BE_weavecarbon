@@ -1,10 +1,11 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
 const { SLOW_REQUEST_MS } = require('./runtime');
 const logger = require('../utils/logger');
 const metrics = require('../operations/metrics');
-const { buildDatabasePoolConfig } = require('./databaseOptions');
+const { buildDatabasePoolConfig, configureDatabaseTypeParsers } = require('./databaseOptions');
 require('dotenv').config();
 
+configureDatabaseTypeParsers(types);
 const pool = new Pool(buildDatabasePoolConfig());
 
 const CLIENT_QUERY_INSTRUMENTED = Symbol('clientQueryInstrumented');

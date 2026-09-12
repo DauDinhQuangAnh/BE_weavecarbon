@@ -1,4 +1,8 @@
-const { buildDatabasePoolConfig } = require('../../src/config/databaseOptions');
+const {
+  buildDatabasePoolConfig,
+  configureDatabaseTypeParsers,
+  POSTGRES_DATE_OID
+} = require('../../src/config/databaseOptions');
 
 describe('database pool limits and timeouts', () => {
   test('uses bounded production defaults', () => {
@@ -25,5 +29,15 @@ describe('database pool limits and timeouts', () => {
     expect(config.connectionTimeoutMillis).toBe(60000);
     expect(config.statement_timeout).toBe(1000);
     expect(config.query_timeout).toBe(25000);
+  });
+
+  test('preserves PostgreSQL DATE values as timezone-free ISO strings', () => {
+    const setTypeParser = jest.fn();
+
+    configureDatabaseTypeParsers({ setTypeParser });
+
+    expect(setTypeParser).toHaveBeenCalledWith(POSTGRES_DATE_OID, expect.any(Function));
+    const parser = setTypeParser.mock.calls[0][1];
+    expect(parser('2026-09-12')).toBe('2026-09-12');
   });
 });

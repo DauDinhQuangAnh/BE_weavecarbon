@@ -15,7 +15,7 @@ const { createExportShipmentService } = require('../src/services/exportShipmentS
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-handoff-pilot-v4',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-handoff-pilot-v5',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -38,7 +38,8 @@ function sha256(buffer) {
 async function writeResult() {
   const contents = `${JSON.stringify(result, null, 2)}\n`;
   for (const name of [
-    'carrier-document-pilot', 'vn-customs-handoff-pilot', 'eu-import-handoff-pilot', 'ics2-handoff-pilot'
+    'carrier-document-pilot', 'vn-customs-handoff-pilot', 'eu-import-handoff-pilot',
+    'ics2-handoff-pilot', 'origin-handoff-pilot'
   ]) {
     const directory = path.resolve(__dirname, '..', 'artifacts', name);
     await fs.promises.mkdir(directory, { recursive: true });
@@ -175,6 +176,30 @@ async function insertCustomsEvidence(ids, runId, type, suffix) {
   return { evidenceId, original, filePath };
 }
 
+async function insertOriginEvidence(ids, runId) {
+  const evidenceId = crypto.randomUUID();
+  const original = Buffer.from(JSON.stringify({
+    synthetic: true, runId, supplier: 'Synthetic Yarn Supplier',
+    materialReference: `YARN-${runId}`, declaredStatus: 'non_originating',
+    warning: 'Synthetic test evidence; not a supplier declaration or proof of origin.'
+  }, null, 2));
+  const storageKey = `evidence/${ids.companyId}/${ids.shipmentId}/origin-support.json`;
+  const filePath = path.resolve(UPLOADS_ROOT, storageKey);
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises.writeFile(filePath, original);
+  await pool.query(
+    `INSERT INTO evidence_documents (
+       id, company_id, shipment_id, evidence_type, document_name, source_vendor,
+       storage_provider, storage_key, original_filename, mime_type, file_size_bytes,
+       checksum_sha256, extracted_json, status, uploaded_by, approved_by, locked_at
+     ) VALUES ($1,$2,$3,'origin_support',$4,'Synthetic Yarn Supplier',
+       'local',$5,$4,'application/json',$6,$7,$8::jsonb,'locked',$9,$9,now())`,
+    [evidenceId, ids.companyId, ids.shipmentId, 'origin-support.json', storageKey,
+      original.length, sha256(original), JSON.stringify({ synthetic: true, runId }), ids.userId]
+  );
+  return { evidenceId, original, filePath };
+}
+
 function carrierMetadata(ids, runId, evidenceDocumentId, sealNumber, supersedesId = null) {
   return {
     evidenceDocumentId,
@@ -263,7 +288,7 @@ async function run() {
     customsValueAmount: 500,
     customsValueBasis: 'Invoice transaction value; synthetic pilot only',
     transportMode: 'sea',
-    preferentialOriginClaim: false,
+    preferentialOriginClaim: true,
     metadata: { synthetic: true, fixtureType: 'carrier_document_pilot' }
   });
 
@@ -670,6 +695,95 @@ async function run() {
   );
   assert.equal(await service.getIcs2Events(ids.otherCompanyId, ids.shipmentId), null);
   check('r06_authority_event_is_evidence_backed_append_only_and_tenant_isolated');
+
+  const originEvidence = await insertOriginEvidence(ids, runId);
+  await service.upsertOriginProfile(ids.companyId, ids.shipmentId, ids.userId, {
+    claimType: 'certificate_application', invoiceTotalEur: 500,
+    exporterAuthorizationType: 'none', exporterAuthorizationReference: '',
+    territorialityConfirmed: true, nonAlterationConfirmed: true,
+    insufficientProcessingExcluded: true,
+    lineAssessments: [{
+      exportLineId: lines[0].id,
+      ruleCode: 'CH62_GENERAL_WEAVING_AND_MAKING_UP',
+      ruleSourcePage: 'Annex II, Chapter 62 synthetic pilot reference',
+      specialistRuleText: '', productionProcesses: ['weaving', 'making_up_including_cutting'],
+      exWorksPrice: 500, nonOriginatingMaterialValue: 150,
+      materials: [{
+        id: `MAT-${runId}`, reference: `YARN-${runId}`, description: 'Synthetic cotton yarn',
+        hsCode: '5205', supplierName: 'Synthetic Yarn Supplier', originCountry: 'IN',
+        originStatus: 'non_originating', cumulationBasis: 'none', value: 150, weightKg: 40,
+        evidenceDocumentId: originEvidence.evidenceId,
+        isUpperAssemblyAffixedToSole: null,
+        notes: 'Synthetic BOM row; requires qualified origin-specialist validation.'
+      }]
+    }],
+    notes: 'Synthetic isolated R07 handoff; not proof of origin.',
+    metadata: { synthetic: true, fixtureType: 'origin_handoff_pilot' }
+  });
+  const originReconciliation = await service.reconcileOriginHandoff(ids.companyId, ids.shipmentId);
+  assert.equal(originReconciliation.status, 'ready_for_specialist_review');
+  assert.ok(originReconciliation.checks.some((item) => item.code === 'line_1_rule_execution' && item.status === 'ready'));
+  assert.ok(originReconciliation.checks.some((item) => item.code === 'line_1_material_1_evidence' && item.status === 'ready'));
+  assert.equal(await service.reconcileOriginHandoff(ids.otherCompanyId, ids.shipmentId), null);
+  check('r07_reconciles_rule_bom_value_and_locked_evidence', {
+    checkCount: originReconciliation.checks.length
+  });
+
+  await fs.promises.appendFile(originEvidence.filePath, 'tampered');
+  const tamperedOriginDraft = await service.createDocumentJob(
+    ids.companyId, ids.shipmentId, ids.userId, 'origin_workbook', { outputFormat: 'json' }
+  );
+  assert.equal(tamperedOriginDraft.code, 'ORIGIN_EVIDENCE_FILE_TAMPERED');
+  await fs.promises.writeFile(originEvidence.filePath, originEvidence.original);
+  check('tampered_origin_evidence_blocks_generation');
+
+  const originDraft = await service.createDocumentJob(
+    ids.companyId, ids.shipmentId, ids.userId, 'origin_workbook', { outputFormat: 'json' }
+  );
+  assert.ok(!originDraft.blocked, 'R07 JSON generation was blocked.');
+  const originRow = (await pool.query('SELECT * FROM export_documents WHERE id=$1', [originDraft.id])).rows[0];
+  const originBytes = await fs.promises.readFile(path.resolve(UPLOADS_ROOT, originRow.storage_key));
+  assert.equal(sha256(originBytes), originRow.file_sha256);
+  const originDataset = JSON.parse(originBytes.toString('utf8'));
+  assert.equal(originDataset.datasetNature, 'EVFTA_ORIGIN_SUPPORT_HANDOFF_NOT_PROOF_OF_ORIGIN');
+  assert.equal(originDataset.notProofOfOrigin, true);
+  assert.equal(originDataset.proofOfOriginStatus, 'NOT_ISSUED');
+  assert.equal(originDataset.preferentialTreatmentStatus, 'NOT_GRANTED');
+  assert.equal(originDataset.specialistReviewRequired, true);
+  assert.equal(Object.prototype.hasOwnProperty.call(originDataset, 'eur1Number'), false);
+  const unreviewedOriginIssue = await service.issueDocument(
+    ids.companyId, ids.shipmentId, originDraft.id, ids.userId
+  );
+  assert.equal(unreviewedOriginIssue.code, 'DOCUMENT_REVIEW_REQUIRED');
+  const wrongOriginReview = await service.reviewDocument(
+    ids.companyId, ids.shipmentId, originDraft.id, ids.userId,
+    { reviewerRole: 'export_operator', decision: 'approved', notes: 'Wrong role test.' }
+  );
+  assert.equal(wrongOriginReview.code, 'DOCUMENT_REVIEW_ROLE_INVALID');
+  const originReview = await service.reviewDocument(
+    ids.companyId, ids.shipmentId, originDraft.id, ids.userId,
+    {
+      reviewerRole: 'origin_specialist_reviewer', decision: 'approved',
+      notes: 'Synthetic control review only; not a legal origin determination.'
+    }
+  );
+  assert.equal(originReview.decision, 'approved');
+  await fs.promises.appendFile(originEvidence.filePath, 'tampered-again');
+  const tamperedOriginIssue = await service.issueDocument(
+    ids.companyId, ids.shipmentId, originDraft.id, ids.userId
+  );
+  assert.equal(tamperedOriginIssue.code, 'ORIGIN_EVIDENCE_FILE_TAMPERED');
+  await fs.promises.writeFile(originEvidence.filePath, originEvidence.original);
+  const issuedOrigin = await service.issueDocument(
+    ids.companyId, ids.shipmentId, originDraft.id, ids.userId
+  );
+  assert.equal(issuedOrigin.status, 'issued');
+  result.documents.push({
+    type: 'origin_workbook', id: issuedOrigin.id, version: issuedOrigin.version,
+    status: issuedOrigin.status, sha256: issuedOrigin.fileSha256,
+    proofOfOriginStatus: originDataset.proofOfOriginStatus
+  });
+  check('r07_json_reviewed_and_locked_without_proof_or_preference_claim');
 
   const firstReadiness = await service.getReadiness(ids.companyId, ids.shipmentId);
   assert.equal(firstReadiness.documents.find((item) => item.type === 'carbon_annex').status, 'ready');

@@ -4,6 +4,14 @@ function readBoundedInteger(env, name, fallback, min, max) {
   return Math.min(max, Math.max(min, parsed));
 }
 
+const POSTGRES_DATE_OID = 1082;
+
+function configureDatabaseTypeParsers(pgTypes) {
+  // PostgreSQL DATE is a calendar value without a timezone. Letting node-postgres
+  // turn it into a JavaScript Date can shift the day when the process is not UTC.
+  pgTypes.setTypeParser(POSTGRES_DATE_OID, (value) => value);
+}
+
 function buildDatabasePoolConfig(env = process.env) {
   const isProduction = env.NODE_ENV === 'production';
   return {
@@ -22,4 +30,9 @@ function buildDatabasePoolConfig(env = process.env) {
   };
 }
 
-module.exports = { buildDatabasePoolConfig, readBoundedInteger };
+module.exports = {
+  buildDatabasePoolConfig,
+  configureDatabaseTypeParsers,
+  readBoundedInteger,
+  POSTGRES_DATE_OID
+};
