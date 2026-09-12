@@ -20,12 +20,23 @@ const {
   profileFromRow: vnCustomsProfileFromRow,
   validateVnCustomsHandoff
 } = require('./vnCustomsHandoffControls');
+const {
+  AUTHORITY_EVENT_TYPES: EU_IMPORT_AUTHORITY_EVENT_TYPES,
+  EVENT_TYPES: EU_IMPORT_EVENT_TYPES,
+  HANDOFF_SCHEMA: EU_IMPORT_HANDOFF_SCHEMA,
+  buildEuImportHandoffDataset,
+  lineDetailFromRow: euImportLineDetailFromRow,
+  normalizeEuImportLineDetail,
+  normalizeEuImportProfile,
+  profileFromRow: euImportProfileFromRow,
+  validateEuImportHandoff
+} = require('./euImportHandoffControls');
 
 const RULESET_VERSION = 'VN-EU-TEXTILE-2026.09.4';
 const CARRIER_RULESET_VERSION = 'R03-CARRIER-RECONCILIATION-2026.09.1';
 const DOCUMENT_TYPES = new Set([
   'commercial_invoice', 'packing_list', 'carbon_annex', 'origin_workbook', 'ics2_dataset',
-  'vn_customs_handoff'
+  'vn_customs_handoff', 'eu_import_handoff'
 ]);
 const DOCUMENT_FORMATS = {
   commercial_invoice: new Set(['xlsx', 'pdf']),
@@ -33,10 +44,11 @@ const DOCUMENT_FORMATS = {
   carbon_annex: new Set(['xlsx']),
   origin_workbook: new Set(['xlsx']),
   ics2_dataset: new Set(['csv']),
-  vn_customs_handoff: new Set(['json', 'xlsx'])
+  vn_customs_handoff: new Set(['json', 'xlsx']),
+  eu_import_handoff: new Set(['json', 'xlsx'])
 };
 const CORE_DOCUMENT_TYPES = [
-  'commercial_invoice', 'packing_list', 'carbon_annex', 'ics2_dataset', 'vn_customs_handoff'
+  'commercial_invoice', 'packing_list', 'carbon_annex', 'ics2_dataset', 'vn_customs_handoff', 'eu_import_handoff'
 ];
 const CARRIER_EVIDENCE_TYPES = [
   'bill_of_lading', 'carrier_bill_of_lading', 'fbl', 'carrier_fbl',
@@ -51,7 +63,8 @@ const EU_COUNTRY_CODES = new Set([
 const REVIEW_ROLE_BY_DOCUMENT = {
   commercial_invoice: 'export_operator',
   packing_list: 'warehouse_reviewer',
-  vn_customs_handoff: 'customs_declaration_reviewer'
+  vn_customs_handoff: 'customs_declaration_reviewer',
+  eu_import_handoff: 'eu_import_declaration_reviewer'
 };
 const REVIEW_DECISIONS = new Set(['approved', 'rejected', 'changes_requested']);
 const MEASUREMENT_BASES = new Set(['per_package', 'group_total']);
@@ -72,6 +85,18 @@ const VN_CUSTOMS_EVENT_EVIDENCE_TYPES = {
   authority_cancelled: new Set(['customs_authority_response']),
   amendment_requested: new Set(['customs_broker_response']),
   amendment_submitted: new Set(['customs_broker_response', 'customs_declaration'])
+};
+const EU_IMPORT_EVENT_EVIDENCE_TYPES = {
+  declarant_received: new Set(['eu_declarant_response']),
+  declarant_validated: new Set(['eu_declarant_response']),
+  declarant_rejected: new Set(['eu_declarant_response']),
+  authority_submitted: new Set(['eu_declarant_response', 'eu_import_declaration']),
+  authority_accepted: new Set(['eu_customs_authority_response']),
+  authority_rejected: new Set(['eu_customs_authority_response']),
+  authority_released: new Set(['eu_customs_authority_response']),
+  authority_cancelled: new Set(['eu_customs_authority_response']),
+  amendment_requested: new Set(['eu_declarant_response']),
+  amendment_submitted: new Set(['eu_declarant_response', 'eu_import_declaration'])
 };
 
 // Versioned, conservative heading-level gate. It deliberately excludes textile/apparel/footwear
@@ -112,10 +137,12 @@ function sourceSnapshotSha256(snapshot) {
   }));
 }
 function documentSourceSnapshotSha256(snapshot, documentType) {
-  if (documentType !== 'vn_customs_handoff') return sourceSnapshotSha256(snapshot);
+  if (!['vn_customs_handoff', 'eu_import_handoff'].includes(documentType)) return sourceSnapshotSha256(snapshot);
+  const isEuImport = documentType === 'eu_import_handoff';
   return sha256(JSON.stringify({
     baseSourceSnapshotSha256: sourceSnapshotSha256(snapshot),
-    vnCustomsProfile: snapshot?.vnCustomsProfile || null,
+    customsProfile: isEuImport ? snapshot?.euImportProfile || null : snapshot?.vnCustomsProfile || null,
+    euImportLineDetails: isEuImport ? snapshot?.euImportLineDetails || [] : undefined,
     supportingIssuedDocuments: (snapshot?.documents || [])
       .filter((document) => ['commercial_invoice', 'packing_list'].includes(document.type) && document.status === 'issued')
       .map((document) => ({
@@ -124,7 +151,7 @@ function documentSourceSnapshotSha256(snapshot, documentType) {
         sourceSnapshotSha256: document.sourceSnapshotSha256
       }))
       .sort((a, b) => a.type.localeCompare(b.type)),
-    vnCustomsHandoffSchema: VN_CUSTOMS_HANDOFF_SCHEMA
+    handoffSchema: isEuImport ? EU_IMPORT_HANDOFF_SCHEMA : VN_CUSTOMS_HANDOFF_SCHEMA
   }));
 }
 function isCurrentIssuedSupportingDocument(snapshot, document) {
@@ -411,7 +438,8 @@ class ExportShipmentService {
     const shipment = await this._assertShipment(companyId, shipmentId);
     if (!shipment) return null;
     const [profileResult, linesResult, containersResult, packagesResult, evidenceResult, documentsResult,
-      vnCustomsProfileResult, vnCustomsEventsResult, vnCustomsEvidenceResult] = await Promise.all([
+      vnCustomsProfileResult, vnCustomsEventsResult, vnCustomsEvidenceResult,
+      euImportProfileResult, euImportLineDetailsResult, euImportEventsResult, euImportEvidenceResult] = await Promise.all([
       this.database.query('SELECT * FROM shipment_export_profiles WHERE shipment_id = $1 AND company_id = $2', [shipmentId, companyId]),
       this.database.query('SELECT * FROM shipment_export_lines WHERE shipment_id = $1 AND company_id = $2 ORDER BY line_number', [shipmentId, companyId]),
       this.database.query('SELECT * FROM shipment_containers WHERE shipment_id = $1 AND company_id = $2 ORDER BY container_number', [shipmentId, companyId]),
@@ -486,8 +514,32 @@ class ExportShipmentService {
          FROM evidence_documents
          WHERE shipment_id=$1 AND company_id=$2
            AND evidence_type = ANY($3::text[])
-         ORDER BY created_at DESC`,
+        ORDER BY created_at DESC`,
         [shipmentId, companyId, ['customs_broker_response', 'customs_authority_response', 'customs_declaration']]
+      ),
+      this.database.query(
+        'SELECT * FROM shipment_eu_import_profiles WHERE shipment_id=$1 AND company_id=$2',
+        [shipmentId, companyId]
+      ),
+      this.database.query(
+        `SELECT * FROM shipment_eu_import_line_details
+         WHERE shipment_id=$1 AND company_id=$2 ORDER BY export_line_id`,
+        [shipmentId, companyId]
+      ),
+      this.database.query(
+        `SELECT event.* FROM eu_import_external_events event
+         WHERE event.shipment_id=$1 AND event.company_id=$2
+         ORDER BY event.occurred_at DESC, event.created_at DESC, event.id DESC`,
+        [shipmentId, companyId]
+      ),
+      this.database.query(
+        `SELECT id, evidence_type, document_name, original_filename, status, valid_from, valid_to,
+                checksum_sha256, file_size_bytes, mime_type, uploaded_at, locked_at, approved_by
+         FROM evidence_documents
+         WHERE shipment_id=$1 AND company_id=$2
+           AND evidence_type = ANY($3::text[])
+         ORDER BY created_at DESC`,
+        [shipmentId, companyId, ['eu_declarant_response', 'eu_customs_authority_response', 'eu_import_declaration']]
       )
     ]);
     const snapshot = {
@@ -504,6 +556,16 @@ class ExportShipmentService {
       vnCustomsProfile: vnCustomsProfileFromRow(vnCustomsProfileResult.rows[0]),
       vnCustomsEvents: vnCustomsEventsResult.rows.map((row) => this._formatVnCustomsEvent(row)),
       vnCustomsEvidence: vnCustomsEvidenceResult.rows.map((row) => ({
+        id: row.id, type: row.evidence_type, name: row.original_filename || row.document_name,
+        status: row.status, validFrom: dateOnly(row.valid_from), validTo: dateOnly(row.valid_to),
+        checksumSha256: row.checksum_sha256 || null, fileSizeBytes: Number(row.file_size_bytes || 0),
+        mimeType: row.mime_type || null, uploadedAt: row.uploaded_at, approvedAt: row.locked_at,
+        approvedBy: row.approved_by || null
+      })),
+      euImportProfile: euImportProfileFromRow(euImportProfileResult.rows[0]),
+      euImportLineDetails: euImportLineDetailsResult.rows.map(euImportLineDetailFromRow),
+      euImportEvents: euImportEventsResult.rows.map((row) => this._formatEuImportEvent(row)),
+      euImportEvidence: euImportEvidenceResult.rows.map((row) => ({
         id: row.id, type: row.evidence_type, name: row.original_filename || row.document_name,
         status: row.status, validFrom: dateOnly(row.valid_from), validTo: dateOnly(row.valid_to),
         checksumSha256: row.checksum_sha256 || null, fileSizeBytes: Number(row.file_size_bytes || 0),
@@ -764,6 +826,243 @@ class ExportShipmentService {
       );
       await client.query('COMMIT');
       return this._formatVnCustomsEvent(inserted.rows[0]);
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally { client.release(); }
+  }
+
+  async upsertEuImportProfile(companyId, shipmentId, userId, input = {}) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const value = normalizeEuImportProfile(input);
+    const result = await this.database.query(
+      `INSERT INTO shipment_eu_import_profiles (
+         company_id, shipment_id, schema_id, schema_version, ruleset_version, regulatory_basis_version,
+         filing_purpose, member_state_code, importer, declarant, representative, representation_type,
+         customs_office_code, declaration_dataset_code, additional_declaration_type,
+         requested_procedure_code, previous_procedure_code, mode_of_transport_at_border,
+         inland_mode_of_transport, border_transport_identity, place_of_goods_code,
+         delivery_terms_location, valuation_method_code, exchange_rate, customs_value_currency,
+         customs_value_amount, duty_treatment, duty_rate, duty_amount, vat_treatment, vat_rate,
+         vat_amount, tax_basis, restriction_status, restriction_references, preference_claim_status,
+         preference_references, guarantee_requirement_status, guarantee_references, supporting_documents,
+         target_system_schema_id, target_system_schema_version, declaration_notes, metadata, created_by, updated_by
+       ) VALUES (
+         $1,$2,$3,$4,$5,$6,'declarant_handoff',$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,
+         $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,
+         $31,$32,$33,$34::jsonb,$35,$36::jsonb,$37,$38::jsonb,$39::jsonb,$40,$41,$42,$43::jsonb,$44,$44
+       ) ON CONFLICT (shipment_id) DO UPDATE SET
+         schema_id=EXCLUDED.schema_id, schema_version=EXCLUDED.schema_version,
+         ruleset_version=EXCLUDED.ruleset_version, regulatory_basis_version=EXCLUDED.regulatory_basis_version,
+         filing_purpose='declarant_handoff', member_state_code=EXCLUDED.member_state_code,
+         importer=EXCLUDED.importer, declarant=EXCLUDED.declarant, representative=EXCLUDED.representative,
+         representation_type=EXCLUDED.representation_type, customs_office_code=EXCLUDED.customs_office_code,
+         declaration_dataset_code=EXCLUDED.declaration_dataset_code,
+         additional_declaration_type=EXCLUDED.additional_declaration_type,
+         requested_procedure_code=EXCLUDED.requested_procedure_code,
+         previous_procedure_code=EXCLUDED.previous_procedure_code,
+         mode_of_transport_at_border=EXCLUDED.mode_of_transport_at_border,
+         inland_mode_of_transport=EXCLUDED.inland_mode_of_transport,
+         border_transport_identity=EXCLUDED.border_transport_identity,
+         place_of_goods_code=EXCLUDED.place_of_goods_code,
+         delivery_terms_location=EXCLUDED.delivery_terms_location,
+         valuation_method_code=EXCLUDED.valuation_method_code, exchange_rate=EXCLUDED.exchange_rate,
+         customs_value_currency=EXCLUDED.customs_value_currency,
+         customs_value_amount=EXCLUDED.customs_value_amount, duty_treatment=EXCLUDED.duty_treatment,
+         duty_rate=EXCLUDED.duty_rate, duty_amount=EXCLUDED.duty_amount,
+         vat_treatment=EXCLUDED.vat_treatment, vat_rate=EXCLUDED.vat_rate, vat_amount=EXCLUDED.vat_amount,
+         tax_basis=EXCLUDED.tax_basis, restriction_status=EXCLUDED.restriction_status,
+         restriction_references=EXCLUDED.restriction_references,
+         preference_claim_status=EXCLUDED.preference_claim_status,
+         preference_references=EXCLUDED.preference_references,
+         guarantee_requirement_status=EXCLUDED.guarantee_requirement_status,
+         guarantee_references=EXCLUDED.guarantee_references,
+         supporting_documents=EXCLUDED.supporting_documents,
+         target_system_schema_id=EXCLUDED.target_system_schema_id,
+         target_system_schema_version=EXCLUDED.target_system_schema_version,
+         declaration_notes=EXCLUDED.declaration_notes, metadata=EXCLUDED.metadata,
+         updated_by=EXCLUDED.updated_by, updated_at=now()
+       RETURNING *`,
+      [
+        companyId, shipmentId, value.schemaId, value.schemaVersion, value.rulesetVersion,
+        value.regulatoryBasisVersion, value.memberStateCode || null, JSON.stringify(value.importer),
+        JSON.stringify(value.declarant), JSON.stringify(value.representative), value.representationType,
+        value.customsOfficeCode || null, value.declarationDatasetCode || null,
+        value.additionalDeclarationType || null, value.requestedProcedureCode || null,
+        value.previousProcedureCode || null, value.modeOfTransportAtBorder || null,
+        value.inlandModeOfTransport || null, value.borderTransportIdentity || null,
+        value.placeOfGoodsCode || null, value.deliveryTermsLocation || null,
+        value.valuationMethodCode || null, value.exchangeRate, value.customsValueCurrency || null,
+        value.customsValueAmount, value.dutyTreatment, value.dutyRate, value.dutyAmount,
+        value.vatTreatment, value.vatRate, value.vatAmount, value.taxBasis || null,
+        value.restrictionStatus, JSON.stringify(value.restrictionReferences),
+        value.preferenceClaimStatus, JSON.stringify(value.preferenceReferences),
+        value.guaranteeRequirementStatus, JSON.stringify(value.guaranteeReferences),
+        JSON.stringify(value.supportingDocuments), value.targetSystemSchemaId || null,
+        value.targetSystemSchemaVersion || null, value.declarationNotes || null,
+        JSON.stringify(value.metadata), userId
+      ]
+    );
+    return euImportProfileFromRow(result.rows[0]);
+  }
+
+  async upsertEuImportLineDetail(companyId, shipmentId, exportLineId, userId, input = {}) {
+    if (!UUID_REGEX.test(String(exportLineId || ''))) return null;
+    const line = await this.database.query(
+      'SELECT id FROM shipment_export_lines WHERE id=$1 AND shipment_id=$2 AND company_id=$3',
+      [exportLineId, shipmentId, companyId]
+    );
+    if (!line.rows[0]) return null;
+    const currentResult = await this.database.query(
+      'SELECT * FROM shipment_eu_import_line_details WHERE export_line_id=$1 AND shipment_id=$2 AND company_id=$3',
+      [exportLineId, shipmentId, companyId]
+    );
+    const current = euImportLineDetailFromRow(currentResult.rows[0]);
+    const merged = normalizeEuImportLineDetail({ ...(current || {}), ...input, exportLineId });
+    const changed = !current
+      || merged.taricCode !== current.taricCode
+      || merged.taricSource !== current.taricSource
+      || merged.taricVersion !== current.taricVersion
+      || merged.taricEffectiveDate !== current.taricEffectiveDate;
+    const confirmed = Boolean(userId) && !changed && merged.taricConfirmed === true
+      && Boolean(merged.taricCode && merged.taricSource && merged.taricVersion && merged.taricEffectiveDate);
+    const result = await this.database.query(
+      `INSERT INTO shipment_eu_import_line_details (
+         company_id, shipment_id, export_line_id, taric_code, taric_source, taric_version,
+         taric_effective_date, taric_confirmed, taric_confirmed_by, taric_confirmed_at,
+         supplementary_unit_code, additional_codes, national_additional_codes, preference_code,
+         requested_procedure_code, previous_procedure_code, metadata
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,$15,$16,$17::jsonb)
+       ON CONFLICT (shipment_id, export_line_id) DO UPDATE SET
+         taric_code=EXCLUDED.taric_code, taric_source=EXCLUDED.taric_source,
+         taric_version=EXCLUDED.taric_version, taric_effective_date=EXCLUDED.taric_effective_date,
+         taric_confirmed=EXCLUDED.taric_confirmed,
+         taric_confirmed_by=CASE WHEN EXCLUDED.taric_confirmed THEN EXCLUDED.taric_confirmed_by ELSE NULL END,
+         taric_confirmed_at=CASE WHEN EXCLUDED.taric_confirmed THEN COALESCE(shipment_eu_import_line_details.taric_confirmed_at, now()) ELSE NULL END,
+         supplementary_unit_code=EXCLUDED.supplementary_unit_code,
+         additional_codes=EXCLUDED.additional_codes,
+         national_additional_codes=EXCLUDED.national_additional_codes,
+         preference_code=EXCLUDED.preference_code,
+         requested_procedure_code=EXCLUDED.requested_procedure_code,
+         previous_procedure_code=EXCLUDED.previous_procedure_code,
+         metadata=EXCLUDED.metadata, updated_at=now()
+       RETURNING *`,
+      [
+        companyId, shipmentId, exportLineId, merged.taricCode || null, merged.taricSource || null,
+        merged.taricVersion || null, merged.taricEffectiveDate, confirmed, confirmed ? userId : null,
+        confirmed ? new Date() : null, merged.supplementaryUnitCode || null,
+        JSON.stringify(merged.additionalCodes), JSON.stringify(merged.nationalAdditionalCodes),
+        merged.preferenceCode || null, merged.requestedProcedureCode || null,
+        merged.previousProcedureCode || null, JSON.stringify(merged.metadata)
+      ]
+    );
+    return euImportLineDetailFromRow(result.rows[0]);
+  }
+
+  async reconcileEuImportHandoff(companyId, shipmentId) {
+    const snapshot = await this.getProfile(companyId, shipmentId);
+    if (!snapshot) return null;
+    const reconciliation = validateEuImportHandoff(snapshot, {
+      isCarrierCurrent: (item) => item.latestReconciliation?.status === 'passed'
+        && item.latestReconciliation?.rulesetVersion === CARRIER_RULESET_VERSION
+        && item.latestReconciliation?.sourceSnapshotSha256 === carrierReconciliationSha256(snapshot, item),
+      isSupportingDocumentCurrent: (document) => isCurrentIssuedSupportingDocument(snapshot, document)
+    });
+    return {
+      ...reconciliation,
+      sourceSnapshotSha256: documentSourceSnapshotSha256(snapshot, 'eu_import_handoff'),
+      schema: EU_IMPORT_HANDOFF_SCHEMA
+    };
+  }
+
+  async getEuImportEvents(companyId, shipmentId) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const result = await this.database.query(
+      `SELECT * FROM eu_import_external_events
+       WHERE company_id=$1 AND shipment_id=$2
+       ORDER BY occurred_at DESC, created_at DESC, id DESC`,
+      [companyId, shipmentId]
+    );
+    return result.rows.map((row) => this._formatEuImportEvent(row));
+  }
+
+  async recordEuImportEvent(companyId, shipmentId, userId, input = {}) {
+    const eventType = text(input.eventType || input.event_type).toLowerCase();
+    const exportDocumentId = text(input.exportDocumentId || input.export_document_id);
+    const evidenceDocumentId = text(input.evidenceDocumentId || input.evidence_document_id);
+    const externalReference = text(input.externalReference || input.external_reference);
+    const actorName = text(input.actorName || input.actor_name);
+    const occurredAt = text(input.occurredAt || input.occurred_at);
+    if (!EU_IMPORT_EVENT_TYPES.has(eventType)) return { error: 'EU_IMPORT_EVENT_TYPE_INVALID' };
+    if (!UUID_REGEX.test(exportDocumentId) || !UUID_REGEX.test(evidenceDocumentId)) return { error: 'EU_IMPORT_EVENT_LINK_INVALID' };
+    if (!externalReference || !actorName || !occurredAt || Number.isNaN(new Date(occurredAt).getTime())) {
+      return { error: 'EU_IMPORT_EVENT_DETAILS_REQUIRED' };
+    }
+    const client = await this.database.connect();
+    try {
+      await client.query('BEGIN');
+      const documentResult = await client.query(
+        `SELECT id, document_type, status, payload_sha256, file_sha256 FROM export_documents
+         WHERE id=$1 AND company_id=$2 AND shipment_id=$3 FOR SHARE`,
+        [exportDocumentId, companyId, shipmentId]
+      );
+      const document = documentResult.rows[0];
+      if (!document || document.document_type !== 'eu_import_handoff') {
+        await client.query('ROLLBACK');
+        return { error: 'EU_IMPORT_HANDOFF_NOT_FOUND' };
+      }
+      if (document.status !== 'issued' || !document.payload_sha256 || !document.file_sha256) {
+        await client.query('ROLLBACK');
+        return { error: 'EU_IMPORT_HANDOFF_NOT_ISSUED' };
+      }
+      const evidenceResult = await client.query(
+        `SELECT id, evidence_type, status, valid_to, storage_provider, storage_key, checksum_sha256, file_size_bytes
+         FROM evidence_documents WHERE id=$1 AND company_id=$2 AND shipment_id=$3 FOR SHARE`,
+        [evidenceDocumentId, companyId, shipmentId]
+      );
+      const evidence = evidenceResult.rows[0];
+      if (!evidence || !['locked', 'third_party_verified'].includes(evidence.status)
+        || (evidence.valid_to && new Date(evidence.valid_to) < new Date())) {
+        await client.query('ROLLBACK');
+        return { error: 'EU_IMPORT_EVENT_EVIDENCE_NOT_APPROVED' };
+      }
+      if (!EU_IMPORT_EVENT_EVIDENCE_TYPES[eventType]?.has(evidence.evidence_type)) {
+        await client.query('ROLLBACK');
+        return { error: 'EU_IMPORT_EVENT_EVIDENCE_TYPE_MISMATCH' };
+      }
+      const verification = await this._verifyEuImportEvidenceFile(evidence);
+      if (verification.error) {
+        await client.query('ROLLBACK');
+        return verification;
+      }
+      const userResult = await client.query('SELECT id, email, full_name FROM users WHERE id=$1', [userId]);
+      const recorder = userResult.rows[0];
+      if (!recorder || !text(recorder.full_name || recorder.email)) {
+        await client.query('ROLLBACK');
+        return { error: 'EU_IMPORT_EVENT_RECORDER_IDENTITY_REQUIRED' };
+      }
+      const sourceType = EU_IMPORT_AUTHORITY_EVENT_TYPES.has(eventType) ? 'authority' : 'declarant';
+      const inserted = await client.query(
+        `INSERT INTO eu_import_external_events (
+           company_id, shipment_id, export_document_id, event_type, source_type, external_reference,
+           message_code, message_text, evidence_document_id, evidence_sha256, evidence_file_size_bytes,
+           document_payload_sha256, document_file_sha256, actor_name_snapshot, actor_identifier_snapshot,
+           occurred_at, recorded_by, recorder_name_snapshot, recorder_email_snapshot, metadata
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb)
+         RETURNING *`,
+        [
+          companyId, shipmentId, exportDocumentId, eventType, sourceType, externalReference,
+          text(input.messageCode || input.message_code) || null,
+          text(input.messageText || input.message_text) || null,
+          evidenceDocumentId, verification.sha256, verification.fileSizeBytes,
+          document.payload_sha256, document.file_sha256, actorName,
+          text(input.actorIdentifier || input.actor_identifier) || null,
+          new Date(occurredAt).toISOString(), userId, text(recorder.full_name || recorder.email),
+          text(recorder.email) || null, JSON.stringify(object(input.metadata))
+        ]
+      );
+      await client.query('COMMIT');
+      return this._formatEuImportEvent(inserted.rows[0]);
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       throw error;
@@ -1273,6 +1572,32 @@ class ExportShipmentService {
     }
   }
 
+  async _verifyEuImportEvidenceFile(evidence) {
+    if (evidence.storage_provider !== 'local') return { error: 'EU_IMPORT_EVENT_EVIDENCE_STORAGE_UNSUPPORTED' };
+    const storageKey = text(evidence.storage_key);
+    if (!storageKey || !/^[a-f0-9]{64}$/i.test(text(evidence.checksum_sha256))
+      || Number(evidence.file_size_bytes || 0) <= 0) {
+      return { error: 'EU_IMPORT_EVENT_EVIDENCE_FILE_UNAVAILABLE' };
+    }
+    const uploadsRoot = path.resolve(this.uploadsRoot);
+    const filePath = path.resolve(uploadsRoot, storageKey);
+    const relative = path.relative(uploadsRoot, filePath);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+      return { error: 'EU_IMPORT_EVENT_EVIDENCE_FILE_UNAVAILABLE' };
+    }
+    try {
+      const [buffer, stat] = await Promise.all([fs.promises.readFile(filePath), fs.promises.stat(filePath)]);
+      const digest = sha256(buffer);
+      if (!stat.isFile() || buffer.length !== Number(evidence.file_size_bytes)
+        || digest !== text(evidence.checksum_sha256).toLowerCase()) {
+        return { error: 'EU_IMPORT_EVENT_EVIDENCE_FILE_TAMPERED' };
+      }
+      return { buffer, sha256: digest, fileSizeBytes: buffer.length };
+    } catch (_error) {
+      return { error: 'EU_IMPORT_EVENT_EVIDENCE_FILE_UNAVAILABLE' };
+    }
+  }
+
   async _verifyCurrentCarrierEvidence(companyId, shipmentId, snapshot) {
     const carrier = (snapshot?.carrierDocuments || []).find((item) => item.structured?.status === 'confirmed'
       && item.latestReconciliation?.status === 'passed'
@@ -1313,6 +1638,32 @@ class ExportShipmentService {
           error: verification.error === 'VN_CUSTOMS_EVENT_EVIDENCE_FILE_TAMPERED'
             ? 'VN_CUSTOMS_SUPPORTING_DOCUMENT_TAMPERED'
             : 'VN_CUSTOMS_SUPPORTING_DOCUMENT_UNAVAILABLE',
+          documentType
+        };
+      }
+    }
+    return { verified: true };
+  }
+
+  async _verifyCurrentEuSupportingDocuments(companyId, shipmentId, snapshot) {
+    for (const documentType of ['commercial_invoice', 'packing_list']) {
+      const document = (snapshot?.documents || []).find((item) => item.type === documentType
+        && isCurrentIssuedSupportingDocument(snapshot, item));
+      if (!document) return { error: 'EU_IMPORT_SUPPORTING_DOCUMENT_NOT_CURRENT', documentType };
+      const result = await this.database.query(
+        `SELECT storage_provider, storage_key, file_sha256 AS checksum_sha256, file_size_bytes
+         FROM export_documents
+         WHERE id=$1 AND company_id=$2 AND shipment_id=$3 AND document_type=$4 AND status='issued'`,
+        [document.id, companyId, shipmentId, documentType]
+      );
+      const row = result.rows[0];
+      if (!row) return { error: 'EU_IMPORT_SUPPORTING_DOCUMENT_NOT_CURRENT', documentType };
+      const verification = await this._verifyEuImportEvidenceFile(row);
+      if (verification.error) {
+        return {
+          error: verification.error === 'EU_IMPORT_EVENT_EVIDENCE_FILE_TAMPERED'
+            ? 'EU_IMPORT_SUPPORTING_DOCUMENT_TAMPERED'
+            : 'EU_IMPORT_SUPPORTING_DOCUMENT_UNAVAILABLE',
           documentType
         };
       }
@@ -1663,6 +2014,18 @@ class ExportShipmentService {
         ? approvedCarriers.map((item) => item.id)
         : []
     )));
+    const euImportValidation = validateEuImportHandoff(snapshot, {
+      isCarrierCurrent: (item) => item.latestReconciliation?.status === 'passed'
+        && item.latestReconciliation?.rulesetVersion === CARRIER_RULESET_VERSION
+        && item.latestReconciliation?.sourceSnapshotSha256 === carrierReconciliationSha256(snapshot, item),
+      isSupportingDocumentCurrent: (document) => isCurrentIssuedSupportingDocument(snapshot, document)
+    });
+    euImportValidation.checks.forEach((check) => results.push(requirement(
+      'eu_import_handoff', check.code, check.status, check.fieldPath, check.message,
+      true, check.code === 'carrier_document_reconciliation'
+        ? approvedCarriers.map((item) => item.id)
+        : []
+    )));
     const originApplicable = profile.preferentialOriginClaim === true;
     const originEvidence = (snapshot.carrierDocuments || []).filter((doc) => doc.type === 'origin_support' && doc.status === 'locked');
     results.push(requirement('origin_workbook', 'preferential_claim', originApplicable ? (originEvidence.length ? 'ready' : 'missing') : 'not_applicable', 'profile.preferentialOriginClaim', originApplicable && !originEvidence.length ? 'Locked origin evidence is required for a preferential claim.' : null, originApplicable, originEvidence.map((doc) => doc.id)));
@@ -1735,7 +2098,7 @@ class ExportShipmentService {
     }
     const defaultFormat = documentType === 'ics2_dataset'
       ? 'csv'
-      : (documentType === 'vn_customs_handoff' ? 'json' : 'xlsx');
+      : (['vn_customs_handoff', 'eu_import_handoff'].includes(documentType) ? 'json' : 'xlsx');
     const outputFormat = text(options.outputFormat || options.output_format || options.format || defaultFormat).toLowerCase();
     if (!DOCUMENT_FORMATS[documentType]?.has(outputFormat)) {
       const error = new Error(`Unsupported ${documentType} output format.`);
@@ -1750,7 +2113,7 @@ class ExportShipmentService {
       return { blocked: true, readiness };
     }
     const snapshot = await this.getProfile(companyId, shipmentId);
-    if (['carbon_annex', 'ics2_dataset', 'vn_customs_handoff'].includes(documentType)) {
+    if (['carbon_annex', 'ics2_dataset', 'vn_customs_handoff', 'eu_import_handoff'].includes(documentType)) {
       const evidenceVerification = await this._verifyCurrentCarrierEvidence(companyId, shipmentId, snapshot);
       if (evidenceVerification.error) {
         return {
@@ -1763,6 +2126,17 @@ class ExportShipmentService {
     }
     if (documentType === 'vn_customs_handoff') {
       const supportingVerification = await this._verifyCurrentSupportingExportDocuments(companyId, shipmentId, snapshot);
+      if (supportingVerification.error) {
+        return {
+          blocked: true,
+          code: supportingVerification.error,
+          message: `Current issued ${supportingVerification.documentType || 'supporting'} file could not be verified.`,
+          readiness
+        };
+      }
+    }
+    if (documentType === 'eu_import_handoff') {
+      const supportingVerification = await this._verifyCurrentEuSupportingDocuments(companyId, shipmentId, snapshot);
       if (supportingVerification.error) {
         return {
           blocked: true,
@@ -1846,6 +2220,35 @@ class ExportShipmentService {
       grossWeightKg: line.grossWeightKg,
       packageRefs: JSON.stringify(line.packageRefs || [])
     }));
+    if (type === 'eu_import_handoff') return lines.map((line) => {
+      const detail = (payload.euImportLineDetails || []).find((item) => item.exportLineId === line.id) || {};
+      return {
+        lineNumber: line.lineNumber,
+        sku: line.sku,
+        goodsDescription: line.goodsDescription,
+        taricCode: detail.taricCode || '',
+        taricSource: detail.taricSource || '',
+        taricVersion: detail.taricVersion || '',
+        taricEffectiveDate: detail.taricEffectiveDate || '',
+        taricConfirmed: detail.taricConfirmed === true,
+        taricConfirmedBy: detail.taricConfirmedBy || '',
+        taricConfirmedAt: detail.taricConfirmedAt || '',
+        supplementaryUnitCode: detail.supplementaryUnitCode || '',
+        additionalCodes: JSON.stringify(detail.additionalCodes || []),
+        nationalAdditionalCodes: JSON.stringify(detail.nationalAdditionalCodes || []),
+        preferenceCode: detail.preferenceCode || '',
+        requestedProcedureCode: detail.requestedProcedureCode || payload.euImportProfile?.requestedProcedureCode || '',
+        previousProcedureCode: detail.previousProcedureCode || payload.euImportProfile?.previousProcedureCode || '',
+        originCountry: line.originCountry,
+        quantity: line.quantity,
+        unit: line.unit,
+        itemValue: Number(line.quantity || 0) * Number(line.unitPrice || 0),
+        currency: line.currency || payload.profile?.currency,
+        netWeightKg: line.netWeightKg,
+        grossWeightKg: line.grossWeightKg,
+        packageRefs: JSON.stringify(line.packageRefs || [])
+      };
+    });
     if (type === 'ics2_dataset') return lines.map((line) => ({
       shipmentReference: payload.shipment?.referenceNumber || payload.shipment?.id,
       transportDocumentNo: payload.profile?.billOfLadingNo || '',
@@ -1902,7 +2305,8 @@ class ExportShipmentService {
   }
 
   async _buildDocumentBuffer(type, payload, issued, outputFormat = null) {
-    const format = outputFormat || (type === 'ics2_dataset' ? 'csv' : (type === 'vn_customs_handoff' ? 'json' : 'xlsx'));
+    const format = outputFormat || (type === 'ics2_dataset' ? 'csv'
+      : (['vn_customs_handoff', 'eu_import_handoff'].includes(type) ? 'json' : 'xlsx'));
     if (format === 'pdf') return buildExportDocumentPdf(type, payload, issued);
     if (type === 'vn_customs_handoff' && format === 'json') {
       const reconciliation = validateVnCustomsHandoff(payload, {
@@ -1912,6 +2316,21 @@ class ExportShipmentService {
         isSupportingDocumentCurrent: (document) => isCurrentIssuedSupportingDocument(payload, document)
       });
       const dataset = buildVnCustomsHandoffDataset(payload, {
+        generatedAt: payload.generatedAt,
+        documentVersion: payload.documentVersion,
+        sourceSnapshotSha256: payload.sourceSnapshotSha256,
+        reconciliation
+      });
+      return Buffer.from(`${JSON.stringify(dataset, null, 2)}\n`, 'utf8');
+    }
+    if (type === 'eu_import_handoff' && format === 'json') {
+      const reconciliation = validateEuImportHandoff(payload, {
+        isCarrierCurrent: (item) => item.latestReconciliation?.status === 'passed'
+          && item.latestReconciliation?.rulesetVersion === CARRIER_RULESET_VERSION
+          && item.latestReconciliation?.sourceSnapshotSha256 === carrierReconciliationSha256(payload, item),
+        isSupportingDocumentCurrent: (document) => isCurrentIssuedSupportingDocument(payload, document)
+      });
+      const dataset = buildEuImportHandoffDataset(payload, {
         generatedAt: payload.generatedAt,
         documentVersion: payload.documentVersion,
         sourceSnapshotSha256: payload.sourceSnapshotSha256,
@@ -1992,6 +2411,22 @@ class ExportShipmentService {
         'Packing list number': p.packingListNumber || '',
         'Currency / exchange rate': `${p.currency || ''} / ${payload.vnCustomsProfile?.exchangeRate || ''}`,
         'Authority status': 'NOT_SUBMITTED'
+      },
+      eu_import_handoff: {
+        ...commonMetadata,
+        'Dataset nature': 'DECLARANT HANDOFF - NOT A SAD, NATIONAL MESSAGE, MRN OR CUSTOMS ACCEPTANCE',
+        'Internal schema': `${EU_IMPORT_HANDOFF_SCHEMA.id}@${EU_IMPORT_HANDOFF_SCHEMA.version}`,
+        'EUCDM reference version': EU_IMPORT_HANDOFF_SCHEMA.eucdmVersion,
+        'Regulatory basis version': EU_IMPORT_HANDOFF_SCHEMA.regulatoryBasisVersion,
+        'Target system schema': `${payload.euImportProfile?.targetSystemSchemaId || ''}@${payload.euImportProfile?.targetSystemSchemaVersion || ''}`,
+        'Import Member State': payload.euImportProfile?.memberStateCode || '',
+        'Declaration dataset': payload.euImportProfile?.declarationDatasetCode || '',
+        'Customs office code': payload.euImportProfile?.customsOfficeCode || '',
+        'Importer EORI': payload.euImportProfile?.importer?.eori || '',
+        'Declarant EORI': payload.euImportProfile?.declarant?.eori || '',
+        'Invoice number': p.invoiceNumber || '',
+        'Packing list number': p.packingListNumber || '',
+        'Authority status': 'NOT_SUBMITTED'
       }
     };
     const metadata = metadataByType[type] || commonMetadata;
@@ -2034,6 +2469,17 @@ class ExportShipmentService {
         ['quantity','Quantity'],['unit','Customs unit'],['unitPrice','Invoice unit price'],
         ['currency','Currency'],['lineValue','Line value'],['netWeightKg','Net kg'],
         ['grossWeightKg','Gross kg'],['packageRefs','Package references']
+      ],
+      eu_import_handoff: [
+        ['lineNumber','Line'],['sku','SKU'],['goodsDescription','Detailed goods description'],
+        ['taricCode','TARIC (10 digits)'],['taricSource','TARIC source'],['taricVersion','TARIC version'],
+        ['taricEffectiveDate','TARIC effective date'],['taricConfirmed','TARIC confirmed'],
+        ['taricConfirmedBy','Confirmed by'],['taricConfirmedAt','Confirmed at'],
+        ['supplementaryUnitCode','Supplementary unit'],['additionalCodes','Additional codes'],
+        ['nationalAdditionalCodes','National additional codes'],['preferenceCode','Preference code'],
+        ['requestedProcedureCode','Requested procedure'],['previousProcedureCode','Previous procedure'],
+        ['originCountry','Origin'],['quantity','Quantity'],['unit','Unit'],['itemValue','Item value'],
+        ['currency','Currency'],['netWeightKg','Net kg'],['grossWeightKg','Gross kg'],['packageRefs','Package references']
       ]
     };
     return buildSimpleXlsx({
@@ -2052,7 +2498,8 @@ class ExportShipmentService {
     if (!document) throw new Error('Export document job target not found.');
     const payload = { ...document.payload, documentVersion: document.version };
     const ext = document.output_format || document.file_format
-      || (document.document_type === 'ics2_dataset' ? 'csv' : (document.document_type === 'vn_customs_handoff' ? 'json' : 'xlsx'));
+      || (document.document_type === 'ics2_dataset' ? 'csv'
+        : (['vn_customs_handoff', 'eu_import_handoff'].includes(document.document_type) ? 'json' : 'xlsx'));
     const buffer = await this._buildDocumentBuffer(document.document_type, payload, false, ext);
     const filename = `${document.document_type}_${document.shipment_id}_v${document.version}.${ext}`;
     const storageKey = `reports/${companyId}/exports/${document.shipment_id}/${filename}`;
@@ -2203,7 +2650,7 @@ class ExportShipmentService {
         readiness
       };
     }
-    if (['carbon_annex', 'ics2_dataset', 'vn_customs_handoff'].includes(document.document_type)) {
+    if (['carbon_annex', 'ics2_dataset', 'vn_customs_handoff', 'eu_import_handoff'].includes(document.document_type)) {
       const evidenceVerification = await this._verifyCurrentCarrierEvidence(companyId, shipmentId, currentSnapshot);
       if (evidenceVerification.error) {
         return {
@@ -2216,6 +2663,17 @@ class ExportShipmentService {
     }
     if (document.document_type === 'vn_customs_handoff') {
       const supportingVerification = await this._verifyCurrentSupportingExportDocuments(companyId, shipmentId, currentSnapshot);
+      if (supportingVerification.error) {
+        return {
+          blocked: true,
+          code: supportingVerification.error,
+          message: `Current issued ${supportingVerification.documentType || 'supporting'} file could not be verified before issue.`,
+          readiness
+        };
+      }
+    }
+    if (document.document_type === 'eu_import_handoff') {
+      const supportingVerification = await this._verifyCurrentEuSupportingDocuments(companyId, shipmentId, currentSnapshot);
       if (supportingVerification.error) {
         return {
           blocked: true,
@@ -2247,7 +2705,8 @@ class ExportShipmentService {
       }
     }
     const ext = document.output_format || document.file_format
-      || (document.document_type === 'ics2_dataset' ? 'csv' : (document.document_type === 'vn_customs_handoff' ? 'json' : 'xlsx'));
+      || (document.document_type === 'ics2_dataset' ? 'csv'
+        : (['vn_customs_handoff', 'eu_import_handoff'].includes(document.document_type) ? 'json' : 'xlsx'));
     if (!document.storage_key || document.storage_provider !== 'local') {
       return { blocked: true, code: 'DOCUMENT_SOURCE_FILE_MISSING', message: 'The approved local source file is unavailable.' };
     }
@@ -2366,6 +2825,10 @@ class ExportShipmentService {
     };
   }
 
+  _formatEuImportEvent(row) {
+    return this._formatVnCustomsEvent(row);
+  }
+
   _formatReview(row) {
     return {
       id: row.id, documentId: row.export_document_id, shipmentId: row.shipment_id,
@@ -2389,4 +2852,5 @@ module.exports.documentSourceSnapshotSha256 = documentSourceSnapshotSha256;
 module.exports.carrierReconciliationSha256 = carrierReconciliationSha256;
 module.exports.CARRIER_RULESET_VERSION = CARRIER_RULESET_VERSION;
 module.exports.VN_CUSTOMS_HANDOFF_SCHEMA = VN_CUSTOMS_HANDOFF_SCHEMA;
+module.exports.EU_IMPORT_HANDOFF_SCHEMA = EU_IMPORT_HANDOFF_SCHEMA;
 module.exports.RULESET_VERSION = RULESET_VERSION;

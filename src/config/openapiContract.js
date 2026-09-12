@@ -230,6 +230,84 @@ const VN_CUSTOMS_PROFILE_SCHEMA = {
   additionalProperties: false
 };
 
+const EU_IMPORT_PROFILE_SCHEMA = {
+  type: 'object',
+  required: [
+    'memberStateCode', 'importer', 'declarant', 'representationType', 'customsOfficeCode',
+    'declarationDatasetCode', 'additionalDeclarationType', 'requestedProcedureCode',
+    'previousProcedureCode', 'modeOfTransportAtBorder', 'inlandModeOfTransport',
+    'borderTransportIdentity', 'placeOfGoodsCode', 'valuationMethodCode', 'exchangeRate',
+    'customsValueCurrency', 'customsValueAmount', 'dutyTreatment', 'vatTreatment',
+    'restrictionStatus', 'preferenceClaimStatus', 'guaranteeRequirementStatus',
+    'supportingDocuments', 'targetSystemSchemaId', 'targetSystemSchemaVersion'
+  ],
+  properties: {
+    memberStateCode: { type: 'string', pattern: '^[A-Za-z]{2}$' },
+    importer: { type: 'object', additionalProperties: true },
+    declarant: { type: 'object', additionalProperties: true },
+    representative: { type: 'object', additionalProperties: true },
+    representationType: { type: 'string', enum: ['none', 'direct', 'indirect'] },
+    customsOfficeCode: { type: 'string', maxLength: 35 },
+    declarationDatasetCode: { type: 'string', maxLength: 35 },
+    additionalDeclarationType: { type: 'string', maxLength: 35 },
+    requestedProcedureCode: { type: 'string', maxLength: 35 },
+    previousProcedureCode: { type: 'string', maxLength: 35 },
+    modeOfTransportAtBorder: { type: 'string', maxLength: 35 },
+    inlandModeOfTransport: { type: 'string', maxLength: 35 },
+    borderTransportIdentity: { type: 'string', maxLength: 500 },
+    placeOfGoodsCode: { type: 'string', maxLength: 35 },
+    deliveryTermsLocation: { type: 'string', maxLength: 500 },
+    valuationMethodCode: { type: 'string', maxLength: 35 },
+    exchangeRate: { type: 'number', minimum: 0, exclusiveMinimum: true },
+    customsValueCurrency: { type: 'string', pattern: '^[A-Za-z]{3}$' },
+    customsValueAmount: { type: 'number', minimum: 0 },
+    dutyTreatment: { type: 'string', enum: ['unknown', 'not_subject', 'exempt', 'payable'] },
+    dutyRate: { type: 'number', minimum: 0, nullable: true },
+    dutyAmount: { type: 'number', minimum: 0, nullable: true },
+    vatTreatment: { type: 'string', enum: ['unknown', 'not_subject', 'exempt', 'payable'] },
+    vatRate: { type: 'number', minimum: 0, nullable: true },
+    vatAmount: { type: 'number', minimum: 0, nullable: true },
+    taxBasis: { type: 'string', maxLength: 5000 },
+    restrictionStatus: { type: 'string', enum: ['unknown', 'not_required', 'required'] },
+    restrictionReferences: { type: 'array', maxItems: 200, items: { type: 'object', additionalProperties: true } },
+    preferenceClaimStatus: { type: 'string', enum: ['no_claim', 'claimed'] },
+    preferenceReferences: { type: 'array', maxItems: 200, items: { type: 'object', additionalProperties: true } },
+    guaranteeRequirementStatus: { type: 'string', enum: ['unknown', 'not_required', 'required'] },
+    guaranteeReferences: { type: 'array', maxItems: 200, items: { type: 'object', additionalProperties: true } },
+    supportingDocuments: { type: 'array', maxItems: 300, items: { type: 'object', additionalProperties: true } },
+    targetSystemSchemaId: { type: 'string', minLength: 1, maxLength: 300 },
+    targetSystemSchemaVersion: { type: 'string', minLength: 1, maxLength: 100 },
+    declarationNotes: { type: 'string', maxLength: 5000 },
+    metadata: { type: 'object', additionalProperties: true }
+  },
+  additionalProperties: false
+};
+
+const EU_IMPORT_EVENT_SCHEMA = {
+  type: 'object',
+  required: ['exportDocumentId', 'eventType', 'externalReference', 'evidenceDocumentId', 'actorName', 'occurredAt'],
+  properties: {
+    exportDocumentId: { type: 'string', format: 'uuid' },
+    eventType: {
+      type: 'string',
+      enum: [
+        'declarant_received', 'declarant_validated', 'declarant_rejected',
+        'authority_submitted', 'authority_accepted', 'authority_rejected',
+        'authority_released', 'authority_cancelled', 'amendment_requested', 'amendment_submitted'
+      ]
+    },
+    externalReference: { type: 'string', minLength: 1, maxLength: 500 },
+    messageCode: { type: 'string', maxLength: 200 },
+    messageText: { type: 'string', maxLength: 5000 },
+    evidenceDocumentId: { type: 'string', format: 'uuid' },
+    actorName: { type: 'string', minLength: 1, maxLength: 500 },
+    actorIdentifier: { type: 'string', maxLength: 300 },
+    occurredAt: { type: 'string', format: 'date-time' },
+    metadata: { type: 'object', additionalProperties: true }
+  },
+  additionalProperties: false
+};
+
 const REQUEST_BODY_OVERRIDES = {
   'POST /reports/v2/snapshots': {
     type: 'object',
@@ -384,6 +462,27 @@ const REQUEST_BODY_OVERRIDES = {
     },
     additionalProperties: false
   },
+  'PUT /export/shipments/{shipmentId}/eu-import/profile': EU_IMPORT_PROFILE_SCHEMA,
+  'PUT /export/shipments/{shipmentId}/eu-import/lines/{lineId}': {
+    type: 'object',
+    properties: {
+      taricCode: { type: 'string', pattern: '^[0-9 .-]{1,20}$' },
+      taricSource: { type: 'string', maxLength: 500 },
+      taricVersion: { type: 'string', maxLength: 200 },
+      taricEffectiveDate: { type: 'string', format: 'date' },
+      taricConfirmed: { type: 'boolean' },
+      supplementaryUnitCode: { type: 'string', maxLength: 35 },
+      additionalCodes: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 35 } },
+      nationalAdditionalCodes: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 35 } },
+      preferenceCode: { type: 'string', maxLength: 35 },
+      requestedProcedureCode: { type: 'string', maxLength: 35 },
+      previousProcedureCode: { type: 'string', maxLength: 35 },
+      metadata: { type: 'object', additionalProperties: true }
+    },
+    minProperties: 1,
+    additionalProperties: false
+  },
+  'POST /export/shipments/{shipmentId}/eu-import/events': EU_IMPORT_EVENT_SCHEMA,
   'POST /carbon-calculations': {
     type: 'object',
     required: ['calculation_type', 'carbon_input'],

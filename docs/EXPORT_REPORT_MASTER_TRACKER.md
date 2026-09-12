@@ -28,7 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
-| Active R04 implementation branch in both repositories | `feat/r04-vn-customs-handoff` |
+| Active R05 implementation branch in both repositories | `feat/r05-eu-import-handoff` (stacked on the open R04 branches) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -45,6 +45,9 @@ This tracker separates four facts that must never be conflated:
 | Frontend R03 carrier-document/Carbon Annex commit | `9bd4c58f58cfff8b32a2bea580675b170931c751` |
 | Backend R04 broker-handoff technical-gate commit | `0d8cc4ecb68d63bc52d86406e0659b971a0f8038` |
 | Frontend R04 broker-handoff commit | `dbeb7f181f6248834fd89d076cde779bff4c135e` |
+| Backend R05 EU import declarant-handoff commit | `47c81c1b2d0cb60921d5716b423b09929d5db29c` |
+| Frontend R05 EU import declarant-handoff commit | `f46dd1c64d9a5abd5b3c0a7049c4558bf1db6b15` |
+| R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
 | Backend R01/R02 staging-pilot commit | `002aea9` |
@@ -72,9 +75,9 @@ git clone https://github.com/DauDinhQuangAnh/weavecarbon.git
 git -C weavecarbon switch main
 ```
 
-While R04 PRs 29/32 are still open, fetch and switch both clones to
-`feat/r04-vn-customs-handoff` before continuing. After merge, use `main` and verify that it contains the R04 commit hashes
-recorded in the table above.
+While the stacked R04/R05 pull requests are open, fetch and switch both clones to
+`feat/r05-eu-import-handoff` before continuing. R05 contains R04 and must not be merged to `main` before R04. After merge,
+use `main` and verify that it contains the R04 and R05 commit hashes recorded in the table above.
 
 Then give the next AI this instruction:
 
@@ -124,8 +127,8 @@ The report increment merged to `main` completed the shared shipment-document fou
 
 Known overall checks at the latest feature commits:
 
-- Backend: 101/101 suites and 638/638 tests passed; `npm run verify:full` passed.
-- Frontend: 39/39 files and 171/171 tests passed; `npm run check` and the 62-page production build passed.
+- Backend R05 local gate: 105/105 suites and 664/664 tests passed; `npm run verify:full` passed.
+- Frontend R05 local gate: 41/41 files and 175/175 tests passed; `npm run check` and the 62-page production build passed.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
@@ -143,7 +146,7 @@ Known overall checks at the latest feature commits:
 | 2 | Packing List | Normal customs/transport practice | `READY_TO_PILOT` | PDF/XLSX, hierarchy, explicit measurement basis, carrier display and checksum-bound named review/issue | Real warehouse review against the physical package ledger |
 | 3 | B/L, AWB, CMR, CIM or FBL | Depends on transport mode | `EXTERNAL_DOCUMENT` | Structured immutable carrier metadata, exact-file verification, mode/totals/equipment reconciliation and versioned replacement; WeaveCarbon generates only Carbon Annex | Real carrier-document pilot and issuer/authenticity review |
 | 4 | Vietnam export declaration/VNACCS | Normally mandatory | `PARTIAL` | Versioned internal broker-handoff JSON/XLSX, R01/R02/R03 reconciliation, named review and evidence-backed append-only external events; no VNACCS submission | Obtain and validate an exact broker target schema/code list, then complete a named real-shipment broker pilot |
-| 5 | EU import declaration/SAD/EUCDM | Importer/declarant responsibility | `NOT_STARTED` | No declaration dataset | Build declarant handoff dataset; never label it customs-accepted |
+| 5 | EU import declaration/SAD/EUCDM | Importer/declarant responsibility | `READY_TO_PILOT` | Versioned internal EUCDM-referenced JSON/XLSX declarant handoff, TARIC decisions, R01/R02/R03 reconciliation, review and evidence-backed external events; no direct submission | Run isolated PostgreSQL pilot, obtain exact Member-State/declarant schema, then complete a named real-shipment specialist pilot |
 | 6 | ENS/ICS2 support dataset | Goods entering EU | `PARTIAL` | Basic per-line CSV | Mode/release-specific schema, house/master consignment and schema validation |
 | 7 | EVFTA EUR.1/origin declaration support | Only when claiming preference | `PARTIAL` | Basic Origin Workbook plus locked supporting evidence gate | BOM-origin rules engine and official-form/wording workflow |
 | 8 | EU textile fibre label | Textile products | `PARTIAL` | Generic material composition exists | Controlled Annex-I fibres, components, locale and label artifact |
@@ -267,7 +270,26 @@ broker/authority response and never claims `AUTHORITY_ACCEPTED` without external
 **Inputs:** importer/declarant/representation/EORI; procedure; CN/TARIC; goods, quantities, packages, locations, origin;
 transport; customs value/currency/Incoterm/freight/insurance; supporting document codes; MRN/status/amendments.
 
-**Current gap:** no structured dataset. Import declaration is filed by the EU actor, not the Vietnamese exporter.
+**Implemented:** migration 027 adds tenant-bound EU import profiles, per-line TARIC decisions and an append-only external-
+event ledger. The controlled `weavecarbon.eu-import-declarant-handoff@1.0.0` JSON/XLSX envelope is pinned to internal
+ruleset `R05-EU-IMPORT-HANDOFF-2026.09.1` and regulatory reference
+`UCC-DA-2015/2446-ANNEX-B+UCC-IA-2015/2447-ANNEX-B@EUCDM-7.0.11`. Validation covers EU destination/Member State,
+importer/declarant/conditional representative and EORI, exact target schema ID/version, declaration/procedure/transport/
+location/valuation codes, invoice/packing references, currency/exchange rate/customs value, packages and weights,
+duty/VAT, restrictions, preference and guarantee decisions. Every shipment line requires a 10-digit TARIC code preserving
+the controlled HS6 heading plus source/version/effective date; classification/provenance changes clear approval and an
+unchanged second action is required for named confirmation. R05 generation and issue re-read and verify current issued
+R01/R02 files and current confirmed R03 evidence. A named `eu_import_declaration_reviewer` decision is checksum-bound.
+The output always states `notForDirectSubmission=true` and `authorityStatus=NOT_SUBMITTED`, and carries the confirmer/time
+for each TARIC decision. Declarant/authority events are tenant-bound, append-only and require the exact issued R05 file plus
+approved, unexpired, byte-verified evidence of the permitted type. The frontend exposes profile, tax/control, per-line TARIC,
+reconciliation, evidence and external-event workflows without presenting an internal file as a SAD/MRN.
+
+**Remaining:** the official EUCDM model does not replace each Member State's/named declarant's target message, code lists
+or national additions. No real declarant has supplied/approved an exact schema, mapping or acknowledgement sample. TARIC,
+procedure, valuation, duty, VAT, restrictions, preference and guarantee decisions still require a qualified EU import
+specialist. The synthetic R05 PostgreSQL pilot is wired into CI but must pass at the exact pushed head, then run on isolated
+staging. Direct authority submission remains out of scope; only evidence-backed external events may show a later result.
 
 **Definition of Done:** destination/broker-specific handoff schema exists, reconciles to shipment documents, and external
 status is evidence-backed. A generated handoff file must not be presented as an accepted customs declaration.
@@ -589,6 +611,7 @@ npm run test:export-documents-pilot # isolated PostgreSQL only; see docs/EXPORT_
 npm run test:audit-bundle-pilot # isolated PostgreSQL only; see docs/AUDIT_PACK_PILOT_RUNBOOK.md
 npm run test:carrier-document-pilot # isolated PostgreSQL only; see docs/CARRIER_DOCUMENT_PILOT_RUNBOOK.md
 npm run test:vn-customs-handoff-pilot # same guarded R03/R04 fixture; see docs/VN_CUSTOMS_HANDOFF_PILOT_RUNBOOK.md
+npm run test:eu-import-handoff-pilot # same guarded R01-R05 fixture; see docs/EU_IMPORT_HANDOFF_PILOT_RUNBOOK.md
 git diff --check
 ```
 
@@ -609,6 +632,11 @@ gate; do not substitute the production database.
 Recheck these official sources at the start of the related report work and store a version/effective date in code:
 
 - EU customs documents and procedures: https://trade.ec.europa.eu/access-to-markets/it/stories/documenti-e-procedure-di-sdoganamento
+- EU customs data requirements and Annex B basis: https://taxation-customs.ec.europa.eu/customs/customs-procedures-import-and-export/customs-operations/data-requirements_en
+- EU Customs Data Model (EUCDM): https://taxation-customs.ec.europa.eu/online-services/online-services-and-databases-customs/eu-customs-data-model-eucdm_en
+- EUCDM 7.0.11 release notice (2026-08-27): https://taxation-customs.ec.europa.eu/news/eucdm-701-here-whats-new-updated-european-customs-data-model-2026-08-27_en
+- EU TARIC: https://taxation-customs.ec.europa.eu/online-services/online-services-and-databases-customs/eu-customs-tariff-taric_en
+- UCC legislation and delegated/implementing acts: https://taxation-customs.ec.europa.eu/customs/union-customs-code/ucc-legislation_en
 - ICS2: https://taxation-customs.ec.europa.eu/general-information-customs/customs-security/ics2_en
 - EVFTA Protocol 1: https://trade.ec.europa.eu/access-to-markets/en/assets/VN_ENG_Protocol-1.pdf
 - EU textile fibre names/labelling, Regulation (EU) 1007/2011: https://eur-lex.europa.eu/eli/reg/2011/1007/oj
@@ -640,8 +668,10 @@ Backend core:
 - `migrations/024_r03_carrier_document_controls.sql`
 - `migrations/025_r04_vn_customs_broker_handoff.sql`
 - `migrations/026_r04_export_document_json_format.sql`
+- `migrations/027_r05_eu_import_declarant_handoff.sql`
 - `src/services/exportShipmentService.js`
 - `src/services/vnCustomsHandoffControls.js`
+- `src/services/euImportHandoffControls.js`
 - `src/services/exportDocumentPdf.js`
 - `src/routes/exportV2.js`
 - `src/utils/simpleXlsx.js`
@@ -650,18 +680,23 @@ Backend core:
 - `tests/services/exportShipmentService.test.js`
 - `tests/services/vnCustomsHandoffControls.test.js`
 - `tests/config/vnCustomsHandoffMigrationContract.test.js`
+- `tests/config/euImportHandoffMigrationContract.test.js`
+- `tests/services/euImportHandoffControls.test.js`
 - `tests/config/exportWorkflowMigrationContract.test.js`
 - `tests/config/exportDocumentBusinessReviewMigrationContract.test.js`
 - `scripts/render-export-document-pdf-qa.js`
 - `docs/EXPORT_WORKFLOW.md`
 - `docs/VN_CUSTOMS_HANDOFF_PILOT_RUNBOOK.md`
+- `docs/EU_IMPORT_HANDOFF_PILOT_RUNBOOK.md`
 
 Frontend core:
 
 - `components/dashboard/export/ShipmentExportPortal.tsx`
 - `components/dashboard/export/VnCustomsHandoffPanel.tsx`
+- `components/dashboard/export/EuImportHandoffPanel.tsx`
 - `lib/weave-v2/shipmentExportApi.ts`
 - `lib/weave-v2/shipmentVnCustomsApi.test.ts`
+- `lib/weave-v2/shipmentEuImportApi.test.ts`
 - `components/dashboard/export/ExportConfigurationPortalV2.tsx`
 - `components/dashboard/cbam/CbamReportSection.tsx`
 - `lib/cbam/applicability.ts`
@@ -1096,3 +1131,22 @@ Backend carbon trace core:
   remain healthy; public `/`, `/audit` and `/export` return HTTP 200.
 - R04 remains `PARTIAL`. The automated and isolated-staging controls are proven, but the exact broker target schema,
   authentic shipment, qualified review and real broker/authority acknowledgements are still absent.
+
+### 2026-09-12 — R05 EU import declarant-handoff implementation
+
+- Backend commit `47c81c1b2d0cb60921d5716b423b09929d5db29c` adds migration 027, EUCDM 7.0.11-referenced internal schema/validation, shipment-scoped API,
+  JSON/XLSX generation, TARIC decision controls, named review, byte re-verification and evidence-backed append-only
+  declarant/authority events. Frontend commit `f46dd1c64d9a5abd5b3c0a7049c4558bf1db6b15` adds the corresponding profile, per-line classification,
+  reconciliation, evidence and external-event workspace.
+- R05 is deliberately a declarant handoff only. Output is always `NOT_SUBMITTED`, explicitly rejects SAD/MRN/authority
+  wording and has no national customs client or fallback target schema. Import declaration remains the responsibility of
+  the EU importer/declarant and the applicable authority system.
+- Local gates passed: backend `npm run verify:full` with 105 suites/664 tests; frontend `npm run check`, 41 files/175 tests
+  and a production build of all 62 routes. The 20 frontend lint warnings pre-date R05; no R05 file introduces a lint error.
+- The guarded shared PostgreSQL pilot now covers R01 through R05 and writes a dedicated R05 artifact. Backend feature run
+  `34678619493` passed all six jobs, including migration/integration/pilot; frontend feature run `34678619634` passed all
+  six build/test/type/contract/security/Compose jobs. Both stacked PRs are cleanly mergeable at this checkpoint.
+  Isolated VPS staging migration and pilot are still pending. Production was not changed.
+- R05 is `READY_TO_PILOT`, not legally ready. Exact next gates: back up and migrate isolated staging through 027,
+  run/reopen the R05 artifact, then obtain a real Member-State/declarant schema and qualified
+  specialist review before any real-shipment or external-status claim.
