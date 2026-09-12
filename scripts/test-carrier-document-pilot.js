@@ -15,14 +15,15 @@ const { createExportShipmentService } = require('../src/services/exportShipmentS
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-and-vn-customs-handoff-pilot-v2',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-handoff-pilot-v3',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
   productionDataTouched: false,
   checks: [],
   documents: [],
-  customsEvents: []
+  customsEvents: [],
+  euImportEvents: []
 };
 
 function check(name, details = {}) {
@@ -35,7 +36,7 @@ function sha256(buffer) {
 
 async function writeResult() {
   const contents = `${JSON.stringify(result, null, 2)}\n`;
-  for (const name of ['carrier-document-pilot', 'vn-customs-handoff-pilot']) {
+  for (const name of ['carrier-document-pilot', 'vn-customs-handoff-pilot', 'eu-import-handoff-pilot']) {
     const directory = path.resolve(__dirname, '..', 'artifacts', name);
     await fs.promises.mkdir(directory, { recursive: true });
     await fs.promises.writeFile(path.join(directory, 'result.json'), contents, 'utf8');
@@ -449,6 +450,115 @@ async function run() {
   );
   assert.equal(await service.getVnCustomsEvents(ids.otherCompanyId, ids.shipmentId), null);
   check('authority_event_is_evidence_backed_append_only_and_tenant_isolated');
+
+  await service.upsertEuImportProfile(ids.companyId, ids.shipmentId, ids.userId, {
+    memberStateCode: 'NL',
+    importer: { name: 'Synthetic EU Importer', address: 'Rotterdam, Netherlands', eori: 'NL123456789012' },
+    declarant: { name: 'Synthetic EU Declarant', address: 'Rotterdam, Netherlands', eori: 'NL123456789013' },
+    representative: {}, representationType: 'none', customsOfficeCode: 'NL000123',
+    declarationDatasetCode: 'H1', additionalDeclarationType: 'A', requestedProcedureCode: '40',
+    previousProcedureCode: '00', modeOfTransportAtBorder: '1', inlandModeOfTransport: '3',
+    borderTransportIdentity: 'MV SYNTHETIC GREEN', placeOfGoodsCode: 'NLRTM-SYNTH',
+    deliveryTermsLocation: 'Cat Lai, Vietnam', valuationMethodCode: '1', exchangeRate: 1,
+    customsValueCurrency: 'USD', customsValueAmount: 500,
+    dutyTreatment: 'not_subject', vatTreatment: 'not_subject',
+    taxBasis: 'Synthetic technical fixture; no legal tariff decision',
+    restrictionStatus: 'not_required', restrictionReferences: [],
+    preferenceClaimStatus: 'no_claim', preferenceReferences: [],
+    guaranteeRequirementStatus: 'not_required', guaranteeReferences: [],
+    supportingDocuments: [
+      { type: 'commercial_invoice', documentId: issuedSupport.commercial_invoice.id },
+      { type: 'packing_list', documentId: issuedSupport.packing_list.id },
+      { type: 'carrier_document', documentId: firstDraft.structured.id }
+    ],
+    targetSystemSchemaId: 'synthetic-nl-declarant.delta-import',
+    targetSystemSchemaVersion: '2026.09-pilot',
+    declarationNotes: 'Synthetic isolated R05 handoff; never submit to an authority.'
+  });
+  const firstTaricSave = await service.upsertEuImportLineDetail(
+    ids.companyId, ids.shipmentId, lines[0].id, ids.userId,
+    {
+      taricCode: '6205200010', taricSource: 'Synthetic TARIC fixture', taricVersion: '2026-09-12-pilot',
+      taricEffectiveDate: '2026-09-12', taricConfirmed: true, additionalCodes: [],
+      nationalAdditionalCodes: [], requestedProcedureCode: '40', previousProcedureCode: '00'
+    }
+  );
+  assert.equal(firstTaricSave.taricConfirmed, false);
+  const confirmedTaric = await service.upsertEuImportLineDetail(
+    ids.companyId, ids.shipmentId, lines[0].id, ids.userId,
+    {
+      taricCode: '6205200010', taricSource: 'Synthetic TARIC fixture', taricVersion: '2026-09-12-pilot',
+      taricEffectiveDate: '2026-09-12', taricConfirmed: true, additionalCodes: [],
+      nationalAdditionalCodes: [], requestedProcedureCode: '40', previousProcedureCode: '00'
+    }
+  );
+  assert.equal(confirmedTaric.taricConfirmed, true);
+  assert.equal(confirmedTaric.taricConfirmedBy, ids.userId);
+  check('r05_taric_requires_separate_confirmation_action');
+
+  const euImportReconciliation = await service.reconcileEuImportHandoff(ids.companyId, ids.shipmentId);
+  assert.equal(euImportReconciliation.status, 'passed');
+  assert.ok(euImportReconciliation.checks.some((item) => item.code === 'line_1_taric10' && item.status === 'ready'));
+  assert.ok(euImportReconciliation.checks.some((item) => item.code === 'carrier_document_reconciliation' && item.status === 'ready'));
+  check('r05_reconciles_current_r01_r02_r03_and_taric', { checkCount: euImportReconciliation.checks.length });
+
+  const euImportDraft = await service.createDocumentJob(
+    ids.companyId, ids.shipmentId, ids.userId, 'eu_import_handoff', { outputFormat: 'json' }
+  );
+  assert.ok(!euImportDraft.blocked, 'R05 JSON generation was blocked.');
+  const euImportRow = (await pool.query('SELECT * FROM export_documents WHERE id=$1', [euImportDraft.id])).rows[0];
+  const euImportBytes = await fs.promises.readFile(path.resolve(UPLOADS_ROOT, euImportRow.storage_key));
+  assert.equal(sha256(euImportBytes), euImportRow.file_sha256);
+  const euImportDataset = JSON.parse(euImportBytes.toString('utf8'));
+  assert.equal(euImportDataset.authorityStatus, 'NOT_SUBMITTED');
+  assert.equal(euImportDataset.notForDirectSubmission, true);
+  assert.equal(euImportDataset.eucdmReferenceVersion, '7.0.11');
+  assert.match(euImportDataset.warning, /not a SAD.*MRN/i);
+  assert.equal(euImportDataset.goods.length, 1);
+  assert.equal(euImportDataset.goods[0].taricConfirmed, true);
+  const unreviewedEuIssue = await service.issueDocument(ids.companyId, ids.shipmentId, euImportDraft.id, ids.userId);
+  assert.equal(unreviewedEuIssue.code, 'DOCUMENT_REVIEW_REQUIRED');
+  const euImportReview = await service.reviewDocument(ids.companyId, ids.shipmentId, euImportDraft.id, ids.userId, {
+    reviewerRole: 'eu_import_declaration_reviewer', decision: 'approved',
+    notes: 'Synthetic EU declarant-handoff mapping review; no authority submission.'
+  });
+  assert.equal(euImportReview.decision, 'approved');
+  const issuedEuImport = await service.issueDocument(ids.companyId, ids.shipmentId, euImportDraft.id, ids.userId);
+  assert.equal(issuedEuImport.status, 'issued');
+  result.documents.push({ type: 'eu_import_handoff', id: issuedEuImport.id, version: issuedEuImport.version, status: issuedEuImport.status, sha256: issuedEuImport.fileSha256 });
+  check('r05_json_reviewed_and_issued_without_authority_claim');
+
+  const wrongEuEvidence = await service.recordEuImportEvent(ids.companyId, ids.shipmentId, ids.userId, {
+    exportDocumentId: issuedEuImport.id, eventType: 'authority_accepted',
+    externalReference: `EU-AUTH-${runId}-WRONG`, evidenceDocumentId: firstEvidence.evidenceId,
+    actorName: 'Synthetic EU customs authority', occurredAt: '2026-09-12T02:00:00.000Z'
+  });
+  assert.equal(wrongEuEvidence.error, 'EU_IMPORT_EVENT_EVIDENCE_TYPE_MISMATCH');
+  const euAuthorityEvidence = await insertCustomsEvidence(ids, runId, 'eu_customs_authority_response', 'eu-accepted');
+  await fs.promises.appendFile(euAuthorityEvidence.filePath, 'tampered');
+  const tamperedEuEvent = await service.recordEuImportEvent(ids.companyId, ids.shipmentId, ids.userId, {
+    exportDocumentId: issuedEuImport.id, eventType: 'authority_accepted',
+    externalReference: `EU-AUTH-${runId}`, evidenceDocumentId: euAuthorityEvidence.evidenceId,
+    actorName: 'Synthetic EU customs authority', occurredAt: '2026-09-12T02:00:00.000Z'
+  });
+  assert.equal(tamperedEuEvent.error, 'EU_IMPORT_EVENT_EVIDENCE_FILE_TAMPERED');
+  await fs.promises.writeFile(euAuthorityEvidence.filePath, euAuthorityEvidence.original);
+  const acceptedEuEvent = await service.recordEuImportEvent(ids.companyId, ids.shipmentId, ids.userId, {
+    exportDocumentId: issuedEuImport.id, eventType: 'authority_accepted', externalReference: `EU-AUTH-${runId}`,
+    messageCode: 'ACCEPTED-SYNTHETIC', messageText: 'Synthetic isolated EU acceptance evidence.',
+    evidenceDocumentId: euAuthorityEvidence.evidenceId, actorName: 'Synthetic EU customs authority',
+    actorIdentifier: 'SYNTH-EU-AUTH', occurredAt: '2026-09-12T02:00:00.000Z'
+  });
+  assert.equal(acceptedEuEvent.sourceType, 'authority');
+  assert.equal(acceptedEuEvent.evidenceSha256, sha256(euAuthorityEvidence.original));
+  assert.equal(acceptedEuEvent.documentFileSha256, issuedEuImport.fileSha256);
+  result.euImportEvents.push(acceptedEuEvent);
+  await assert.rejects(
+    pool.query('UPDATE eu_import_external_events SET message_text=$1 WHERE id=$2', ['mutated', acceptedEuEvent.id]),
+    /append-only/i
+  );
+  assert.equal(await service.getEuImportEvents(ids.otherCompanyId, ids.shipmentId), null);
+  check('r05_authority_event_is_evidence_backed_append_only_and_tenant_isolated');
 
   const firstReadiness = await service.getReadiness(ids.companyId, ids.shipmentId);
   assert.equal(firstReadiness.documents.find((item) => item.type === 'carbon_annex').status, 'ready');

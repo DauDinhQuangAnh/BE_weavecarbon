@@ -206,6 +206,95 @@ router.post('/shipments/:shipmentId/vn-customs/events', requireCompanyAdmin, asy
   return sendSuccess(res, { status: 201, data: result });
 }));
 
+router.get('/shipments/:shipmentId/eu-import/profile', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const bundle = await exportShipmentService.getProfile(companyId, req.params.shipmentId);
+  if (!bundle) return sendNotFound(res);
+  return sendSuccess(res, { data: bundle.euImportProfile });
+}));
+
+router.put('/shipments/:shipmentId/eu-import/profile', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.upsertEuImportProfile(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (!data) return sendNotFound(res);
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.eu_import_profile', newValue: req.params.shipmentId,
+    reason: 'export.eu_import.profile.update',
+    notes: `${data.targetSystemSchemaId || 'unmapped'}@${data.targetSystemSchemaVersion || 'unversioned'}`
+  });
+  return sendSuccess(res, { data });
+}));
+
+router.put('/shipments/:shipmentId/eu-import/lines/:lineId', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.upsertEuImportLineDetail(
+    companyId, req.params.shipmentId, req.params.lineId, req.userId, req.body || {}
+  );
+  if (!data) return sendError(res, { status: 404, code: 'EU_IMPORT_LINE_NOT_FOUND', message: 'Export line not found for this shipment.' });
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.eu_import_line', newValue: data.id,
+    reason: 'export.eu_import.line.update', notes: `${data.taricCode || 'unclassified'}:${data.taricConfirmed ? 'confirmed' : 'unconfirmed'}`
+  });
+  return sendSuccess(res, { data });
+}));
+
+router.get('/shipments/:shipmentId/eu-import/reconciliation', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.reconcileEuImportHandoff(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.get('/shipments/:shipmentId/eu-import/events', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.getEuImportEvents(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/eu-import/events', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.recordEuImportEvent(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (result?.error) {
+    const messages = {
+      EU_IMPORT_EVENT_TYPE_INVALID: 'Unsupported declarant/authority event type.',
+      EU_IMPORT_EVENT_LINK_INVALID: 'An issued handoff and approved evidence file are required.',
+      EU_IMPORT_EVENT_DETAILS_REQUIRED: 'External reference, named actor and occurrence time are required.',
+      EU_IMPORT_HANDOFF_NOT_FOUND: 'The selected document is not an EU import declarant handoff for this shipment.',
+      EU_IMPORT_HANDOFF_NOT_ISSUED: 'Only an issued immutable declarant handoff can receive external events.',
+      EU_IMPORT_EVENT_EVIDENCE_NOT_APPROVED: 'Evidence must belong to this shipment, be approved and remain valid.',
+      EU_IMPORT_EVENT_EVIDENCE_TYPE_MISMATCH: 'The selected evidence type does not support this declarant/authority event.',
+      EU_IMPORT_EVENT_EVIDENCE_STORAGE_UNSUPPORTED: 'External-response evidence must be in verified local storage.',
+      EU_IMPORT_EVENT_EVIDENCE_FILE_UNAVAILABLE: 'External-response evidence bytes are unavailable.',
+      EU_IMPORT_EVENT_EVIDENCE_FILE_TAMPERED: 'External-response evidence no longer matches its stored checksum and size.',
+      EU_IMPORT_EVENT_RECORDER_IDENTITY_REQUIRED: 'The authenticated recorder requires a stable name or email.'
+    };
+    return sendError(res, {
+      status: result.error.includes('NOT_FOUND') ? 404 : 409,
+      code: result.error,
+      message: messages[result.error] || 'EU import external event could not be recorded.'
+    });
+  }
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.eu_import_event', newValue: result.id,
+    reason: 'export.eu_import.external_event', notes: `${result.eventType}:${result.externalReference}`
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
 router.post('/shipments/:shipmentId/lines/sync', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;

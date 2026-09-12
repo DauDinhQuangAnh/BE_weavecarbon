@@ -7976,6 +7976,689 @@
         ]
       }
     },
+    "/export/shipments/{shipmentId}/eu-import/events": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdEuImportEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/eu-import/events",
+        "tags": [
+          "Export"
+        ]
+      },
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdEuImportEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "actorIdentifier": {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "actorName": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "eventType": {
+                    "enum": [
+                      "declarant_received",
+                      "declarant_validated",
+                      "declarant_rejected",
+                      "authority_submitted",
+                      "authority_accepted",
+                      "authority_rejected",
+                      "authority_released",
+                      "authority_cancelled",
+                      "amendment_requested",
+                      "amendment_submitted"
+                    ],
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "exportDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "externalReference": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "messageCode": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "messageText": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "occurredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "exportDocumentId",
+                  "eventType",
+                  "externalReference",
+                  "evidenceDocumentId",
+                  "actorName",
+                  "occurredAt"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/eu-import/events",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/eu-import/lines/{lineId}": {
+      "put": {
+        "operationId": "putExportShipmentsByShipmentIdEuImportLinesByLineId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "lineId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "additionalCodes": {
+                    "items": {
+                      "maxLength": 35,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "nationalAdditionalCodes": {
+                    "items": {
+                      "maxLength": 35,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "preferenceCode": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "previousProcedureCode": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "requestedProcedureCode": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "supplementaryUnitCode": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "taricCode": {
+                    "pattern": "^[0-9 .-]{1,20}$",
+                    "type": "string"
+                  },
+                  "taricConfirmed": {
+                    "type": "boolean"
+                  },
+                  "taricEffectiveDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "taricSource": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "taricVersion": {
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "PUT /export/shipments/{shipmentId}/eu-import/lines/{lineId}",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/eu-import/profile": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdEuImportProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/eu-import/profile",
+        "tags": [
+          "Export"
+        ]
+      },
+      "put": {
+        "operationId": "putExportShipmentsByShipmentIdEuImportProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "additionalDeclarationType": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "borderTransportIdentity": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "customsOfficeCode": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "customsValueAmount": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "customsValueCurrency": {
+                    "pattern": "^[A-Za-z]{3}$",
+                    "type": "string"
+                  },
+                  "declarant": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "declarationDatasetCode": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "declarationNotes": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "deliveryTermsLocation": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "dutyAmount": {
+                    "minimum": 0,
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "dutyRate": {
+                    "minimum": 0,
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "dutyTreatment": {
+                    "enum": [
+                      "unknown",
+                      "not_subject",
+                      "exempt",
+                      "payable"
+                    ],
+                    "type": "string"
+                  },
+                  "exchangeRate": {
+                    "exclusiveMinimum": true,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "guaranteeReferences": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "maxItems": 200,
+                    "type": "array"
+                  },
+                  "guaranteeRequirementStatus": {
+                    "enum": [
+                      "unknown",
+                      "not_required",
+                      "required"
+                    ],
+                    "type": "string"
+                  },
+                  "importer": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "inlandModeOfTransport": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "memberStateCode": {
+                    "pattern": "^[A-Za-z]{2}$",
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "modeOfTransportAtBorder": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "placeOfGoodsCode": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "preferenceClaimStatus": {
+                    "enum": [
+                      "no_claim",
+                      "claimed"
+                    ],
+                    "type": "string"
+                  },
+                  "preferenceReferences": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "maxItems": 200,
+                    "type": "array"
+                  },
+                  "previousProcedureCode": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "representationType": {
+                    "enum": [
+                      "none",
+                      "direct",
+                      "indirect"
+                    ],
+                    "type": "string"
+                  },
+                  "representative": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "requestedProcedureCode": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "restrictionReferences": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "maxItems": 200,
+                    "type": "array"
+                  },
+                  "restrictionStatus": {
+                    "enum": [
+                      "unknown",
+                      "not_required",
+                      "required"
+                    ],
+                    "type": "string"
+                  },
+                  "supportingDocuments": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "maxItems": 300,
+                    "type": "array"
+                  },
+                  "targetSystemSchemaId": {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "targetSystemSchemaVersion": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "taxBasis": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "valuationMethodCode": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "vatAmount": {
+                    "minimum": 0,
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "vatRate": {
+                    "minimum": 0,
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "vatTreatment": {
+                    "enum": [
+                      "unknown",
+                      "not_subject",
+                      "exempt",
+                      "payable"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "memberStateCode",
+                  "importer",
+                  "declarant",
+                  "representationType",
+                  "customsOfficeCode",
+                  "declarationDatasetCode",
+                  "additionalDeclarationType",
+                  "requestedProcedureCode",
+                  "previousProcedureCode",
+                  "modeOfTransportAtBorder",
+                  "inlandModeOfTransport",
+                  "borderTransportIdentity",
+                  "placeOfGoodsCode",
+                  "valuationMethodCode",
+                  "exchangeRate",
+                  "customsValueCurrency",
+                  "customsValueAmount",
+                  "dutyTreatment",
+                  "vatTreatment",
+                  "restrictionStatus",
+                  "preferenceClaimStatus",
+                  "guaranteeRequirementStatus",
+                  "supportingDocuments",
+                  "targetSystemSchemaId",
+                  "targetSystemSchemaVersion"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "PUT /export/shipments/{shipmentId}/eu-import/profile",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/eu-import/reconciliation": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdEuImportReconciliation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/eu-import/reconciliation",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
     "/export/shipments/{shipmentId}/lines": {
       "post": {
         "operationId": "postExportShipmentsByShipmentIdLines",

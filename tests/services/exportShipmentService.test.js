@@ -7,6 +7,7 @@ const {
   CARRIER_RULESET_VERSION,
   carrierReconciliationSha256,
   createExportShipmentService,
+  documentSourceSnapshotSha256,
   isCbamApplicable,
   sourceSnapshotSha256
 } = require('../../src/services/exportShipmentService');
@@ -172,7 +173,10 @@ describe('shipment export readiness', () => {
     const service = createExportShipmentService({ database: {} });
     service.getProfile = jest.fn().mockResolvedValue(readySnapshot(25));
     const result = await service.getReadiness('company-1', 'shipment-1');
-    expect(result.status).toBe('ready_to_issue');
+    // R05 is part of the EU export dossier. Without a configured declarant
+    // target schema the shipment may be reviewed internally, but not issued.
+    expect(result.status).toBe('internal_review');
+    expect(result.documents.find((item) => item.type === 'eu_import_handoff').status).toBe('blocked');
     expect(result.requirements.some((item) => item.code === 'line_25_hs_code')).toBe(true);
     expect(result.cbam.status).toBe('CBAM_NOT_APPLICABLE');
   });
@@ -186,6 +190,24 @@ describe('shipment export readiness', () => {
     changedSeal.containers[0].sealNumber = 'SEAL-2';
     expect(sourceSnapshotSha256(original)).not.toBe(sourceSnapshotSha256(changedSeal));
     expect(sourceSnapshotSha256(original)).toBe(sourceSnapshotSha256(readySnapshot(2)));
+  });
+
+  test('pins R05 source identity to the EU profile and every TARIC line decision', () => {
+    const original = readySnapshot(2);
+    original.euImportProfile = { targetSystemSchemaId: 'fr-douane.delta-ie', targetSystemSchemaVersion: '2026.09' };
+    original.euImportLineDetails = [
+      { exportLineId: 'line-1', taricCode: '6205200010', taricConfirmed: true },
+      { exportLineId: 'line-2', taricCode: '6205200090', taricConfirmed: true }
+    ];
+    const changedProfile = structuredClone(original);
+    changedProfile.euImportProfile.targetSystemSchemaVersion = '2026.10';
+    const changedLine = structuredClone(original);
+    changedLine.euImportLineDetails[1].taricCode = '6205200080';
+
+    expect(documentSourceSnapshotSha256(original, 'eu_import_handoff'))
+      .not.toBe(documentSourceSnapshotSha256(changedProfile, 'eu_import_handoff'));
+    expect(documentSourceSnapshotSha256(original, 'eu_import_handoff'))
+      .not.toBe(documentSourceSnapshotSha256(changedLine, 'eu_import_handoff'));
   });
 
   test('rejects an unsupported output format before queueing work', async () => {
@@ -254,6 +276,45 @@ describe('simple XLSX export', () => {
       expect.objectContaining({ type: 'packing_list', fileSha256: 'f'.repeat(64) })
     ]));
     expect(dataset.reconciliation.status).toBe('passed');
+  });
+
+  test('builds an explicitly non-submittable R05 EUCDM handoff payload', async () => {
+    const snapshot = readySnapshot(2);
+    snapshot.euImportProfile = {
+      schemaId: 'weavecarbon.eu-import-declarant-handoff', schemaVersion: '1.0.0',
+      rulesetVersion: 'R05-EU-IMPORT-HANDOFF-2026.09.1',
+      regulatoryBasisVersion: 'UCC-DA-2015/2446-ANNEX-B+UCC-IA-2015/2447-ANNEX-B@EUCDM-7.0.11',
+      filingPurpose: 'declarant_handoff', memberStateCode: 'FR',
+      importer: { name: 'Importer', address: 'Paris', eori: 'FR123456789000' },
+      declarant: { name: 'Declarant', address: 'Paris', eori: 'FR123456789001' },
+      representative: {}, representationType: 'none', customsOfficeCode: 'FR001',
+      declarationDatasetCode: 'H1', additionalDeclarationType: 'A', requestedProcedureCode: '40',
+      previousProcedureCode: '00', modeOfTransportAtBorder: '1', inlandModeOfTransport: '3',
+      borderTransportIdentity: 'MV GREEN', placeOfGoodsCode: 'FRPORT', deliveryTermsLocation: 'Cat Lai',
+      valuationMethodCode: '1', exchangeRate: 1, customsValueCurrency: 'USD', customsValueAmount: 100,
+      dutyTreatment: 'not_subject', vatTreatment: 'not_subject', restrictionStatus: 'not_required',
+      preferenceClaimStatus: 'no_claim', guaranteeRequirementStatus: 'not_required',
+      supportingDocuments: [{ type: 'commercial_invoice' }, { type: 'packing_list' }, { type: 'carrier_document' }],
+      targetSystemSchemaId: 'fr-douane.delta-ie', targetSystemSchemaVersion: '2026.09'
+    };
+    snapshot.euImportLineDetails = snapshot.lines.map((line) => ({
+      exportLineId: line.id, taricCode: '6205200010', taricSource: 'EU TARIC',
+      taricVersion: '2026-09-12', taricEffectiveDate: '2026-09-12', taricConfirmed: true,
+      taricConfirmedBy: 'reviewer-1', taricConfirmedAt: '2026-09-12T02:00:00.000Z',
+      additionalCodes: [], nationalAdditionalCodes: []
+    }));
+    const service = createExportShipmentService({ database: {} });
+    const dataset = JSON.parse((await service._buildDocumentBuffer('eu_import_handoff', snapshot, false, 'json')).toString('utf8'));
+
+    expect(dataset).toMatchObject({
+      authorityStatus: 'NOT_SUBMITTED', notForDirectSubmission: true,
+      eucdmReferenceVersion: '7.0.11',
+      schema: { id: 'weavecarbon.eu-import-declarant-handoff', version: '1.0.0' },
+      targetMapping: { targetSystemSchemaId: 'fr-douane.delta-ie', targetSystemSchemaVersion: '2026.09' }
+    });
+    expect(dataset.warning).toMatch(/not a SAD.*MRN/i);
+    expect(dataset.goods).toHaveLength(2);
+    expect(dataset.goods[0]).toMatchObject({ taricConfirmed: true, taricConfirmedBy: 'reviewer-1' });
   });
 
   test.each(['commercial_invoice', 'packing_list'])('creates a printable PDF for %s', async (type) => {
@@ -364,6 +425,10 @@ describe('shipment export persistence safety', () => {
         .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
     };
     const service = createExportShipmentService({ database });
 
@@ -403,6 +468,56 @@ describe('shipment export persistence safety', () => {
     const placeholders = [...sql.matchAll(/\$(\d+)/g)].map((match) => Number(match[1]));
     expect(Math.max(...placeholders)).toBe(values.length);
     expect(values).toHaveLength(32);
+  });
+
+  test('EU import profile upsert has a bound value for every SQL placeholder', async () => {
+    const database = {
+      query: jest.fn()
+        .mockResolvedValueOnce({ rows: [{ id: shipmentId }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'eu-profile-1', shipment_id: shipmentId }] })
+    };
+    const service = createExportShipmentService({ database });
+
+    await service.upsertEuImportProfile(companyId, shipmentId, userId, {});
+
+    const [sql, values] = database.query.mock.calls[1];
+    const placeholders = [...sql.matchAll(/\$(\d+)/g)].map((match) => Number(match[1]));
+    expect(Math.max(...placeholders)).toBe(values.length);
+    expect(values).toHaveLength(44);
+  });
+
+  test('requires a second unchanged action before accepting TARIC confirmation', async () => {
+    const baseRow = {
+      id: 'eu-line-detail-1', shipment_id: shipmentId, export_line_id: lineId,
+      taric_code: '6205200010', taric_source: 'EU TARIC', taric_version: '2026-09-12',
+      taric_effective_date: '2026-09-12', supplementary_unit_code: null,
+      additional_codes: [], national_additional_codes: [], metadata: {}
+    };
+    const database = {
+      query: jest.fn()
+        .mockResolvedValueOnce({ rows: [{ id: lineId }] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockImplementationOnce(async (_sql, values) => ({ rows: [{
+          ...baseRow, taric_confirmed: values[7], taric_confirmed_by: values[8], taric_confirmed_at: values[9]
+        }] }))
+        .mockResolvedValueOnce({ rows: [{ id: lineId }] })
+        .mockResolvedValueOnce({ rows: [{ ...baseRow, taric_confirmed: false }] })
+        .mockImplementationOnce(async (_sql, values) => ({ rows: [{
+          ...baseRow, taric_confirmed: values[7], taric_confirmed_by: values[8], taric_confirmed_at: values[9]
+        }] }))
+    };
+    const service = createExportShipmentService({ database });
+    const input = {
+      taricCode: '6205200010', taricSource: 'EU TARIC', taricVersion: '2026-09-12',
+      taricEffectiveDate: '2026-09-12', taricConfirmed: true
+    };
+
+    const classificationSave = await service.upsertEuImportLineDetail(companyId, shipmentId, lineId, userId, input);
+    const confirmationSave = await service.upsertEuImportLineDetail(companyId, shipmentId, lineId, userId, input);
+
+    expect(classificationSave.taricConfirmed).toBe(false);
+    expect(confirmationSave.taricConfirmed).toBe(true);
+    expect(confirmationSave.taricConfirmedBy).toBe(userId);
   });
 
   test('uses the authenticated user for a new HS confirmation', async () => {
