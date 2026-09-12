@@ -28,7 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
-| Active R05 implementation branch in both repositories | `feat/r05-eu-import-handoff` (stacked on the open R04 branches) |
+| Active R06 implementation branch in both repositories | `feat/r06-ics2-filing-handoff` (local, stacked on R05 while R04/R05 PRs remain open) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -47,6 +47,7 @@ This tracker separates four facts that must never be conflated:
 | Frontend R04 broker-handoff commit | `dbeb7f181f6248834fd89d076cde779bff4c135e` |
 | Backend R05 EU import declarant-handoff commit | `47c81c1b2d0cb60921d5716b423b09929d5db29c` |
 | Frontend R05 EU import declarant-handoff commit | `f46dd1c64d9a5abd5b3c0a7049c4558bf1db6b15` |
+| Frontend R06 ICS2 filer-handoff local commit | `ba5d70fd47c2bd010db1ac03753e4b0d584603e5` |
 | R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
@@ -75,9 +76,10 @@ git clone https://github.com/DauDinhQuangAnh/weavecarbon.git
 git -C weavecarbon switch main
 ```
 
-While the stacked R04/R05 pull requests are open, fetch and switch both clones to
-`feat/r05-eu-import-handoff` before continuing. R05 contains R04 and must not be merged to `main` before R04. After merge,
-use `main` and verify that it contains the R04 and R05 commit hashes recorded in the table above.
+R06 is currently a local stack on `feat/r06-ics2-filing-handoff`; it contains R05, which contains R04. Preserve that
+dependency order until the existing R04/R05 pull requests merge, and do not merge or deploy the local R06 branch as a
+substitute for those reviews. After merge, rebase R06 onto `main` and verify that it still contains the recorded R04/R05
+implementation commits.
 
 Then give the next AI this instruction:
 
@@ -129,6 +131,8 @@ Known overall checks at the latest feature commits:
 
 - Backend R05 local gate: 105/105 suites and 664/664 tests passed; `npm run verify:full` passed.
 - Frontend R05 local gate: 41/41 files and 175/175 tests passed; `npm run check` and the 62-page production build passed.
+- Backend R06 local gate: 107/107 suites and 677/677 tests passed; syntax, OpenAPI, architecture and lint gates passed.
+- Frontend R06 local gate: 42/42 files and 177/177 tests passed; TypeScript and the 62-page production build passed.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
@@ -147,7 +151,7 @@ Known overall checks at the latest feature commits:
 | 3 | B/L, AWB, CMR, CIM or FBL | Depends on transport mode | `EXTERNAL_DOCUMENT` | Structured immutable carrier metadata, exact-file verification, mode/totals/equipment reconciliation and versioned replacement; WeaveCarbon generates only Carbon Annex | Real carrier-document pilot and issuer/authenticity review |
 | 4 | Vietnam export declaration/VNACCS | Normally mandatory | `PARTIAL` | Versioned internal broker-handoff JSON/XLSX, R01/R02/R03 reconciliation, named review and evidence-backed append-only external events; no VNACCS submission | Obtain and validate an exact broker target schema/code list, then complete a named real-shipment broker pilot |
 | 5 | EU import declaration/SAD/EUCDM | Importer/declarant responsibility | `READY_TO_PILOT` | Versioned internal EUCDM-referenced JSON/XLSX declarant handoff, TARIC decisions, R01/R02/R03 reconciliation, review and evidence-backed external events; no direct submission | Run isolated PostgreSQL pilot, obtain exact Member-State/declarant schema, then complete a named real-shipment specialist pilot |
-| 6 | ENS/ICS2 support dataset | Goods entering EU | `PARTIAL` | Basic per-line CSV | Mode/release-specific schema, house/master consignment and schema validation |
+| 6 | ENS/ICS2 support dataset | Goods entering EU | `PARTIAL` | Controlled JSON/XLSX filer handoff with mode-specific Annex B dataset selection, master/house/goods/package reconciliation, named review and evidence-backed lifecycle; no STI submission | Run the guarded isolated PostgreSQL/CI pilot, then obtain and validate an exact filer/ITSP schema and complete required conformance testing |
 | 7 | EVFTA EUR.1/origin declaration support | Only when claiming preference | `PARTIAL` | Basic Origin Workbook plus locked supporting evidence gate | BOM-origin rules engine and official-form/wording workflow |
 | 8 | EU textile fibre label | Textile products | `PARTIAL` | Generic material composition exists | Controlled Annex-I fibres, components, locale and label artifact |
 | 9 | EU footwear material label | Footwear products | `NOT_STARTED` | No three-part/80% model | Component model, 80% rule, pictogram/text and locale output |
@@ -299,14 +303,22 @@ status is evidence-backed. A generated handoff file must not be presented as an 
 **Inputs:** filing role; mode and ICS2 release/message type; master/house transport contract and consignment; parties/EORI;
 routing/locations/conveyance; package/weight; detailed goods line, HS6+ and origin; supporting references; filing/message state.
 
-**Implemented:** basic CSV with shipment/transport/container, consignor/consignee, importer EORI, loading/discharge and
-per-line description/HS/origin/quantity/unit/gross weight; approved carrier evidence is required.
+**Implemented:** controlled `weavecarbon.ics2-filing-handoff@1.0.0` JSON/XLSX handoff with ICS2 Release 3/HTI agreement
+metadata; Annex B F10-F51 dataset-to-mode rules; sender/declarant EORI; first-entry office, timezone-aware ETA, itinerary
+and conveyance; master and lowest-level house transport documents; exact one-house allocation per goods line; HS6+ and
+specific-description checks; house/line/package mass and count reconciliation; target-schema and technical-package
+identity; current R03 carrier reconciliation; named checksum-bound review/issue; and locked, exact-byte,
+append-only filer/authority events. The output is always `NOT_SUBMITTED`, expressly not an ENS message and creates no MRN.
 
-**Remaining:** official mode/release schema; master/house hierarchy; party identifiers/contact; transport equipment;
-package-level and routing fields; code lists; XML/API/broker mapping; schema validation; rejection/amendment lifecycle.
+**Remaining:** run the shared guarded PostgreSQL pilot after migration 028 on isolated staging and in CI; obtain the actual
+carrier/filer/ITSP schema, technical-package version, message namespace, code lists and acknowledgement/rejection samples;
+map/validate the envelope against each required message for the real transport and single/multiple filing arrangement;
+complete ICS2 conformance testing; and conduct a protected real-shipment pilot with a named filing specialist. Direct STI
+submission stays out of scope.
 
-**Definition of Done:** carrier/broker approves a test handoff and every CSV/XML field maps to the applicable ICS2 message;
-different HS items are separate and no generic goods description passes. Submission is out of current scope.
+**Definition of Done:** a carrier/filer approves a test handoff; every field maps to the applicable ICS2 message and exact
+recipient schema; required conformance tests pass; different HS items remain separate; generic descriptions are blocked;
+and all later statuses are backed by immutable external evidence. Submission is out of current scope.
 
 ### R07 — EVFTA proof of origin support
 
@@ -584,7 +596,7 @@ Before merging or deploying this branch:
 
 1. Back up PostgreSQL and the uploads directory and verify restoration instructions.
 2. Apply every export/audit migration from `017_shipment_export_workflow.sql` through
-   `026_r04_export_document_json_format.sql` to staging cloned from a safe schema/data fixture.
+   `028_r06_ics2_filing_handoff.sql` to staging cloned from a safe schema/data fixture.
 3. Run migration rollback/forward compatibility checks appropriate to the environment.
 4. Create one real-like Vietnam-to-EU shipment with more than 20 lines and multiple/partial packages.
 5. Upload and approve a real-like carrier document; fill profile, package and carbon data without placeholders.
@@ -612,6 +624,7 @@ npm run test:audit-bundle-pilot # isolated PostgreSQL only; see docs/AUDIT_PACK_
 npm run test:carrier-document-pilot # isolated PostgreSQL only; see docs/CARRIER_DOCUMENT_PILOT_RUNBOOK.md
 npm run test:vn-customs-handoff-pilot # same guarded R03/R04 fixture; see docs/VN_CUSTOMS_HANDOFF_PILOT_RUNBOOK.md
 npm run test:eu-import-handoff-pilot # same guarded R01-R05 fixture; see docs/EU_IMPORT_HANDOFF_PILOT_RUNBOOK.md
+npm run test:ics2-handoff-pilot # same guarded R01-R06 fixture; see docs/ICS2_HANDOFF_PILOT_RUNBOOK.md
 git diff --check
 ```
 
@@ -637,7 +650,10 @@ Recheck these official sources at the start of the related report work and store
 - EUCDM 7.0.11 release notice (2026-08-27): https://taxation-customs.ec.europa.eu/news/eucdm-701-here-whats-new-updated-european-customs-data-model-2026-08-27_en
 - EU TARIC: https://taxation-customs.ec.europa.eu/online-services/online-services-and-databases-customs/eu-customs-tariff-taric_en
 - UCC legislation and delegated/implementing acts: https://taxation-customs.ec.europa.eu/customs/union-customs-code/ucc-legislation_en
-- ICS2: https://taxation-customs.ec.europa.eu/general-information-customs/customs-security/ics2_en
+- ICS2 programme/release guidance: https://taxation-customs.ec.europa.eu/customs/customs-security/import-control-system-2_en
+- ICS2 FAQ and technical/conformance-testing references: https://taxation-customs.ec.europa.eu/customs/customs-security/import-control-system-2/faq_en
+- ENS Annex B datasets, Delegated Regulation (EU) 2021/234: https://eur-lex.europa.eu/eli/reg_del/2021/234/oj
+- 2026 postal ENS dataset update, Delegated Regulation (EU) 2026/1022: https://eur-lex.europa.eu/eli/reg_del/2026/1022/oj
 - EVFTA Protocol 1: https://trade.ec.europa.eu/access-to-markets/en/assets/VN_ENG_Protocol-1.pdf
 - EU textile fibre names/labelling, Regulation (EU) 1007/2011: https://eur-lex.europa.eu/eli/reg/2011/1007/oj
 - EU footwear labelling, Directive 94/11/EC: https://eur-lex.europa.eu/eli/dir/1994/11/oj
@@ -669,9 +685,11 @@ Backend core:
 - `migrations/025_r04_vn_customs_broker_handoff.sql`
 - `migrations/026_r04_export_document_json_format.sql`
 - `migrations/027_r05_eu_import_declarant_handoff.sql`
+- `migrations/028_r06_ics2_filing_handoff.sql`
 - `src/services/exportShipmentService.js`
 - `src/services/vnCustomsHandoffControls.js`
 - `src/services/euImportHandoffControls.js`
+- `src/services/ics2HandoffControls.js`
 - `src/services/exportDocumentPdf.js`
 - `src/routes/exportV2.js`
 - `src/utils/simpleXlsx.js`
@@ -682,21 +700,26 @@ Backend core:
 - `tests/config/vnCustomsHandoffMigrationContract.test.js`
 - `tests/config/euImportHandoffMigrationContract.test.js`
 - `tests/services/euImportHandoffControls.test.js`
+- `tests/services/ics2HandoffControls.test.js`
+- `tests/config/ics2HandoffMigrationContract.test.js`
 - `tests/config/exportWorkflowMigrationContract.test.js`
 - `tests/config/exportDocumentBusinessReviewMigrationContract.test.js`
 - `scripts/render-export-document-pdf-qa.js`
 - `docs/EXPORT_WORKFLOW.md`
 - `docs/VN_CUSTOMS_HANDOFF_PILOT_RUNBOOK.md`
 - `docs/EU_IMPORT_HANDOFF_PILOT_RUNBOOK.md`
+- `docs/ICS2_HANDOFF_PILOT_RUNBOOK.md`
 
 Frontend core:
 
 - `components/dashboard/export/ShipmentExportPortal.tsx`
 - `components/dashboard/export/VnCustomsHandoffPanel.tsx`
 - `components/dashboard/export/EuImportHandoffPanel.tsx`
+- `components/dashboard/export/Ics2HandoffPanel.tsx`
 - `lib/weave-v2/shipmentExportApi.ts`
 - `lib/weave-v2/shipmentVnCustomsApi.test.ts`
 - `lib/weave-v2/shipmentEuImportApi.test.ts`
+- `lib/weave-v2/shipmentIcs2Api.test.ts`
 - `components/dashboard/export/ExportConfigurationPortalV2.tsx`
 - `components/dashboard/cbam/CbamReportSection.tsx`
 - `lib/cbam/applicability.ts`
@@ -1150,3 +1173,21 @@ Backend carbon trace core:
 - R05 is `READY_TO_PILOT`, not legally ready. Exact next gates: back up and migrate isolated staging through 027,
   run/reopen the R05 artifact, then obtain a real Member-State/declarant schema and qualified
   specialist review before any real-shipment or external-status claim.
+
+### 2026-09-12 — R06 ICS2/ENS filer-handoff local implementation
+
+- Frontend commit `ba5d70fd47c2bd010db1ac03753e4b0d584603e5` and the backend changes in this tracker commit add migration 028, a versioned internal filer-handoff schema,
+  shipment-scoped API, JSON/XLSX generation and a dedicated frontend workspace. R06 replaces the former basic CSV path;
+  it does not add an STI client, submit an ENS or create an MRN.
+- The validator pins ICS2 Release 3/HTI agreement metadata and checks Annex B dataset/transport-mode compatibility,
+  sender/declarant EORI, first-entry routing and timezone, master transport reference, active conveyance, lowest-level
+  house consignments, exact goods-line allocation, HS6+, non-generic descriptions and house/line/package reconciliation.
+- Generated output is always `ICS2_FILER_HANDOFF_NOT_FOR_DIRECT_SUBMISSION` and `NOT_SUBMITTED`. Issue requires a named
+  `ics2_filing_reviewer`; filer/authority status is stored only in a tenant-bound append-only ledger backed by locked,
+  re-read evidence bytes and the exact issued handoff hashes.
+- Local automated gates pass: backend `npm run verify:full` completed 107 suites/677 tests with syntax, OpenAPI,
+  architecture and lint clean; frontend completed 42 files/177 tests and a production build of all 62 routes. The shared
+  guarded pilot now includes R01-R06 and writes `artifacts/ics2-handoff-pilot/result.json`.
+- R06 remains `PARTIAL`. Its isolated PostgreSQL pilot, exact-head CI and staging migration 028 have not yet run because
+  the configured staging host is not resolvable from this workstation. A real filer/ITSP schema, technical package/code
+  lists, conformance testing and named protected-shipment pilot are also still required. Production was not changed.

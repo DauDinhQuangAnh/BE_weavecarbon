@@ -8659,6 +8659,501 @@
         ]
       }
     },
+    "/export/shipments/{shipmentId}/ics2/events": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdIcs2Events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/ics2/events",
+        "tags": [
+          "Export"
+        ]
+      },
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdIcs2Events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "actorIdentifier": {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "actorName": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "eventType": {
+                    "enum": [
+                      "filer_received",
+                      "filer_validated",
+                      "filer_rejected",
+                      "authority_registered",
+                      "authority_rejected",
+                      "risk_referral",
+                      "do_not_load",
+                      "assessment_complete",
+                      "amendment_requested",
+                      "amendment_registered",
+                      "invalidation_requested",
+                      "invalidated"
+                    ],
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "exportDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "externalReference": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "messageCode": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "messageText": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "occurredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "exportDocumentId",
+                  "eventType",
+                  "externalReference",
+                  "evidenceDocumentId",
+                  "actorName",
+                  "occurredAt"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/ics2/events",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/ics2/profile": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdIcs2Profile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/ics2/profile",
+        "tags": [
+          "Export"
+        ]
+      },
+      "put": {
+        "operationId": "putExportShipmentsByShipmentIdIcs2Profile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "activeBorderTransportMeans": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "containerIndicator": {
+                    "type": "boolean"
+                  },
+                  "conveyanceReference": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "customsOfficeFirstEntry": {
+                    "maxLength": 35,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "declarant": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "estimatedArrivalAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "filingArrangement": {
+                    "enum": [
+                      "single",
+                      "multiple"
+                    ],
+                    "type": "string"
+                  },
+                  "filingNotes": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "filingRole": {
+                    "enum": [
+                      "carrier",
+                      "house_level_filer",
+                      "express_carrier",
+                      "postal_operator",
+                      "representative"
+                    ],
+                    "type": "string"
+                  },
+                  "firstEntryCountry": {
+                    "pattern": "^[A-Za-z]{2}$",
+                    "type": "string"
+                  },
+                  "houseConsignments": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "maxItems": 1000,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "itineraryCountries": {
+                    "items": {
+                      "pattern": "^[A-Za-z]{2}$",
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "localReferenceNumber": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "masterTransportDocument": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "messageDatasetCode": {
+                    "pattern": "^F(1[0-6]|2[0-9]|3[0-4]|4[0-5]|5[01])$",
+                    "type": "string"
+                  },
+                  "messageNamespace": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "paymentMethodCode": {
+                    "maxLength": 35,
+                    "type": "string"
+                  },
+                  "representative": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "seals": {
+                    "items": {
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    "maxItems": 500,
+                    "type": "array"
+                  },
+                  "sender": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "targetSystemSchemaId": {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "targetSystemSchemaVersion": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "technicalPackageId": {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "technicalPackageVersion": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "transportMode": {
+                    "enum": [
+                      "sea",
+                      "inland_waterway",
+                      "air",
+                      "road",
+                      "rail"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "transportMode",
+                  "messageDatasetCode",
+                  "filingRole",
+                  "filingArrangement",
+                  "localReferenceNumber",
+                  "sender",
+                  "declarant",
+                  "customsOfficeFirstEntry",
+                  "firstEntryCountry",
+                  "estimatedArrivalAt",
+                  "itineraryCountries",
+                  "conveyanceReference",
+                  "masterTransportDocument",
+                  "activeBorderTransportMeans",
+                  "houseConsignments",
+                  "targetSystemSchemaId",
+                  "targetSystemSchemaVersion",
+                  "technicalPackageId",
+                  "technicalPackageVersion"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "PUT /export/shipments/{shipmentId}/ics2/profile",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/ics2/reconciliation": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdIcs2Reconciliation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/ics2/reconciliation",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
     "/export/shipments/{shipmentId}/lines": {
       "post": {
         "operationId": "postExportShipmentsByShipmentIdLines",

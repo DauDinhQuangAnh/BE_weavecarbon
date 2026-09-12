@@ -15,7 +15,7 @@ const { createExportShipmentService } = require('../src/services/exportShipmentS
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-handoff-pilot-v3',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-handoff-pilot-v4',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -23,7 +23,8 @@ const result = {
   checks: [],
   documents: [],
   customsEvents: [],
-  euImportEvents: []
+  euImportEvents: [],
+  ics2Events: []
 };
 
 function check(name, details = {}) {
@@ -36,7 +37,9 @@ function sha256(buffer) {
 
 async function writeResult() {
   const contents = `${JSON.stringify(result, null, 2)}\n`;
-  for (const name of ['carrier-document-pilot', 'vn-customs-handoff-pilot', 'eu-import-handoff-pilot']) {
+  for (const name of [
+    'carrier-document-pilot', 'vn-customs-handoff-pilot', 'eu-import-handoff-pilot', 'ics2-handoff-pilot'
+  ]) {
     const directory = path.resolve(__dirname, '..', 'artifacts', name);
     await fs.promises.mkdir(directory, { recursive: true });
     await fs.promises.writeFile(path.join(directory, 'result.json'), contents, 'utf8');
@@ -559,6 +562,114 @@ async function run() {
   );
   assert.equal(await service.getEuImportEvents(ids.otherCompanyId, ids.shipmentId), null);
   check('r05_authority_event_is_evidence_backed_append_only_and_tenant_isolated');
+
+  await service.upsertIcs2Profile(ids.companyId, ids.shipmentId, ids.userId, {
+    transportMode: 'sea', messageDatasetCode: 'F11', filingRole: 'carrier', filingArrangement: 'multiple',
+    localReferenceNumber: `ICS2-LRN-${runId}`,
+    sender: {
+      name: 'Synthetic Ocean Carrier', address: 'Rotterdam, Netherlands', country: 'NL',
+      eori: 'NL123456789014'
+    },
+    declarant: {
+      name: 'Synthetic ICS2 Filer', address: 'Rotterdam, Netherlands', country: 'NL',
+      eori: 'NL123456789015'
+    },
+    representative: {}, customsOfficeFirstEntry: 'NL000123', firstEntryCountry: 'NL',
+    estimatedArrivalAt: '2026-09-20T08:00:00.000Z', itineraryCountries: ['VN', 'NL'],
+    conveyanceReference: 'R03-001', containerIndicator: true,
+    masterTransportDocument: { type: 'N705', number: `BL-${runId}` },
+    activeBorderTransportMeans: {
+      identificationType: 'IMO', identificationNumber: '9876543', nationality: 'PA'
+    },
+    seals: ['SEAL-ORIGINAL'], paymentMethodCode: 'A',
+    targetSystemSchemaId: 'synthetic-filer.ics2-r3-f11', targetSystemSchemaVersion: '2026.09-pilot',
+    technicalPackageId: 'ICS2-EO-CTSS-R2-R3', technicalPackageVersion: 'synthetic-v3.30',
+    messageNamespace: 'urn:wco:datamodel:eu:ics2:2',
+    houseConsignments: [{
+      id: `HOUSE-${runId}`, transportDocumentType: 'N703',
+      transportDocumentNumber: `HBL-${runId}`, ucr: `UCR-${runId}`,
+      consignor: { name: 'Synthetic Vietnam Exporter', address: 'Ho Chi Minh City', country: 'VN' },
+      consignee: { name: 'Synthetic EU Consignee', address: 'Rotterdam', country: 'NL' },
+      buyer: { name: 'Synthetic EU Importer', address: 'Rotterdam', country: 'NL' },
+      seller: { name: 'Synthetic Vietnam Exporter', address: 'Ho Chi Minh City', country: 'VN' },
+      destinationCountry: 'NL', placeOfDelivery: 'Rotterdam, Netherlands',
+      grossMassKg: 55, packageCount: 1, goodsLineIds: [lines[0].id],
+      metadata: { synthetic: true }
+    }],
+    filingNotes: 'Synthetic isolated R06 filer handoff; never submit to STI or a customs authority.',
+    metadata: { synthetic: true, fixtureType: 'ics2_handoff_pilot' }
+  });
+  const ics2Reconciliation = await service.reconcileIcs2Handoff(ids.companyId, ids.shipmentId);
+  assert.equal(ics2Reconciliation.status, 'ready');
+  assert.ok(ics2Reconciliation.checks.some((item) => item.code === 'dataset_mode_compatibility' && item.status === 'ready'));
+  assert.ok(ics2Reconciliation.checks.some((item) => item.code === 'carrier_document_reconciliation' && item.status === 'ready'));
+  check('r06_reconciles_master_house_goods_packages_and_current_carrier', {
+    checkCount: ics2Reconciliation.checks.length
+  });
+
+  const ics2Draft = await service.createDocumentJob(
+    ids.companyId, ids.shipmentId, ids.userId, 'ics2_dataset', { outputFormat: 'json' }
+  );
+  assert.ok(!ics2Draft.blocked, 'R06 JSON generation was blocked.');
+  const ics2Row = (await pool.query('SELECT * FROM export_documents WHERE id=$1', [ics2Draft.id])).rows[0];
+  const ics2Bytes = await fs.promises.readFile(path.resolve(UPLOADS_ROOT, ics2Row.storage_key));
+  assert.equal(sha256(ics2Bytes), ics2Row.file_sha256);
+  const ics2Dataset = JSON.parse(ics2Bytes.toString('utf8'));
+  assert.equal(ics2Dataset.datasetNature, 'ICS2_FILER_HANDOFF_NOT_FOR_DIRECT_SUBMISSION');
+  assert.equal(ics2Dataset.authorityStatus, 'NOT_SUBMITTED');
+  assert.equal(ics2Dataset.notForDirectSubmission, true);
+  assert.equal(ics2Dataset.filing.messageDatasetCode, 'F11');
+  assert.equal(ics2Dataset.filing.houseConsignments.length, 1);
+  assert.equal(ics2Dataset.filing.houseConsignments[0].goodsItems.length, 1);
+  assert.equal(ics2Dataset.filing.houseConsignments[0].goodsItems[0].hsCode, '62052000');
+  assert.equal(Object.prototype.hasOwnProperty.call(ics2Dataset, 'mrn'), false);
+  const unreviewedIcs2Issue = await service.issueDocument(ids.companyId, ids.shipmentId, ics2Draft.id, ids.userId);
+  assert.equal(unreviewedIcs2Issue.code, 'DOCUMENT_REVIEW_REQUIRED');
+  const ics2Review = await service.reviewDocument(ids.companyId, ids.shipmentId, ics2Draft.id, ids.userId, {
+    reviewerRole: 'ics2_filing_reviewer', decision: 'approved',
+    notes: 'Synthetic filer-handoff mapping review; no ENS submission or authority registration.'
+  });
+  assert.equal(ics2Review.decision, 'approved');
+  const issuedIcs2 = await service.issueDocument(ids.companyId, ids.shipmentId, ics2Draft.id, ids.userId);
+  assert.equal(issuedIcs2.status, 'issued');
+  result.documents.push({
+    type: 'ics2_dataset', id: issuedIcs2.id, version: issuedIcs2.version,
+    status: issuedIcs2.status, sha256: issuedIcs2.fileSha256
+  });
+  check('r06_json_reviewed_and_issued_without_ens_or_mrn_claim');
+
+  const wrongIcs2Evidence = await service.recordIcs2Event(ids.companyId, ids.shipmentId, ids.userId, {
+    exportDocumentId: issuedIcs2.id, eventType: 'authority_registered',
+    externalReference: `ICS2-AUTH-${runId}-WRONG`, evidenceDocumentId: firstEvidence.evidenceId,
+    actorName: 'Synthetic ICS2 authority', occurredAt: '2026-09-12T03:00:00.000Z'
+  });
+  assert.equal(wrongIcs2Evidence.error, 'ICS2_EVENT_EVIDENCE_TYPE_MISMATCH');
+  const ics2AuthorityEvidence = await insertCustomsEvidence(ids, runId, 'ics2_customs_response', 'ics2-registered');
+  await fs.promises.appendFile(ics2AuthorityEvidence.filePath, 'tampered');
+  const tamperedIcs2Event = await service.recordIcs2Event(ids.companyId, ids.shipmentId, ids.userId, {
+    exportDocumentId: issuedIcs2.id, eventType: 'authority_registered',
+    externalReference: `ICS2-AUTH-${runId}`, evidenceDocumentId: ics2AuthorityEvidence.evidenceId,
+    actorName: 'Synthetic ICS2 authority', occurredAt: '2026-09-12T03:00:00.000Z'
+  });
+  assert.equal(tamperedIcs2Event.error, 'ICS2_EVENT_EVIDENCE_FILE_TAMPERED');
+  await fs.promises.writeFile(ics2AuthorityEvidence.filePath, ics2AuthorityEvidence.original);
+  const registeredIcs2Event = await service.recordIcs2Event(ids.companyId, ids.shipmentId, ids.userId, {
+    exportDocumentId: issuedIcs2.id, eventType: 'authority_registered',
+    externalReference: `ICS2-AUTH-${runId}`, messageCode: 'REGISTERED-SYNTHETIC',
+    messageText: 'Synthetic isolated authority registration evidence.',
+    evidenceDocumentId: ics2AuthorityEvidence.evidenceId, actorName: 'Synthetic ICS2 authority',
+    actorIdentifier: 'SYNTH-ICS2-AUTH', occurredAt: '2026-09-12T03:00:00.000Z'
+  });
+  assert.equal(registeredIcs2Event.sourceType, 'authority');
+  assert.equal(registeredIcs2Event.evidenceSha256, sha256(ics2AuthorityEvidence.original));
+  assert.equal(registeredIcs2Event.documentFileSha256, issuedIcs2.fileSha256);
+  result.ics2Events.push(registeredIcs2Event);
+  await assert.rejects(
+    pool.query('UPDATE ics2_external_events SET message_text=$1 WHERE id=$2', ['mutated', registeredIcs2Event.id]),
+    /append-only/i
+  );
+  assert.equal(await service.getIcs2Events(ids.otherCompanyId, ids.shipmentId), null);
+  check('r06_authority_event_is_evidence_backed_append_only_and_tenant_isolated');
 
   const firstReadiness = await service.getReadiness(ids.companyId, ids.shipmentId);
   assert.equal(firstReadiness.documents.find((item) => item.type === 'carbon_annex').status, 'ready');

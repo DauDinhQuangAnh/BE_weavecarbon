@@ -295,6 +295,80 @@ router.post('/shipments/:shipmentId/eu-import/events', requireCompanyAdmin, asyn
   return sendSuccess(res, { status: 201, data: result });
 }));
 
+router.get('/shipments/:shipmentId/ics2/profile', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const bundle = await exportShipmentService.getProfile(companyId, req.params.shipmentId);
+  if (!bundle) return sendNotFound(res);
+  return sendSuccess(res, { data: bundle.ics2Profile });
+}));
+
+router.put('/shipments/:shipmentId/ics2/profile', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.upsertIcs2Profile(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (!data) return sendNotFound(res);
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.ics2_profile', newValue: req.params.shipmentId,
+    reason: 'export.ics2.profile.update',
+    notes: `${data.messageDatasetCode || 'unmapped'}:${data.targetSystemSchemaId || 'unmapped'}@${data.targetSystemSchemaVersion || 'unversioned'}`
+  });
+  return sendSuccess(res, { data });
+}));
+
+router.get('/shipments/:shipmentId/ics2/reconciliation', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.reconcileIcs2Handoff(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.get('/shipments/:shipmentId/ics2/events', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.getIcs2Events(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/ics2/events', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.recordIcs2Event(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (result?.error) {
+    const messages = {
+      ICS2_EVENT_TYPE_INVALID: 'Unsupported filer/authority event type.',
+      ICS2_EVENT_LINK_INVALID: 'An issued R06 handoff and approved evidence file are required.',
+      ICS2_EVENT_DETAILS_REQUIRED: 'External reference, named actor and occurrence time are required.',
+      ICS2_HANDOFF_NOT_FOUND: 'The selected document is not an ICS2 filing handoff for this shipment.',
+      ICS2_HANDOFF_NOT_ISSUED: 'Only an issued immutable ICS2 handoff can receive external events.',
+      ICS2_EVENT_EVIDENCE_NOT_APPROVED: 'Evidence must belong to this shipment, be approved and remain valid.',
+      ICS2_EVENT_EVIDENCE_TYPE_MISMATCH: 'The selected evidence type does not support this filer/authority event.',
+      ICS2_EVENT_EVIDENCE_STORAGE_UNSUPPORTED: 'External-response evidence must be in verified local storage.',
+      ICS2_EVENT_EVIDENCE_FILE_UNAVAILABLE: 'External-response evidence bytes are unavailable.',
+      ICS2_EVENT_EVIDENCE_FILE_TAMPERED: 'External-response evidence no longer matches its stored checksum and size.',
+      ICS2_EVENT_RECORDER_IDENTITY_REQUIRED: 'The authenticated recorder requires a stable name or email.'
+    };
+    return sendError(res, {
+      status: result.error.includes('NOT_FOUND') ? 404 : 409,
+      code: result.error,
+      message: messages[result.error] || 'ICS2 external event could not be recorded.'
+    });
+  }
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.ics2_event', newValue: result.id,
+    reason: 'export.ics2.external_event', notes: `${result.eventType}:${result.externalReference}`
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
 router.post('/shipments/:shipmentId/lines/sync', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;

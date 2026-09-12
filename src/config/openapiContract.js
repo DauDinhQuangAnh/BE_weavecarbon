@@ -308,6 +308,72 @@ const EU_IMPORT_EVENT_SCHEMA = {
   additionalProperties: false
 };
 
+const ICS2_PROFILE_SCHEMA = {
+  type: 'object',
+  required: [
+    'transportMode', 'messageDatasetCode', 'filingRole', 'filingArrangement',
+    'localReferenceNumber', 'sender', 'declarant', 'customsOfficeFirstEntry',
+    'firstEntryCountry', 'estimatedArrivalAt', 'itineraryCountries', 'conveyanceReference',
+    'masterTransportDocument', 'activeBorderTransportMeans', 'houseConsignments',
+    'targetSystemSchemaId', 'targetSystemSchemaVersion', 'technicalPackageId', 'technicalPackageVersion'
+  ],
+  properties: {
+    transportMode: { type: 'string', enum: ['sea', 'inland_waterway', 'air', 'road', 'rail'] },
+    messageDatasetCode: { type: 'string', pattern: '^F(1[0-6]|2[0-9]|3[0-4]|4[0-5]|5[01])$' },
+    filingRole: { type: 'string', enum: ['carrier', 'house_level_filer', 'express_carrier', 'postal_operator', 'representative'] },
+    filingArrangement: { type: 'string', enum: ['single', 'multiple'] },
+    localReferenceNumber: { type: 'string', minLength: 1, maxLength: 100 },
+    sender: { type: 'object', additionalProperties: true },
+    declarant: { type: 'object', additionalProperties: true },
+    representative: { type: 'object', additionalProperties: true },
+    customsOfficeFirstEntry: { type: 'string', minLength: 1, maxLength: 35 },
+    firstEntryCountry: { type: 'string', pattern: '^[A-Za-z]{2}$' },
+    estimatedArrivalAt: { type: 'string', format: 'date-time' },
+    itineraryCountries: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', pattern: '^[A-Za-z]{2}$' } },
+    conveyanceReference: { type: 'string', minLength: 1, maxLength: 100 },
+    containerIndicator: { type: 'boolean' },
+    masterTransportDocument: { type: 'object', additionalProperties: true },
+    activeBorderTransportMeans: { type: 'object', additionalProperties: true },
+    seals: { type: 'array', maxItems: 500, items: { type: 'string', maxLength: 100 } },
+    paymentMethodCode: { type: 'string', maxLength: 35 },
+    houseConsignments: { type: 'array', minItems: 1, maxItems: 1000, items: { type: 'object', additionalProperties: true } },
+    targetSystemSchemaId: { type: 'string', minLength: 1, maxLength: 300 },
+    targetSystemSchemaVersion: { type: 'string', minLength: 1, maxLength: 100 },
+    technicalPackageId: { type: 'string', minLength: 1, maxLength: 300 },
+    technicalPackageVersion: { type: 'string', minLength: 1, maxLength: 100 },
+    messageNamespace: { type: 'string', maxLength: 500 },
+    filingNotes: { type: 'string', maxLength: 5000 },
+    metadata: { type: 'object', additionalProperties: true }
+  },
+  additionalProperties: false
+};
+
+const ICS2_EVENT_SCHEMA = {
+  type: 'object',
+  required: ['exportDocumentId', 'eventType', 'externalReference', 'evidenceDocumentId', 'actorName', 'occurredAt'],
+  properties: {
+    exportDocumentId: { type: 'string', format: 'uuid' },
+    eventType: {
+      type: 'string',
+      enum: [
+        'filer_received', 'filer_validated', 'filer_rejected',
+        'authority_registered', 'authority_rejected', 'risk_referral', 'do_not_load',
+        'assessment_complete', 'amendment_requested', 'amendment_registered',
+        'invalidation_requested', 'invalidated'
+      ]
+    },
+    externalReference: { type: 'string', minLength: 1, maxLength: 500 },
+    messageCode: { type: 'string', maxLength: 200 },
+    messageText: { type: 'string', maxLength: 5000 },
+    evidenceDocumentId: { type: 'string', format: 'uuid' },
+    actorName: { type: 'string', minLength: 1, maxLength: 500 },
+    actorIdentifier: { type: 'string', maxLength: 300 },
+    occurredAt: { type: 'string', format: 'date-time' },
+    metadata: { type: 'object', additionalProperties: true }
+  },
+  additionalProperties: false
+};
+
 const REQUEST_BODY_OVERRIDES = {
   'POST /reports/v2/snapshots': {
     type: 'object',
@@ -483,6 +549,8 @@ const REQUEST_BODY_OVERRIDES = {
     additionalProperties: false
   },
   'POST /export/shipments/{shipmentId}/eu-import/events': EU_IMPORT_EVENT_SCHEMA,
+  'PUT /export/shipments/{shipmentId}/ics2/profile': ICS2_PROFILE_SCHEMA,
+  'POST /export/shipments/{shipmentId}/ics2/events': ICS2_EVENT_SCHEMA,
   'POST /carbon-calculations': {
     type: 'object',
     required: ['calculation_type', 'carbon_input'],

@@ -35,6 +35,16 @@ current R01/R02/R03 dependencies. The generated JSON always contains
 stored separately, append-only, and require a locked file of the correct evidence type whose bytes still
 match the stored SHA-256. WeaveCarbon does not infer submission, acceptance or release from a generated file.
 
+The EU import output is a versioned **declarant handoff**, not a SAD, MRN or customs acceptance. It requires the exact
+destination/declarant schema identity, confirmed 10-digit TARIC decisions, procedure/valuation/tax/control inputs and
+current R01/R02/R03 dependencies. A named `eu_import_declaration_reviewer` must approve its exact hashes before issue.
+
+The ICS2 output is a versioned **filer/ITSP handoff**, not an ENS message or STI submission. It requires an Annex B
+F-dataset compatible with the transport mode, exact target and technical-package versions, sender/declarant EORI,
+first-entry routing/conveyance, a current master transport reference, lowest-level house consignments, package/weight
+reconciliation and one-to-one allocation of detailed HS6+ goods lines. A named `ics2_filing_reviewer` must approve exact
+hashes before issue. Generated JSON always remains `NOT_SUBMITTED` and never fabricates an MRN or authority result.
+
 Issuing also compares the current shipment/evidence snapshot with the snapshot used to build
 the review file. A changed profile, line, package or approved evidence blocks the issue action
 with `DOCUMENT_SNAPSHOT_STALE`; the user must generate a new document version.
@@ -62,6 +72,13 @@ and gross weights are reconciled, and CBM is calculated using that declared basi
 - `GET|PUT /api/export/shipments/:shipmentId/vn-customs/profile`
 - `GET /api/export/shipments/:shipmentId/vn-customs/reconciliation`
 - `GET|POST /api/export/shipments/:shipmentId/vn-customs/events`
+- `GET|PUT /api/export/shipments/:shipmentId/eu-import/profile`
+- `PUT /api/export/shipments/:shipmentId/eu-import/lines/:lineId`
+- `GET /api/export/shipments/:shipmentId/eu-import/reconciliation`
+- `GET|POST /api/export/shipments/:shipmentId/eu-import/events`
+- `GET|PUT /api/export/shipments/:shipmentId/ics2/profile`
+- `GET /api/export/shipments/:shipmentId/ics2/reconciliation`
+- `GET|POST /api/export/shipments/:shipmentId/ics2/events`
 - `GET /api/export/shipments/:shipmentId/readiness`
 - `POST /api/export/shipments/:shipmentId/documents/:type/generate`
 - `GET|POST /api/export/shipments/:shipmentId/documents/:id/reviews`
@@ -73,7 +90,7 @@ Generated files use the existing durable report queue and `/api/reports/:id/stat
 ## Release checklist
 
 1. Back up PostgreSQL and the uploads directory.
-2. Apply migrations 017 through `025_r04_vn_customs_broker_handoff.sql` in staging.
+2. Apply migrations 017 through `028_r06_ics2_filing_handoff.sql` in staging.
 3. Create a Vietnam-to-EU shipment with more than 20 lines.
 4. Complete parties, invoice, Incoterm, EORI, ports, line prices/weights and packages.
 5. Upload a real carrier document, enter/confirm its structured metadata and obtain a passing current reconciliation.
@@ -84,7 +101,10 @@ Generated files use the existing durable report queue and `/api/reports/:id/stat
 9. Configure the broker's exact target schema ID/version; generate R04 JSON/XLSX and verify it remains
    marked non-submittable. Record any external status only against correct locked response evidence.
 10. Run the guarded R04 pilot in a dedicated database using `docs/VN_CUSTOMS_HANDOFF_PILOT_RUNBOOK.md`.
-11. Deploy application code only after staging smoke tests pass; apply the database migration
+11. Run the guarded R05/R06 pilots using `docs/EU_IMPORT_HANDOFF_PILOT_RUNBOOK.md` and
+   `docs/ICS2_HANDOFF_PILOT_RUNBOOK.md`; keep all generated handoffs explicitly non-submittable.
+12. Obtain and validate the exact destination schemas with the named broker/declarant/filer before any real handoff.
+13. Deploy application code only after staging smoke tests pass; apply the database migration
    before routing traffic to the new application version.
 
 DPP remains a prototype until a product-specific ESPR delegated act defines the mandatory
