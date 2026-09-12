@@ -374,6 +374,68 @@ const ICS2_EVENT_SCHEMA = {
   additionalProperties: false
 };
 
+const ORIGIN_PROFILE_SCHEMA = {
+  type: 'object',
+  required: [
+    'claimType', 'invoiceTotalEur', 'territorialityConfirmed', 'nonAlterationConfirmed',
+    'insufficientProcessingExcluded', 'lineAssessments'
+  ],
+  properties: {
+    claimType: { type: 'string', enum: ['certificate_application', 'origin_declaration_draft'] },
+    invoiceTotalEur: { type: 'number', minimum: 0, exclusiveMinimum: true },
+    exporterAuthorizationType: { type: 'string', enum: ['none', 'approved', 'registered'] },
+    exporterAuthorizationReference: { type: 'string', maxLength: 500 },
+    territorialityConfirmed: { type: 'boolean' },
+    nonAlterationConfirmed: { type: 'boolean' },
+    insufficientProcessingExcluded: { type: 'boolean' },
+    lineAssessments: {
+      type: 'array', maxItems: 1000,
+      items: {
+        type: 'object',
+        required: ['exportLineId', 'ruleCode', 'ruleSourcePage', 'productionProcesses', 'exWorksPrice', 'nonOriginatingMaterialValue', 'materials'],
+        properties: {
+          exportLineId: { type: 'string', format: 'uuid' },
+          ruleCode: { type: 'string', enum: [
+            'CH61_CUT_SEWN_KNITTING_AND_MAKING_UP',
+            'CH61_KNITTED_TO_SHAPE_SPINNING_OR_EXTRUSION_AND_KNITTING',
+            'CH62_GENERAL_WEAVING_AND_MAKING_UP',
+            'CH64_GENERAL_EXCLUDES_6406_UPPER_ASSEMBLY', 'SPECIALIST_RULE_REVIEW'
+          ] },
+          ruleSourcePage: { type: 'string', minLength: 1, maxLength: 500 },
+          specialistRuleText: { type: 'string', maxLength: 5000 },
+          productionProcesses: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 200 } },
+          exWorksPrice: { type: 'number', minimum: 0, exclusiveMinimum: true },
+          nonOriginatingMaterialValue: { type: 'number', minimum: 0 },
+          materials: {
+            type: 'array', minItems: 1, maxItems: 5000,
+            items: {
+              type: 'object',
+              required: ['reference', 'description', 'hsCode', 'originCountry', 'originStatus', 'value', 'evidenceDocumentId'],
+              properties: {
+                id: { type: 'string', maxLength: 200 }, reference: { type: 'string', minLength: 1, maxLength: 500 },
+                description: { type: 'string', minLength: 1, maxLength: 2000 },
+                hsCode: { type: 'string', pattern: '^[0-9 .-]{4,20}$' }, supplierName: { type: 'string', maxLength: 500 },
+                originCountry: { type: 'string', pattern: '^[A-Za-z]{2}$' },
+                originStatus: { type: 'string', enum: ['originating', 'non_originating', 'cumulated', 'unknown'] },
+                cumulationBasis: { type: 'string', enum: ['none', 'eu_bilateral', 'asean_article_3_2', 'korea_fabric_article_3_7'] },
+                value: { type: 'number', minimum: 0 }, weightKg: { type: 'number', minimum: 0 },
+                evidenceDocumentId: { type: 'string', format: 'uuid' },
+                isUpperAssemblyAffixedToSole: { type: 'boolean', nullable: true }, notes: { type: 'string', maxLength: 5000 }
+              },
+              additionalProperties: false
+            }
+          },
+          notes: { type: 'string', maxLength: 5000 }
+        },
+        additionalProperties: false
+      }
+    },
+    notes: { type: 'string', maxLength: 5000 },
+    metadata: { type: 'object', additionalProperties: true }
+  },
+  additionalProperties: false
+};
+
 const REQUEST_BODY_OVERRIDES = {
   'POST /reports/v2/snapshots': {
     type: 'object',
@@ -551,6 +613,7 @@ const REQUEST_BODY_OVERRIDES = {
   'POST /export/shipments/{shipmentId}/eu-import/events': EU_IMPORT_EVENT_SCHEMA,
   'PUT /export/shipments/{shipmentId}/ics2/profile': ICS2_PROFILE_SCHEMA,
   'POST /export/shipments/{shipmentId}/ics2/events': ICS2_EVENT_SCHEMA,
+  'PUT /export/shipments/{shipmentId}/origin/profile': ORIGIN_PROFILE_SCHEMA,
   'POST /carbon-calculations': {
     type: 'object',
     required: ['calculation_type', 'carbon_input'],

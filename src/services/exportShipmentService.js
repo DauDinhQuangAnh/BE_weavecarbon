@@ -40,6 +40,13 @@ const {
   profileFromRow: ics2ProfileFromRow,
   validateIcs2Handoff
 } = require('./ics2HandoffControls');
+const {
+  HANDOFF_SCHEMA: ORIGIN_HANDOFF_SCHEMA,
+  buildOriginHandoffDataset,
+  normalizeOriginProfile,
+  profileFromRow: originProfileFromRow,
+  validateOriginHandoff
+} = require('./originHandoffControls');
 
 const RULESET_VERSION = 'VN-EU-TEXTILE-2026.09.4';
 const CARRIER_RULESET_VERSION = 'R03-CARRIER-RECONCILIATION-2026.09.1';
@@ -51,7 +58,7 @@ const DOCUMENT_FORMATS = {
   commercial_invoice: new Set(['xlsx', 'pdf']),
   packing_list: new Set(['xlsx', 'pdf']),
   carbon_annex: new Set(['xlsx']),
-  origin_workbook: new Set(['xlsx']),
+  origin_workbook: new Set(['json', 'xlsx']),
   ics2_dataset: new Set(['json', 'xlsx']),
   vn_customs_handoff: new Set(['json', 'xlsx']),
   eu_import_handoff: new Set(['json', 'xlsx'])
@@ -72,6 +79,7 @@ const EU_COUNTRY_CODES = new Set([
 const REVIEW_ROLE_BY_DOCUMENT = {
   commercial_invoice: 'export_operator',
   packing_list: 'warehouse_reviewer',
+  origin_workbook: 'origin_specialist_reviewer',
   ics2_dataset: 'ics2_filing_reviewer',
   vn_customs_handoff: 'customs_declaration_reviewer',
   eu_import_handoff: 'eu_import_declaration_reviewer'
@@ -161,6 +169,20 @@ function sourceSnapshotSha256(snapshot) {
   }));
 }
 function documentSourceSnapshotSha256(snapshot, documentType) {
+  if (documentType === 'origin_workbook') {
+    return sha256(JSON.stringify({
+      baseSourceSnapshotSha256: sourceSnapshotSha256(snapshot),
+      originProfile: snapshot?.originProfile || null,
+      originEvidence: (snapshot?.carrierDocuments || [])
+        .filter((item) => item.type === 'origin_support')
+        .map((item) => ({
+          id: item.id, status: item.status, checksumSha256: item.checksumSha256,
+          fileSizeBytes: item.fileSizeBytes, approvedBy: item.approvedBy
+        }))
+        .sort((a, b) => String(a.id).localeCompare(String(b.id))),
+      handoffSchema: ORIGIN_HANDOFF_SCHEMA
+    }));
+  }
   if (documentType === 'ics2_dataset') {
     return sha256(JSON.stringify({
       baseSourceSnapshotSha256: sourceSnapshotSha256(snapshot),
@@ -466,7 +488,7 @@ class ExportShipmentService {
     const [profileResult, linesResult, containersResult, packagesResult, evidenceResult, documentsResult,
       vnCustomsProfileResult, vnCustomsEventsResult, vnCustomsEvidenceResult,
       euImportProfileResult, euImportLineDetailsResult, euImportEventsResult, euImportEvidenceResult,
-      ics2ProfileResult, ics2EventsResult, ics2EvidenceResult] = await Promise.all([
+      ics2ProfileResult, ics2EventsResult, ics2EvidenceResult, originProfileResult] = await Promise.all([
       this.database.query('SELECT * FROM shipment_export_profiles WHERE shipment_id = $1 AND company_id = $2', [shipmentId, companyId]),
       this.database.query('SELECT * FROM shipment_export_lines WHERE shipment_id = $1 AND company_id = $2 ORDER BY line_number', [shipmentId, companyId]),
       this.database.query('SELECT * FROM shipment_containers WHERE shipment_id = $1 AND company_id = $2 ORDER BY container_number', [shipmentId, companyId]),
@@ -586,6 +608,10 @@ class ExportShipmentService {
            AND evidence_type = ANY($3::text[])
          ORDER BY created_at DESC`,
         [shipmentId, companyId, ['ics2_filer_response', 'ics2_customs_response', 'ics2_ens_declaration']]
+      ),
+      this.database.query(
+        'SELECT * FROM shipment_origin_profiles WHERE shipment_id=$1 AND company_id=$2',
+        [shipmentId, companyId]
       )
     ]);
     const snapshot = {
@@ -627,6 +653,7 @@ class ExportShipmentService {
         mimeType: row.mime_type || null, uploadedAt: row.uploaded_at, approvedAt: row.locked_at,
         approvedBy: row.approved_by || null
       })),
+      originProfile: originProfileFromRow(originProfileResult?.rows?.[0]),
       documents: documentsResult.rows.map((row) => this._formatDocument(row))
     };
     snapshot.documents = snapshot.documents.map((document) => {
@@ -1170,6 +1197,51 @@ class ExportShipmentService {
       ...reconciliation,
       sourceSnapshotSha256: documentSourceSnapshotSha256(snapshot, 'ics2_dataset'),
       schema: ICS2_HANDOFF_SCHEMA
+    };
+  }
+
+  async upsertOriginProfile(companyId, shipmentId, userId, input = {}) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const value = normalizeOriginProfile(input);
+    const result = await this.database.query(
+      `INSERT INTO shipment_origin_profiles (
+         company_id, shipment_id, schema_id, schema_version, ruleset_version,
+         regulatory_basis_version, handoff_purpose, claim_type, invoice_total_eur,
+         exporter_authorization_type, exporter_authorization_reference,
+         territoriality_confirmed, non_alteration_confirmed, insufficient_processing_excluded,
+         profile_data, created_by, updated_by
+       ) VALUES ($1,$2,$3,$4,$5,$6,'origin_specialist_review',$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$15)
+       ON CONFLICT (shipment_id) DO UPDATE SET
+         schema_id=EXCLUDED.schema_id, schema_version=EXCLUDED.schema_version,
+         ruleset_version=EXCLUDED.ruleset_version,
+         regulatory_basis_version=EXCLUDED.regulatory_basis_version,
+         handoff_purpose='origin_specialist_review', claim_type=EXCLUDED.claim_type,
+         invoice_total_eur=EXCLUDED.invoice_total_eur,
+         exporter_authorization_type=EXCLUDED.exporter_authorization_type,
+         exporter_authorization_reference=EXCLUDED.exporter_authorization_reference,
+         territoriality_confirmed=EXCLUDED.territoriality_confirmed,
+         non_alteration_confirmed=EXCLUDED.non_alteration_confirmed,
+         insufficient_processing_excluded=EXCLUDED.insufficient_processing_excluded,
+         profile_data=EXCLUDED.profile_data, updated_by=EXCLUDED.updated_by, updated_at=now()
+       RETURNING *`,
+      [
+        companyId, shipmentId, value.schemaId, value.schemaVersion, value.rulesetVersion,
+        value.regulatoryBasisVersion, value.claimType, value.invoiceTotalEur,
+        value.exporterAuthorizationType, value.exporterAuthorizationReference || null,
+        value.territorialityConfirmed, value.nonAlterationConfirmed,
+        value.insufficientProcessingExcluded, JSON.stringify(value), userId
+      ]
+    );
+    return originProfileFromRow(result.rows[0]);
+  }
+
+  async reconcileOriginHandoff(companyId, shipmentId) {
+    const snapshot = await this.getProfile(companyId, shipmentId);
+    if (!snapshot) return null;
+    return {
+      ...validateOriginHandoff(snapshot),
+      sourceSnapshotSha256: documentSourceSnapshotSha256(snapshot, 'origin_workbook'),
+      schema: ORIGIN_HANDOFF_SCHEMA
     };
   }
 
@@ -1842,6 +1914,33 @@ class ExportShipmentService {
     return this._verifyCarrierEvidenceFile(result.rows[0]);
   }
 
+  async _verifyCurrentOriginEvidence(companyId, shipmentId, snapshot) {
+    const referencedIds = [...new Set((snapshot?.originProfile?.lineAssessments || [])
+      .flatMap((assessment) => assessment.materials || [])
+      .map((material) => material.evidenceDocumentId)
+      .filter(Boolean))];
+    if (!referencedIds.length) return { error: 'ORIGIN_EVIDENCE_FILE_UNAVAILABLE' };
+    const result = await this.database.query(
+      `SELECT id, storage_provider, storage_key, checksum_sha256, file_size_bytes
+       FROM evidence_documents
+       WHERE company_id=$1 AND shipment_id=$2 AND evidence_type='origin_support'
+         AND status IN ('locked', 'third_party_verified') AND id = ANY($3::uuid[])`,
+      [companyId, shipmentId, referencedIds]
+    );
+    if (result.rows.length !== referencedIds.length) return { error: 'ORIGIN_EVIDENCE_FILE_UNAVAILABLE' };
+    for (const row of result.rows) {
+      const verification = await this._verifyCarrierEvidenceFile(row);
+      if (verification.error) {
+        return {
+          error: verification.error === 'CARRIER_EVIDENCE_FILE_TAMPERED'
+            ? 'ORIGIN_EVIDENCE_FILE_TAMPERED'
+            : 'ORIGIN_EVIDENCE_FILE_UNAVAILABLE'
+        };
+      }
+    }
+    return { verifiedEvidenceIds: referencedIds };
+  }
+
   async _verifyCurrentSupportingExportDocuments(companyId, shipmentId, snapshot) {
     for (const documentType of ['commercial_invoice', 'packing_list']) {
       const document = (snapshot?.documents || []).find((item) => item.type === documentType
@@ -2249,9 +2348,18 @@ class ExportShipmentService {
         ? approvedCarriers.map((item) => item.id)
         : []
     )));
-    const originApplicable = profile.preferentialOriginClaim === true;
-    const originEvidence = (snapshot.carrierDocuments || []).filter((doc) => doc.type === 'origin_support' && doc.status === 'locked');
-    results.push(requirement('origin_workbook', 'preferential_claim', originApplicable ? (originEvidence.length ? 'ready' : 'missing') : 'not_applicable', 'profile.preferentialOriginClaim', originApplicable && !originEvidence.length ? 'Locked origin evidence is required for a preferential claim.' : null, originApplicable, originEvidence.map((doc) => doc.id)));
+    const originValidation = validateOriginHandoff(snapshot);
+    if (originValidation.status === 'not_applicable') {
+      results.push(requirement('origin_workbook', 'preferential_claim', 'not_applicable',
+        'profile.preferentialOriginClaim', null, false));
+    } else {
+      const originEvidenceIds = (snapshot.carrierDocuments || [])
+        .filter((doc) => doc.type === 'origin_support').map((doc) => doc.id);
+      originValidation.checks.forEach((check) => results.push(requirement(
+        'origin_workbook', check.code, check.status, check.fieldPath, check.message,
+        true, check.code.endsWith('_evidence') ? originEvidenceIds : []
+      )));
+    }
     return results;
   }
 
@@ -2319,9 +2427,8 @@ class ExportShipmentService {
     if (!DOCUMENT_TYPES.has(documentType)) {
       const error = new Error('Unsupported export document type.'); error.code = 'INVALID_DOCUMENT_TYPE'; throw error;
     }
-    const defaultFormat = documentType === 'ics2_dataset'
-      ? 'json'
-      : (['vn_customs_handoff', 'eu_import_handoff'].includes(documentType) ? 'json' : 'xlsx');
+    const defaultFormat = ['ics2_dataset', 'vn_customs_handoff', 'eu_import_handoff', 'origin_workbook']
+      .includes(documentType) ? 'json' : 'xlsx';
     const outputFormat = text(options.outputFormat || options.output_format || options.format || defaultFormat).toLowerCase();
     if (!DOCUMENT_FORMATS[documentType]?.has(outputFormat)) {
       const error = new Error(`Unsupported ${documentType} output format.`);
@@ -2343,6 +2450,17 @@ class ExportShipmentService {
           blocked: true,
           code: evidenceVerification.error,
           message: 'Current carrier evidence bytes could not be verified.',
+          readiness
+        };
+      }
+    }
+    if (documentType === 'origin_workbook') {
+      const originVerification = await this._verifyCurrentOriginEvidence(companyId, shipmentId, snapshot);
+      if (originVerification.error) {
+        return {
+          blocked: true,
+          code: originVerification.error,
+          message: 'Current origin-support evidence bytes could not be verified.',
           readiness
         };
       }
@@ -2424,6 +2542,30 @@ class ExportShipmentService {
     const containers = payload.containers || [];
     const leafPackages = packages.filter((pkg) => text(pkg.packageType).toLowerCase() !== 'pallet');
     const containerNumbers = containers.map((item) => item.containerNumber).filter(Boolean).join('; ');
+    if (type === 'origin_workbook') {
+      return (payload.originProfile?.lineAssessments || []).flatMap((assessment) => {
+        const line = lines.find((item) => item.id === assessment.exportLineId) || {};
+        return (assessment.materials || []).map((material) => ({
+          lineNumber: line.lineNumber,
+          sku: line.sku,
+          exportHsCode: normalizeHsCode(line.hsCode),
+          ruleCode: assessment.ruleCode,
+          ruleSourcePage: assessment.ruleSourcePage,
+          productionProcesses: (assessment.productionProcesses || []).join('; '),
+          exWorksPrice: assessment.exWorksPrice,
+          materialReference: material.reference,
+          materialDescription: material.description,
+          materialHsCode: material.hsCode,
+          supplierName: material.supplierName,
+          materialOriginCountry: material.originCountry,
+          materialOriginStatus: material.originStatus,
+          cumulationBasis: material.cumulationBasis,
+          materialValue: material.value,
+          materialWeightKg: material.weightKg,
+          evidenceDocumentId: material.evidenceDocumentId
+        }));
+      });
+    }
     if (type === 'vn_customs_handoff') return lines.map((line) => ({
       lineNumber: line.lineNumber,
       sku: line.sku,
@@ -2530,8 +2672,8 @@ class ExportShipmentService {
   }
 
   async _buildDocumentBuffer(type, payload, issued, outputFormat = null) {
-    const format = outputFormat || (type === 'ics2_dataset' ? 'json'
-      : (['vn_customs_handoff', 'eu_import_handoff'].includes(type) ? 'json' : 'xlsx'));
+    const format = outputFormat || (['ics2_dataset', 'vn_customs_handoff', 'eu_import_handoff', 'origin_workbook']
+      .includes(type) ? 'json' : 'xlsx');
     if (format === 'pdf') return buildExportDocumentPdf(type, payload, issued);
     if (type === 'vn_customs_handoff' && format === 'json') {
       const reconciliation = validateVnCustomsHandoff(payload, {
@@ -2570,6 +2712,16 @@ class ExportShipmentService {
           && item.latestReconciliation?.sourceSnapshotSha256 === carrierReconciliationSha256(payload, item)
       });
       const dataset = buildIcs2HandoffDataset(payload, {
+        generatedAt: payload.generatedAt,
+        documentVersion: payload.documentVersion,
+        sourceSnapshotSha256: payload.sourceSnapshotSha256,
+        reconciliation
+      });
+      return Buffer.from(`${JSON.stringify(dataset, null, 2)}\n`, 'utf8');
+    }
+    if (type === 'origin_workbook' && format === 'json') {
+      const reconciliation = validateOriginHandoff(payload);
+      const dataset = buildOriginHandoffDataset(payload, {
         generatedAt: payload.generatedAt,
         documentVersion: payload.documentVersion,
         sourceSnapshotSha256: payload.sourceSnapshotSha256,
@@ -2634,8 +2786,15 @@ class ExportShipmentService {
         'Authority warning': 'Carrier-issued transport document remains authoritative. WeaveCarbon does not issue it.'
       },
       origin_workbook: {
-        ...commonMetadata, 'Exporter': party(p.exporter), 'Invoice number': p.invoiceNumber || '',
-        'PO / Contract': p.poContractId || '', 'Preferential claim': p.preferentialOriginClaim === true
+        ...commonMetadata,
+        'Dataset nature': 'EVFTA ORIGIN SUPPORT HANDOFF - NOT PROOF OF ORIGIN / NOT EUR.1',
+        'Internal schema': `${ORIGIN_HANDOFF_SCHEMA.id}@${ORIGIN_HANDOFF_SCHEMA.version}`,
+        'Ruleset': ORIGIN_HANDOFF_SCHEMA.rulesetVersion,
+        'Regulatory basis version': ORIGIN_HANDOFF_SCHEMA.regulatoryBasisVersion,
+        'Exporter': party(p.exporter), 'Invoice number': p.invoiceNumber || '',
+        'PO / Contract': p.poContractId || '', 'Preferential claim': p.preferentialOriginClaim === true,
+        'Proof of origin status': 'NOT_ISSUED', 'Preferential treatment status': 'NOT_GRANTED',
+        'Specialist review required': true
       },
       ics2_dataset: {
         ...commonMetadata,
@@ -2707,8 +2866,14 @@ class ExportShipmentService {
         ['canonicalInputSha256','Canonical input SHA-256']
       ],
       origin_workbook: [
-        ['lineNumber','Line'],['sku','SKU'],['description','Description'],['hsCode','HS/CN'],
-        ['originCountry','Claimed origin'],['quantity','Quantity'],['unit','Unit']
+        ['lineNumber','Line'],['sku','SKU'],['exportHsCode','Export HS/CN'],['ruleCode','Rule code'],
+        ['ruleSourcePage','Annex-II reference'],['productionProcesses','Production processes'],
+        ['exWorksPrice','Ex-works price EUR'],['materialReference','Material reference'],
+        ['materialDescription','Material description'],['materialHsCode','Material HS'],
+        ['supplierName','Supplier'],['materialOriginCountry','Material origin country'],
+        ['materialOriginStatus','Origin status'],['cumulationBasis','Cumulation basis'],
+        ['materialValue','Material value EUR'],['materialWeightKg','Material weight kg'],
+        ['evidenceDocumentId','Locked evidence ID']
       ],
       ics2_dataset: [
         ['datasetCode','Annex B dataset'],['localReferenceNumber','Local reference number'],
@@ -2755,8 +2920,8 @@ class ExportShipmentService {
     if (!document) throw new Error('Export document job target not found.');
     const payload = { ...document.payload, documentVersion: document.version };
     const ext = document.output_format || document.file_format
-      || (document.document_type === 'ics2_dataset' ? 'json'
-        : (['vn_customs_handoff', 'eu_import_handoff'].includes(document.document_type) ? 'json' : 'xlsx'));
+      || (['ics2_dataset', 'vn_customs_handoff', 'eu_import_handoff', 'origin_workbook']
+        .includes(document.document_type) ? 'json' : 'xlsx');
     const buffer = await this._buildDocumentBuffer(document.document_type, payload, false, ext);
     const filename = `${document.document_type}_${document.shipment_id}_v${document.version}.${ext}`;
     const storageKey = `reports/${companyId}/exports/${document.shipment_id}/${filename}`;
@@ -2918,6 +3083,17 @@ class ExportShipmentService {
         };
       }
     }
+    if (document.document_type === 'origin_workbook') {
+      const originVerification = await this._verifyCurrentOriginEvidence(companyId, shipmentId, currentSnapshot);
+      if (originVerification.error) {
+        return {
+          blocked: true,
+          code: originVerification.error,
+          message: 'Current origin-support evidence bytes could not be verified before issue.',
+          readiness
+        };
+      }
+    }
     if (document.document_type === 'vn_customs_handoff') {
       const supportingVerification = await this._verifyCurrentSupportingExportDocuments(companyId, shipmentId, currentSnapshot);
       if (supportingVerification.error) {
@@ -2962,8 +3138,8 @@ class ExportShipmentService {
       }
     }
     const ext = document.output_format || document.file_format
-      || (document.document_type === 'ics2_dataset' ? 'json'
-        : (['vn_customs_handoff', 'eu_import_handoff'].includes(document.document_type) ? 'json' : 'xlsx'));
+      || (['ics2_dataset', 'vn_customs_handoff', 'eu_import_handoff', 'origin_workbook']
+        .includes(document.document_type) ? 'json' : 'xlsx');
     if (!document.storage_key || document.storage_provider !== 'local') {
       return { blocked: true, code: 'DOCUMENT_SOURCE_FILE_MISSING', message: 'The approved local source file is unavailable.' };
     }

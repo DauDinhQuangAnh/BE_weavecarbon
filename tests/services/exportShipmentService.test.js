@@ -210,6 +210,15 @@ describe('shipment export readiness', () => {
       .not.toBe(documentSourceSnapshotSha256(changedLine, 'eu_import_handoff'));
   });
 
+  test('pins R07 source identity to the origin BOM and material evidence', () => {
+    const original = readySnapshot(1);
+    original.originProfile = { lineAssessments: [{ exportLineId: 'line-1', materials: [{ reference: 'YARN-1' }] }] };
+    const changedBom = structuredClone(original);
+    changedBom.originProfile.lineAssessments[0].materials[0].reference = 'YARN-2';
+    expect(documentSourceSnapshotSha256(original, 'origin_workbook'))
+      .not.toBe(documentSourceSnapshotSha256(changedBom, 'origin_workbook'));
+  });
+
   test('rejects an unsupported output format before queueing work', async () => {
     const service = createExportShipmentService({ database: {} });
     await expect(service.createDocumentJob('company-1', 'shipment-1', 'user-1', 'commercial_invoice', { outputFormat: 'csv' }))
@@ -276,6 +285,25 @@ describe('simple XLSX export', () => {
       expect.objectContaining({ type: 'packing_list', fileSha256: 'f'.repeat(64) })
     ]));
     expect(dataset.reconciliation.status).toBe('passed');
+  });
+
+  test('builds R07 JSON only as a non-authority specialist handoff', async () => {
+    const snapshot = readySnapshot(1);
+    snapshot.profile.preferentialOriginClaim = true;
+    snapshot.originProfile = {
+      claimType: 'certificate_application', invoiceTotalEur: 50,
+      territorialityConfirmed: true, nonAlterationConfirmed: true,
+      insufficientProcessingExcluded: true, lineAssessments: []
+    };
+    const service = createExportShipmentService({ database: {} });
+    const dataset = JSON.parse((await service._buildDocumentBuffer(
+      'origin_workbook', snapshot, false, 'json'
+    )).toString('utf8'));
+    expect(dataset).toMatchObject({
+      datasetNature: 'EVFTA_ORIGIN_SUPPORT_HANDOFF_NOT_PROOF_OF_ORIGIN',
+      notProofOfOrigin: true, proofOfOriginStatus: 'NOT_ISSUED',
+      preferentialTreatmentStatus: 'NOT_GRANTED', specialistReviewRequired: true
+    });
   });
 
   test('builds an explicitly non-submittable R05 EUCDM handoff payload', async () => {

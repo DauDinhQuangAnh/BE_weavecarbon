@@ -369,6 +369,38 @@ router.post('/shipments/:shipmentId/ics2/events', requireCompanyAdmin, asyncHand
   return sendSuccess(res, { status: 201, data: result });
 }));
 
+router.get('/shipments/:shipmentId/origin/profile', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const bundle = await exportShipmentService.getProfile(companyId, req.params.shipmentId);
+  if (!bundle) return sendNotFound(res);
+  return sendSuccess(res, { data: bundle.originProfile });
+}));
+
+router.put('/shipments/:shipmentId/origin/profile', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.upsertOriginProfile(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (!data) return sendNotFound(res);
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.origin_profile', newValue: req.params.shipmentId,
+    reason: 'export.origin.profile.update',
+    notes: `${data.claimType}:${data.rulesetVersion}`
+  });
+  return sendSuccess(res, { data });
+}));
+
+router.get('/shipments/:shipmentId/origin/reconciliation', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.reconcileOriginHandoff(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
 router.post('/shipments/:shipmentId/lines/sync', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;

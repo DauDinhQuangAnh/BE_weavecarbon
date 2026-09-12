@@ -155,7 +155,7 @@ Known overall checks at the latest feature commits:
 | 4 | Vietnam export declaration/VNACCS | Normally mandatory | `PARTIAL` | Versioned internal broker-handoff JSON/XLSX, R01/R02/R03 reconciliation, named review and evidence-backed append-only external events; no VNACCS submission | Obtain and validate an exact broker target schema/code list, then complete a named real-shipment broker pilot |
 | 5 | EU import declaration/SAD/EUCDM | Importer/declarant responsibility | `READY_TO_PILOT` | Versioned internal EUCDM-referenced JSON/XLSX declarant handoff, TARIC decisions, R01/R02/R03 reconciliation, review and evidence-backed external events; no direct submission | Run isolated PostgreSQL pilot, obtain exact Member-State/declarant schema, then complete a named real-shipment specialist pilot |
 | 6 | ENS/ICS2 support dataset | Goods entering EU | `PARTIAL` | Controlled JSON/XLSX filer handoff with mode-specific Annex B dataset selection, master/house/goods/package reconciliation, named review and evidence-backed lifecycle; no STI submission | Run the guarded isolated PostgreSQL/CI pilot, then obtain and validate an exact filer/ITSP schema and complete required conformance testing |
-| 7 | EVFTA EUR.1/origin declaration support | Only when claiming preference | `PARTIAL` | Basic Origin Workbook plus locked supporting evidence gate | BOM-origin rules engine and official-form/wording workflow |
+| 7 | EVFTA EUR.1/origin declaration support | Only when claiming preference | `PARTIAL` | Versioned BOM/rule/evidence handoff, controlled JSON/XLSX and specialist review; never proof of origin | Validate exact rules with a specialist and real BOM; supplier-declaration lifecycle and legally performed proof route remain |
 | 8 | EU textile fibre label | Textile products | `PARTIAL` | Generic material composition exists | Controlled Annex-I fibres, components, locale and label artifact |
 | 9 | EU footwear material label | Footwear products | `NOT_STARTED` | No three-part/80% model | Component model, 80% rule, pictogram/text and locale output |
 | 10 | GPSR technical file and traceability | Consumer products | `PARTIAL` | Some product identity/passport/evidence fields | Risk file, EU operator, warnings, tests and corrective-action records |
@@ -331,10 +331,21 @@ and all later statuses are backed by immutable external evidence. Submission is 
 supplier, value/weight and evidence; processing; value-content calculation; cumulation/tolerance/insufficient processing;
 non-alteration/direct-transport evidence; exporter authorisation where relevant; invoice/shipment; approval.
 
-**Implemented:** Origin Workbook lists claimed origin lines and a preferential claim requires locked origin support.
+**Implemented:** migration 029 and controlled `weavecarbon.evfta-origin-support-handoff@1.0.0` add a shipment-scoped
+profile and per-line BOM ledger. The conservative validator gates Vietnam-to-EU applicability, confirmed HS6+, one
+assessment per line, a versioned Annex-II route, exact source page, required production steps, ex-works/non-originating
+value reconciliation, material identity/status, cumulation basis, territoriality, non-alteration, insufficient processing,
+invoice threshold and exporter-authorisation reference. Every material row must point to locked `origin_support` evidence
+whose stored bytes, size and SHA-256 are rechecked before generation and issue. JSON/XLSX output is always labelled
+`NOT_PROOF_OF_ORIGIN`, `NOT_ISSUED` and `NOT_GRANTED`; issue requires a checksum-bound `origin_specialist_reviewer` approval.
+The frontend exposes the conditional profile, BOM, evidence locking and reconciliation workflow.
 
-**Remaining:** rules engine and version; BOM-origin ledger/calculation; supplier declarations; EUR.1 official boxes and
-authority endorsement flow; exact Annex VI declaration wording and eligibility; revocation/amendment.
+**Remaining:** a qualified origin specialist must verify the exact HS classification, Annex-II row and effective rule
+against a real BOM, including product-specific exceptions and any tolerance/cumulation detail not encoded by the
+conservative routes. Supplier-declaration validity/revocation/amendment lifecycle remains. WeaveCarbon intentionally does
+not generate an official EUR.1, reproduce Annex VI declaration wording, sign a declaration, request authority endorsement
+or record preference as granted; those legally performed proof routes require an exporter/competent authority workflow
+designed and validated with the responsible specialist.
 
 **Definition of Done:** a customs/origin specialist validates a real BOM against the effective EVFTA rule; the system blocks
 an unsupported claim; output is explicitly draft until the exporter/authority performs the legally required action.
@@ -1232,3 +1243,19 @@ Backend carbon trace core:
   EU core plus versioned Member-State adapters under Directive (EU) 2025/1892.
 - This is a local feature-branch correction only. It was not pushed, merged, deployed or tested in staging, and it does not
   promote any report to legal, business, customs, assurance or filing readiness.
+
+### 2026-09-13 — R07 EVFTA origin-support handoff
+
+- R07 now uses a versioned shipment profile and material-level BOM rather than treating one locked attachment as proof of
+  preferential origin. The rule gate is deliberately conservative for Chapters 61, 62 and 64 and routes exceptions and
+  other products to an explicit specialist rule review with an exact Annex-II reference.
+- Applicability is restricted to an explicit preferential claim on a Vietnam-to-EU shipment. Readiness checks territoriality,
+  non-alteration, insufficient operations, invoice threshold/exporter authorisation, rule execution, value reconciliation,
+  cumulation and locked SHA-bound evidence for every material.
+- Generated JSON/XLSX is an internal specialist handoff only. It cannot represent EUR.1 issuance, an origin declaration,
+  authority endorsement or tariff preference; immutable issue requires a named origin-specialist approval of the exact file.
+- R07 remains `PARTIAL` pending an isolated PostgreSQL migration/pilot, real BOM and supplier evidence, qualified specialist
+  validation, and design of any external legally performed proof/revocation workflow. Nothing was pushed or deployed.
+- Local gates pass: backend syntax/OpenAPI/artifact/architecture/lint plus 109 suites and 690 tests; frontend check,
+  44 files and 196 tests, and production build of all 62 routes. The 20 frontend lint warnings are pre-existing; there
+  are no lint errors.

@@ -9401,6 +9401,363 @@
         ]
       }
     },
+    "/export/shipments/{shipmentId}/origin/profile": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdOriginProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/origin/profile",
+        "tags": [
+          "Export"
+        ]
+      },
+      "put": {
+        "operationId": "putExportShipmentsByShipmentIdOriginProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "claimType": {
+                    "enum": [
+                      "certificate_application",
+                      "origin_declaration_draft"
+                    ],
+                    "type": "string"
+                  },
+                  "exporterAuthorizationReference": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "exporterAuthorizationType": {
+                    "enum": [
+                      "none",
+                      "approved",
+                      "registered"
+                    ],
+                    "type": "string"
+                  },
+                  "insufficientProcessingExcluded": {
+                    "type": "boolean"
+                  },
+                  "invoiceTotalEur": {
+                    "exclusiveMinimum": true,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "lineAssessments": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "exWorksPrice": {
+                          "exclusiveMinimum": true,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "exportLineId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "materials": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "cumulationBasis": {
+                                "enum": [
+                                  "none",
+                                  "eu_bilateral",
+                                  "asean_article_3_2",
+                                  "korea_fabric_article_3_7"
+                                ],
+                                "type": "string"
+                              },
+                              "description": {
+                                "maxLength": 2000,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "evidenceDocumentId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "hsCode": {
+                                "pattern": "^[0-9 .-]{4,20}$",
+                                "type": "string"
+                              },
+                              "id": {
+                                "maxLength": 200,
+                                "type": "string"
+                              },
+                              "isUpperAssemblyAffixedToSole": {
+                                "nullable": true,
+                                "type": "boolean"
+                              },
+                              "notes": {
+                                "maxLength": 5000,
+                                "type": "string"
+                              },
+                              "originCountry": {
+                                "pattern": "^[A-Za-z]{2}$",
+                                "type": "string"
+                              },
+                              "originStatus": {
+                                "enum": [
+                                  "originating",
+                                  "non_originating",
+                                  "cumulated",
+                                  "unknown"
+                                ],
+                                "type": "string"
+                              },
+                              "reference": {
+                                "maxLength": 500,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "supplierName": {
+                                "maxLength": 500,
+                                "type": "string"
+                              },
+                              "value": {
+                                "minimum": 0,
+                                "type": "number"
+                              },
+                              "weightKg": {
+                                "minimum": 0,
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "reference",
+                              "description",
+                              "hsCode",
+                              "originCountry",
+                              "originStatus",
+                              "value",
+                              "evidenceDocumentId"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 5000,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "nonOriginatingMaterialValue": {
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "notes": {
+                          "maxLength": 5000,
+                          "type": "string"
+                        },
+                        "productionProcesses": {
+                          "items": {
+                            "maxLength": 200,
+                            "type": "string"
+                          },
+                          "maxItems": 100,
+                          "type": "array"
+                        },
+                        "ruleCode": {
+                          "enum": [
+                            "CH61_CUT_SEWN_KNITTING_AND_MAKING_UP",
+                            "CH61_KNITTED_TO_SHAPE_SPINNING_OR_EXTRUSION_AND_KNITTING",
+                            "CH62_GENERAL_WEAVING_AND_MAKING_UP",
+                            "CH64_GENERAL_EXCLUDES_6406_UPPER_ASSEMBLY",
+                            "SPECIALIST_RULE_REVIEW"
+                          ],
+                          "type": "string"
+                        },
+                        "ruleSourcePage": {
+                          "maxLength": 500,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "specialistRuleText": {
+                          "maxLength": 5000,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "exportLineId",
+                        "ruleCode",
+                        "ruleSourcePage",
+                        "productionProcesses",
+                        "exWorksPrice",
+                        "nonOriginatingMaterialValue",
+                        "materials"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 1000,
+                    "type": "array"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "nonAlterationConfirmed": {
+                    "type": "boolean"
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "territorialityConfirmed": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "claimType",
+                  "invoiceTotalEur",
+                  "territorialityConfirmed",
+                  "nonAlterationConfirmed",
+                  "insufficientProcessingExcluded",
+                  "lineAssessments"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "PUT /export/shipments/{shipmentId}/origin/profile",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/origin/reconciliation": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdOriginReconciliation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/origin/reconciliation",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
     "/export/shipments/{shipmentId}/packages": {
       "post": {
         "operationId": "postExportShipmentsByShipmentIdPackages",
