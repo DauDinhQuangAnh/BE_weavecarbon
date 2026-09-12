@@ -45,8 +45,8 @@ This tracker separates four facts that must never be conflated:
 | Frontend R03 carrier-document/Carbon Annex commit | `9bd4c58f58cfff8b32a2bea580675b170931c751` |
 | Backend R04 broker-handoff technical-gate commit | `0d8cc4ecb68d63bc52d86406e0659b971a0f8038` |
 | Frontend R04 broker-handoff commit | `dbeb7f181f6248834fd89d076cde779bff4c135e` |
-| Backend R05 EU import declarant-handoff commit | `47c81c1a` |
-| Frontend R05 EU import declarant-handoff commit | `f46dd1ca` |
+| Backend R05 EU import declarant-handoff commit | `47c81c1b2d0cb60921d5716b423b09929d5db29c` |
+| Frontend R05 EU import declarant-handoff commit | `f46dd1c64d9a5abd5b3c0a7049c4558bf1db6b15` |
 | R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
@@ -1134,9 +1134,9 @@ Backend carbon trace core:
 
 ### 2026-09-12 — R05 EU import declarant-handoff implementation
 
-- Backend commit `47c81c1a` adds migration 027, EUCDM 7.0.11-referenced internal schema/validation, shipment-scoped API,
+- Backend commit `47c81c1b2d0cb60921d5716b423b09929d5db29c` adds migration 027, EUCDM 7.0.11-referenced internal schema/validation, shipment-scoped API,
   JSON/XLSX generation, TARIC decision controls, named review, byte re-verification and evidence-backed append-only
-  declarant/authority events. Frontend commit `f46dd1ca` adds the corresponding profile, per-line classification,
+  declarant/authority events. Frontend commit `f46dd1c64d9a5abd5b3c0a7049c4558bf1db6b15` adds the corresponding profile, per-line classification,
   reconciliation, evidence and external-event workspace.
 - R05 is deliberately a declarant handoff only. Output is always `NOT_SUBMITTED`, explicitly rejects SAD/MRN/authority
   wording and has no national customs client or fallback target schema. Import declaration remains the responsibility of
