@@ -29,6 +29,7 @@ This tracker separates four facts that must never be conflated:
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
 | Active R18 marketing-claim-containment branch in both repositories | `feat/r18-marketing-claim-containment` (local, stacked on the R18 public-passport increment while R04/R05 PRs remain open) |
+| Active R20 PPWR applicability branch in both repositories | `feat/r20-ppwr-applicability` (local, stacked on the R18 marketing-claim-containment increment) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -754,18 +755,21 @@ consumer group, importer role, channel, shipment value and mode. Possible trigge
 children's products, biocidal treatment, chemical controls, packaging/waste, sanctions or safety standards.
 
 **Implemented:** migration 030 and ruleset `weavecarbon.eu-product-compliance-triage`
-`R20-EU-APPLICABILITY-2026.09.1` create immutable, checksum-bound shipment evaluations from confirmed HS/TARIC, origin,
+`R20-EU-APPLICABILITY-2026.09.2` create immutable, checksum-bound shipment evaluations from confirmed HS/TARIC, origin,
 R07 BOM-derived and supplemental material facts, EU market/use/consumer/importer/channel context and assessment date.
 The deliberately limited first coverage identifies textile labelling, footwear labelling, GPSR baseline, REACH specialist
 review and animal-origin disclosure candidates with an explainable reason, match precision, required evidence, source URL
 and source version. Missing or inexact facts route to `specialist_review_required`; an unconfirmed TARIC is never treated as
 exact. A named `compliance_specialist` may append an evidence-backed review bound to the exact input/result hashes. The UI
 shows the limited-coverage and legal-review boundary and cannot label this internal triage as a permit, certificate or legal
-approval.
+approval. Maintained dataset `weavecarbon.eu-ppwr-applicability` version `EU-PPWR-2026.09.1` adds date-versioned Regulation
+(EU) 2025/40 packaging scope, supply-chain identity-retention and producer/EPR specialist routing. The exact dataset version
+and checksum are frozen into each result. Member-State registration, authorised-representative, fee, reporting, conformity,
+recycled-content and labelling conclusions remain outside automated coverage.
 
 **Remaining:** replace broad chapter/heading triggers with maintained exact CN/TARIC, REACH substance/threshold and species
-datasets; encode Member-State and date-versioned rules; cover CITES, PPE, children's products, biocidal treatment,
-packaging/waste, sanctions and relevant product-safety standards; validate source-change lifecycle and amendment handling;
+datasets; encode Member-State and date-versioned rules; deepen packaging/waste beyond the limited PPWR routing; cover
+CITES, PPE, children's products, biocidal treatment, sanctions and relevant product-safety standards; validate source-change lifecycle and amendment handling;
 then run exact-head CI/staging and a named specialist pilot using real product/BOM/lab evidence. No global
 `not applicable` decision is permitted outside the declared coverage.
 
@@ -1706,3 +1710,27 @@ Backend carbon trace core:
 - R18 remains `PARTIAL`, not legally complete. Member-State validation, reviewer segregation, authentic calculation/PCF/
   evidence lifecycle, expiry/revocation notification and mandatory controls for any future public label/marketplace/
   report/advertising surface remain. Nothing was pushed, merged, deployed or changed on the production host.
+
+### 2026-09-13 — R20 PPWR maintained-dataset increment
+
+- Ruleset `R20-EU-APPLICABILITY-2026.09.2` adds maintained dataset `EU-PPWR-2026.09.1`, pinned to Regulation (EU)
+  2025/40 and Commission Notice C(2026) 3702. It records the 12 August 2026 application date, supported packaging types,
+  Article 22 identity-retention routing and explicit exclusions. Every evaluation now carries the dataset id, version,
+  coverage status and SHA-256 in its immutable result snapshot.
+- The R20 input/UI captures packaging presence, type, material, reuse, supplier/customer identity, direct distance sale and
+  whether the producer role has been assessed. Separate results cover PPWR scope, supply-chain traceability and producer/
+  EPR review. The evaluator never infers Member-State registration, fees, reporting or conformity and never turns missing
+  packaging facts into a non-applicability claim.
+- No migration was added: migration 030 already stores immutable JSONB input/result snapshots and its tenant/shipment and
+  review indexes cover the existing query paths. This avoids redundant columns and indexes while preserving old R20
+  evaluation records; the frontend tolerates older results without a dataset manifest.
+- Full local gates pass: backend 137/137 suites and 800/800 tests plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend 61/61 files and 238/238 tests, TypeScript/contract/network/policy checks, and the 62-route production build. The
+  same 20 pre-existing frontend lint warnings remain and there are no errors.
+- Isolated PostgreSQL 18 database `weavecarbon_r20_ppwr` loaded a schema-only baseline plus migrations 001–037. The guarded
+  cumulative pilot passed 47/47 checks with `productionDataTouched=false`; retained artifact
+  `artifacts/compliance-applicability-pilot/result.json` has SHA-256
+  `7841ecd1e62206c55e1901ff2503c41da0c9646bb68e7eacd534f1fae138a614`.
+- R20 remains `PARTIAL` pending exact CN/TARIC, substance/threshold and species datasets, deeper PPWR conformity and
+  Member-State adapters, other specialist domains, exact-head CI/staging and a qualified real-product specialist pilot.
+  Nothing was pushed, merged, deployed or changed on the production host.

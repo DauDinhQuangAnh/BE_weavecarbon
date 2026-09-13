@@ -1,3 +1,5 @@
+const packagingDataset = require('../data/regulatory/euPackagingApplicabilityDataset.json');
+
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
 
 const PUBLIC_OPERATIONS = new Set([
@@ -630,6 +632,30 @@ const REQUEST_BODY_OVERRIDES = {
       consumerProduct: { type: 'boolean' },
       placedOnEuMarket: { type: 'boolean' },
       textileFibrePercent: { type: 'number', minimum: 0, maximum: 100, nullable: true },
+      packagingContext: {
+        type: 'object',
+        required: [
+          'present', 'types', 'materials', 'reusable', 'supplierIdentified', 'customerIdentified',
+          'directDistanceSaleToEuEndUser', 'producerRoleAssessed'
+        ],
+        properties: {
+          present: { type: 'boolean', nullable: true },
+          types: {
+            type: 'array', maxItems: 20, uniqueItems: true,
+            items: { type: 'string', enum: [...packagingDataset.supportedPackagingTypes] }
+          },
+          materials: {
+            type: 'array', maxItems: 50, uniqueItems: true,
+            items: { type: 'string', maxLength: 100 }
+          },
+          reusable: { type: 'boolean', nullable: true },
+          supplierIdentified: { type: 'boolean', nullable: true },
+          customerIdentified: { type: 'boolean', nullable: true },
+          directDistanceSaleToEuEndUser: { type: 'boolean', nullable: true },
+          producerRoleAssessed: { type: 'boolean', nullable: true }
+        },
+        additionalProperties: false
+      },
       materialFacts: {
         type: 'array', maxItems: 500,
         items: {

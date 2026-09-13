@@ -10454,6 +10454,69 @@
                     "maxLength": 5000,
                     "type": "string"
                   },
+                  "packagingContext": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "customerIdentified": {
+                        "nullable": true,
+                        "type": "boolean"
+                      },
+                      "directDistanceSaleToEuEndUser": {
+                        "nullable": true,
+                        "type": "boolean"
+                      },
+                      "materials": {
+                        "items": {
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "maxItems": 50,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "present": {
+                        "nullable": true,
+                        "type": "boolean"
+                      },
+                      "producerRoleAssessed": {
+                        "nullable": true,
+                        "type": "boolean"
+                      },
+                      "reusable": {
+                        "nullable": true,
+                        "type": "boolean"
+                      },
+                      "supplierIdentified": {
+                        "nullable": true,
+                        "type": "boolean"
+                      },
+                      "types": {
+                        "items": {
+                          "enum": [
+                            "sales",
+                            "grouped",
+                            "transport",
+                            "ecommerce"
+                          ],
+                          "type": "string"
+                        },
+                        "maxItems": 20,
+                        "type": "array",
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "present",
+                      "types",
+                      "materials",
+                      "reusable",
+                      "supplierIdentified",
+                      "customerIdentified",
+                      "directDistanceSaleToEuEndUser",
+                      "producerRoleAssessed"
+                    ],
+                    "type": "object"
+                  },
                   "placedOnEuMarket": {
                     "type": "boolean"
                   },

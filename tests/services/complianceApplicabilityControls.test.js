@@ -1,5 +1,6 @@
 const {
   RULESET,
+  packagingDataset,
   buildInputSnapshot,
   evaluateComplianceApplicability
 } = require('../../src/services/complianceApplicabilityControls');
@@ -34,6 +35,11 @@ const context = {
   assessmentDate: '2026-09-13', productCategory: 'apparel', intendedUse: 'everyday wear',
   consumerGroup: 'adults', importerRole: 'EU importer', salesChannels: ['retail', 'online'],
   consumerProduct: true, placedOnEuMarket: true, textileFibrePercent: 85,
+  packagingContext: {
+    present: true, types: ['Sales', 'ecommerce'], materials: ['Paper', 'plastic'], reusable: false,
+    supplierIdentified: true, customerIdentified: true, directDistanceSaleToEuEndUser: true,
+    producerRoleAssessed: false
+  },
   materialFacts: [{
     reference: 'TRIM-1', description: 'Leather trim', hsCode: '4205', originCountry: 'IN',
     percentageByWeight: 2, animalOrigin: true, substancesScreened: false
@@ -50,6 +56,9 @@ describe('R20 compliance applicability controls', () => {
       hsCode: '62052000', hsConfirmed: true, taricCode: '6205200010', taricConfirmed: true
     });
     expect(input.materials.map((item) => item.source)).toEqual(['origin_bom', 'operator_context']);
+    expect(input.marketContext.packaging).toMatchObject({
+      present: true, types: ['sales', 'ecommerce'], materials: ['paper', 'plastic'], reusable: false
+    });
   });
 
   test('identifies textile requirements but retains specialist review for incomplete legal coverage', () => {
@@ -67,6 +76,39 @@ describe('R20 compliance applicability controls', () => {
     expect(evaluation.inputSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(evaluation.result.resultSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(RULESET.sources.every((source) => source.url.startsWith('https://eur-lex.europa.eu/'))).toBe(true);
+  });
+
+  test('uses the maintained PPWR dataset without inferring Member-State EPR compliance', () => {
+    const evaluation = evaluateComplianceApplicability(snapshot(), context);
+    const scope = evaluation.result.matches.find((item) => item.code === 'EU_PPWR_PACKAGING_SCOPE');
+    const traceability = evaluation.result.matches.find((item) => item.code === 'EU_PPWR_SUPPLY_CHAIN_TRACEABILITY');
+    const epr = evaluation.result.matches.find((item) => item.code === 'EU_PPWR_PRODUCER_ROLE_AND_EPR');
+
+    expect(packagingDataset).toMatchObject({
+      datasetId: 'weavecarbon.eu-ppwr-applicability', appliesFrom: '2026-08-12',
+      coverageStatus: 'limited'
+    });
+    expect(Object.isFrozen(packagingDataset)).toBe(true);
+    expect(evaluation.result.datasets[0]).toMatchObject({
+      id: packagingDataset.datasetId, version: packagingDataset.version,
+      sha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+    });
+    expect(scope).toMatchObject({ decision: 'requirements_identified', sourceId: 'EU-2025-40' });
+    expect(traceability).toMatchObject({
+      decision: 'requirements_identified', matchPrecision: 'lane_plus_packaging_context'
+    });
+    expect(traceability.reason).toMatch(/5 years/i);
+    expect(epr).toMatchObject({ decision: 'specialist_review_required' });
+    expect(epr.reason).toMatch(/does not calculate registrations, fees or reporting/i);
+  });
+
+  test('routes absent packaging facts to specialist review without a non-applicability claim', () => {
+    const evaluation = evaluateComplianceApplicability(snapshot(), { ...context, packagingContext: undefined });
+    const scope = evaluation.result.matches.find((item) => item.code === 'EU_PPWR_PACKAGING_SCOPE');
+
+    expect(evaluation.result.missingInputs).toContain('marketContext.packaging.present');
+    expect(scope).toMatchObject({ decision: 'specialist_review_required' });
+    expect(scope.reason).toMatch(/no PPWR non-applicability conclusion/i);
   });
 
   test('does not infer global non-applicability outside the limited EU ruleset', () => {

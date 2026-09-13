@@ -1,4 +1,11 @@
 const crypto = require('crypto');
+function deepFreeze(value) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  Object.values(value).forEach(deepFreeze);
+  return Object.freeze(value);
+}
+
+const packagingDataset = deepFreeze(require('../data/regulatory/euPackagingApplicabilityDataset.json'));
 
 const EU_COUNTRY_CODES = new Set([
   'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR',
@@ -7,7 +14,7 @@ const EU_COUNTRY_CODES = new Set([
 
 const RULESET = Object.freeze({
   id: 'weavecarbon.eu-product-compliance-triage',
-  version: 'R20-EU-APPLICABILITY-2026.09.1',
+  version: 'R20-EU-APPLICABILITY-2026.09.2',
   coverageStatus: 'limited',
   effectiveFrom: '2024-12-13',
   sources: Object.freeze([
@@ -34,7 +41,8 @@ const RULESET = Object.freeze({
       title: 'Regulation (EC) No 1907/2006 — REACH',
       url: 'https://eur-lex.europa.eu/eli/reg/2006/1907/oj',
       version: 'current-version-must-be-verified-at-review'
-    })
+    }),
+    ...packagingDataset.sources.map((source) => Object.freeze({ ...source }))
   ])
 });
 
@@ -59,6 +67,9 @@ function sha256(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 function unique(values) { return [...new Set(values.filter(Boolean))]; }
+function normalizedList(value) {
+  return unique(array(value).map((item) => text(item).toLowerCase()));
+}
 
 function sourceManifest() {
   return RULESET.sources.map((source) => ({ ...source }));
@@ -119,10 +130,25 @@ function buildInputSnapshot(snapshot = {}, input = {}) {
       intendedUse: text(input.intendedUse || input.intended_use),
       consumerGroup: text(input.consumerGroup || input.consumer_group),
       importerRole: text(input.importerRole || input.importer_role),
-      salesChannels: unique(array(input.salesChannels || input.sales_channels).map((item) => text(item).toLowerCase())),
+      salesChannels: normalizedList(input.salesChannels || input.sales_channels),
       consumerProduct: boolOrNull(input.consumerProduct ?? input.consumer_product),
       placedOnEuMarket: boolOrNull(input.placedOnEuMarket ?? input.placed_on_eu_market),
       textileFibrePercent: numberOrNull(input.textileFibrePercent ?? input.textile_fibre_percent),
+      packaging: (() => {
+        const packaging = input.packagingContext || input.packaging_context || {};
+        return {
+          present: boolOrNull(packaging.present),
+          types: normalizedList(packaging.types),
+          materials: normalizedList(packaging.materials),
+          reusable: boolOrNull(packaging.reusable),
+          supplierIdentified: boolOrNull(packaging.supplierIdentified ?? packaging.supplier_identified),
+          customerIdentified: boolOrNull(packaging.customerIdentified ?? packaging.customer_identified),
+          directDistanceSaleToEuEndUser: boolOrNull(
+            packaging.directDistanceSaleToEuEndUser ?? packaging.direct_distance_sale_to_eu_end_user
+          ),
+          producerRoleAssessed: boolOrNull(packaging.producerRoleAssessed ?? packaging.producer_role_assessed)
+        };
+      })(),
       notes: text(input.notes)
     }
   };
@@ -162,6 +188,25 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
   if (normalized.marketContext.textileFibrePercent !== null
     && (normalized.marketContext.textileFibrePercent < 0 || normalized.marketContext.textileFibrePercent > 100)) {
     missingInputs.push('marketContext.textileFibrePercent');
+  }
+  if (normalized.shipment.destinationIsEu) {
+    const packaging = normalized.marketContext.packaging;
+    if (packaging.present === null) missingInputs.push('marketContext.packaging.present');
+    if (packaging.present === true && !packaging.types.length) missingInputs.push('marketContext.packaging.types');
+    if (packaging.present === true && !packaging.materials.length) missingInputs.push('marketContext.packaging.materials');
+    if (packaging.present === true && packaging.reusable === null) missingInputs.push('marketContext.packaging.reusable');
+    if (packaging.present === true && packaging.supplierIdentified === null) {
+      missingInputs.push('marketContext.packaging.supplierIdentified');
+    }
+    if (packaging.present === true && packaging.customerIdentified === null) {
+      missingInputs.push('marketContext.packaging.customerIdentified');
+    }
+    if (packaging.present === true && packaging.directDistanceSaleToEuEndUser === null) {
+      missingInputs.push('marketContext.packaging.directDistanceSaleToEuEndUser');
+    }
+    if (packaging.present === true && packaging.producerRoleAssessed === null) {
+      missingInputs.push('marketContext.packaging.producerRoleAssessed');
+    }
   }
 
   const matches = [];
@@ -233,6 +278,60 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
       }
     ));
 
+    const packaging = normalized.marketContext.packaging;
+    const ppwrDateReady = Boolean(normalized.assessmentDate)
+      && normalized.assessmentDate >= packagingDataset.appliesFrom;
+    const ppwrScopeReady = packaging.present === true
+      && normalized.marketContext.placedOnEuMarket === true
+      && ppwrDateReady;
+    matches.push(result(
+      'EU_PPWR_PACKAGING_SCOPE', ppwrScopeReady ? 'requirements_identified' : 'specialist_review_required',
+      ppwrScopeReady
+        ? `Packaging is recorded for goods placed on the EU market on or after ${packagingDataset.appliesFrom}; PPWR packaging controls must be assessed.`
+        : `Packaging presence, EU market-placement or the ${packagingDataset.appliesFrom} application date is not established; no PPWR non-applicability conclusion is made.`,
+      {
+        sourceId: 'EU-2025-40', matchedProductCodes: productCodes,
+        requiredEvidenceTypes: ['packaging_inventory', 'packaging_material_and_format_specification', 'packaging_scope_memo'],
+        matchPrecision: 'lane_plus_operator_context'
+      }
+    ));
+
+    if (packaging.present === true) {
+      const traceabilityReady = packaging.supplierIdentified === true
+        && packaging.customerIdentified === true;
+      const retentionYears = packaging.reusable === true
+        ? packagingDataset.traceabilityRetentionYears.reusable
+        : packagingDataset.traceabilityRetentionYears.singleUse;
+      matches.push(result(
+        'EU_PPWR_SUPPLY_CHAIN_TRACEABILITY',
+        ppwrDateReady && traceabilityReady ? 'requirements_identified' : 'specialist_review_required',
+        ppwrDateReady && traceabilityReady
+          ? `Supplier and customer identities are recorded; retain the applicable supply-chain identity record for ${retentionYears} years and verify the evidence with a specialist.`
+          : 'Supplier/customer identity or effective-date facts are incomplete for PPWR supply-chain traceability routing.',
+        {
+          sourceId: 'EU-2025-40', matchedProductCodes: productCodes,
+          requiredEvidenceTypes: ['packaging_supplier_identity', 'packaging_customer_identity', 'identity_record_retention_policy'],
+          matchPrecision: 'lane_plus_packaging_context'
+        }
+      ));
+
+      matches.push(result(
+        'EU_PPWR_PRODUCER_ROLE_AND_EPR', 'specialist_review_required',
+        packaging.directDistanceSaleToEuEndUser === true
+          ? 'A direct distance sale to an EU end user is recorded. Determine the producer, Member State, authorised-representative and EPR duties; this ruleset does not calculate registrations, fees or reporting.'
+          : 'Producer and EPR duties depend on the economic operator, first market availability, sales route and Member State; specialist determination is required.',
+        {
+          sourceId: 'EU-2025-40', matchedProductCodes: productCodes,
+          requiredEvidenceTypes: [
+            'economic_operator_role_map', 'member_state_producer_role_assessment',
+            'epr_registration_or_authorised_representative_assessment'
+          ],
+          matchPrecision: packaging.producerRoleAssessed === true
+            ? 'operator_assessment_recorded' : 'lane_plus_operator_context'
+        }
+      ));
+    }
+
     if (normalized.materials.some((material) => material.animalOrigin === true)) {
       matches.push(result(
         'EU_TEXTILE_ANIMAL_ORIGIN_DISCLOSURE', 'specialist_review_required',
@@ -262,6 +361,12 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
     : matches.some((item) => item.decision === 'requirements_identified')
       ? 'requirements_identified' : 'not_applicable';
   const sources = sourceManifest();
+  const datasets = [{
+    id: packagingDataset.datasetId,
+    version: packagingDataset.version,
+    coverageStatus: packagingDataset.coverageStatus,
+    sha256: sha256(packagingDataset)
+  }];
   const sourceManifestSha256 = sha256(sources);
   const inputSha256 = sha256(normalized);
   const body = {
@@ -270,6 +375,7 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
     rulesetId: RULESET.id,
     rulesetVersion: RULESET.version,
     rulesetCoverage: RULESET.coverageStatus,
+    datasets,
     sourceManifestSha256,
     assessmentDate: normalized.assessmentDate,
     status,
@@ -290,6 +396,7 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
 
 module.exports = {
   RULESET,
+  packagingDataset,
   buildInputSnapshot,
   evaluateComplianceApplicability,
   sha256

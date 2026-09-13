@@ -18,7 +18,7 @@ const { PublicEnvironmentalClaimService } = require('../src/services/publicEnvir
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pcf-corporate-ghg-epr-pilot-v14',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pcf-corporate-ghg-epr-pilot-v15',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -827,6 +827,11 @@ async function run() {
       assessmentDate: '2026-09-13', productCategory: 'apparel', intendedUse: 'everyday wear',
       consumerGroup: 'adults', importerRole: 'EU importer', salesChannels: ['retail', 'online'],
       consumerProduct: true, placedOnEuMarket: true, textileFibrePercent: 100,
+      packagingContext: {
+        present: true, types: ['sales', 'ecommerce'], materials: ['paper', 'plastic'], reusable: false,
+        supplierIdentified: true, customerIdentified: true, directDistanceSaleToEuEndUser: true,
+        producerRoleAssessed: false
+      },
       materialFacts: [{
         reference: `TRIM-${runId}`, description: 'Synthetic animal-origin trim', hsCode: '4205',
         originCountry: 'IN', percentageByWeight: 1, animalOrigin: true, substancesScreened: false
@@ -843,6 +848,14 @@ async function run() {
   assert.ok(applicability.result.matches.some((item) =>
     item.code === 'EU_REACH_SUBSTANCE_SCREEN' && item.decision === 'specialist_review_required'
   ));
+  assert.ok(applicability.result.matches.some((item) =>
+    item.code === 'EU_PPWR_PACKAGING_SCOPE' && item.decision === 'requirements_identified'
+  ));
+  assert.ok(applicability.result.matches.some((item) =>
+    item.code === 'EU_PPWR_PRODUCER_ROLE_AND_EPR' && item.decision === 'specialist_review_required'
+  ));
+  assert.equal(applicability.result.datasets[0].id, 'weavecarbon.eu-ppwr-applicability');
+  assert.match(applicability.result.datasets[0].sha256, /^[a-f0-9]{64}$/);
   assert.equal(await service.listComplianceApplicabilityEvaluations(ids.otherCompanyId, ids.shipmentId), null);
   check('r20_source_versioned_applicability_is_explainable_and_tenant_isolated');
 

@@ -1,0 +1,42 @@
+{
+  "datasetId": "weavecarbon.eu-ppwr-applicability",
+  "version": "EU-PPWR-2026.09.1",
+  "coverageStatus": "limited",
+  "appliesFrom": "2026-08-12",
+  "traceabilityArticle": "22",
+  "traceabilityRetentionYears": {
+    "singleUse": 5,
+    "reusable": 10
+  },
+  "supportedPackagingTypes": [
+    "sales",
+    "grouped",
+    "transport",
+    "ecommerce"
+  ],
+  "sources": [
+    {
+      "id": "EU-2025-40",
+      "title": "Regulation (EU) 2025/40 — packaging and packaging waste",
+      "url": "https://eur-lex.europa.eu/eli/reg/2025/40/oj",
+      "version": "original-2025-01-22"
+    },
+    {
+      "id": "EC-C-2026-3702",
+      "title": "Commission Notice C(2026) 3702 — PPWR application guidance",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=intcom%3AC%282026%293702",
+      "version": "published-2026-06-10"
+    }
+  ],
+  "declaredCoverage": [
+    "packaging scope routing",
+    "supply-chain identity retention routing",
+    "producer and EPR specialist routing"
+  ],
+  "excludedConclusions": [
+    "packaging conformity",
+    "recycled-content calculations",
+    "labelling deadlines",
+    "Member-State registration, fees or reporting"
+  ]
+}

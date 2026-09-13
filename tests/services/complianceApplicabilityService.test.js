@@ -18,7 +18,12 @@ const snapshot = {
 const input = {
   assessmentDate: '2026-09-13', productCategory: 'apparel', intendedUse: 'wearing',
   consumerGroup: 'adult', importerRole: 'importer', salesChannels: ['retail'],
-  consumerProduct: true, placedOnEuMarket: true, textileFibrePercent: 100
+  consumerProduct: true, placedOnEuMarket: true, textileFibrePercent: 100,
+  packagingContext: {
+    present: true, types: ['sales'], materials: ['paper'], reusable: false,
+    supplierIdentified: true, customerIdentified: true, directDistanceSaleToEuEndUser: false,
+    producerRoleAssessed: false
+  }
 };
 
 describe('R20 compliance applicability persistence controls', () => {
