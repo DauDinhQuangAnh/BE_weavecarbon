@@ -28,7 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
-| Active R08 implementation branch in both repositories | `feat/r08-textile-fibre-label` (local, stacked on R18 while R04/R05 PRs remain open) |
+| Active R10 implementation branch in both repositories | `feat/r10-gpsr-technical-file` (local, stacked on R08 while R04/R05 PRs remain open) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -55,6 +55,8 @@ This tracker separates four facts that must never be conflated:
 | Frontend R18 claim-register-workspace commit | `f931785d17617fb950e71ae5af8f9e7132ac13ff` |
 | Backend R08 textile-fibre-label commit | `01047f01a565611cc71dfb418ad35371b3deb322` |
 | Frontend R08 textile-label-workspace commit | `3554a9b04b72c6f76c335ac6cc2ef46668fec839` |
+| Backend R10 GPSR technical-file commit | `e6b754b5841cad4de37c7a42f4434b526151939d` |
+| Frontend R10 GPSR safety-workspace commit | `1b8a6ed70f8d05c84574583e2ddac1a68a19ce27` |
 | R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
@@ -86,10 +88,11 @@ git -C weavecarbon switch main
 
 R06 is preserved locally at `feat/r06-ics2-filing-handoff`; R07 is stacked on it at
 `feat/r07-evfta-origin-handoff`; R20 is stacked on R07 at `feat/r20-applicability-core`; R18 is stacked on R20 at
-`feat/r18-environmental-claim-register`; R08 is stacked on R18 at `feat/r08-textile-fibre-label`. All contain R05, which
+`feat/r18-environmental-claim-register`; R08 is stacked on R18 at `feat/r08-textile-fibre-label`; R10 is stacked on R08 at
+`feat/r10-gpsr-technical-file`. All contain R05, which
 contains R04. Preserve that dependency order until the existing R04/R05 pull requests merge, and do not merge or deploy
-R06/R07/R20/R18/R08 as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06, R20 onto
-R07, R18 onto R20 and R08 onto R18; verify migrations and recorded commits stay ordered.
+R06/R07/R20/R18/R08/R10 as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06, R20
+onto R07, R18 onto R20, R08 onto R18 and R10 onto R08; verify migrations and recorded commits stay ordered.
 
 Then give the next AI this instruction:
 
@@ -153,6 +156,11 @@ Known overall checks at the latest feature commits:
   lint gates passed. A fresh guarded PostgreSQL 18 pilot passed all 29 cumulative R01-R07/R20/R18 checks.
 - Frontend R18 local gate: 48/48 files and 204/204 tests passed; final TypeScript/lint checks and the 62-route production
   build passed. Lint retained the same 20 pre-existing warnings and no error.
+- Backend R08 local gate: 119/119 suites and 731/731 tests passed; frontend R08 gate: 50/50 files and 208/208 tests plus
+  the 62-route production build. The fresh PostgreSQL pilot passed all 31 cumulative checks.
+- Backend R10 local gate: 122/122 suites and 744/744 tests passed plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend R10 gate: 52/52 files and 212/212 tests plus TypeScript/contract/network/policy checks and the 62-route
+  production build. The fresh PostgreSQL 18.1 pilot passed all 34 cumulative checks.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
@@ -173,9 +181,9 @@ Known overall checks at the latest feature commits:
 | 5 | EU import declaration/SAD/EUCDM | Importer/declarant responsibility | `READY_TO_PILOT` | Versioned internal EUCDM-referenced JSON/XLSX declarant handoff, TARIC decisions, R01/R02/R03 reconciliation, review, evidence-backed external events and a passing local isolated-PostgreSQL gate; no direct submission | Obtain exact Member-State/declarant schema, run exact-head CI/staging, then complete a named real-shipment specialist pilot |
 | 6 | ENS/ICS2 support dataset | Goods entering EU | `PARTIAL` | Controlled JSON/XLSX filer handoff with mode-specific Annex B dataset selection, master/house/goods/package reconciliation, named review, evidence-backed lifecycle and a passing local isolated-PostgreSQL gate; no STI submission | Run exact-head CI/staging, then obtain and validate an exact filer/ITSP schema and complete required conformance testing |
 | 7 | EVFTA EUR.1/origin declaration support | Only when claiming preference | `PARTIAL` | Versioned BOM/rule/evidence handoff, controlled JSON/XLSX, specialist review and a passing local isolated-PostgreSQL gate; never proof of origin | Run exact-head CI/staging; validate exact rules with a specialist and real BOM; supplier-declaration lifecycle and legally performed proof route remain |
-| 8 | EU textile fibre label | Textile products | `PARTIAL` | Generic material composition exists | Controlled Annex-I fibres, components, locale and label artifact |
+| 8 | EU textile fibre label | Textile products | `PARTIAL` | Immutable Annex-I fibre/component specifications, animal-origin/language/placement controls, evidence and named review | Official-language packs, exceptional-product rules and real physical/online artwork pilot |
 | 9 | EU footwear material label | Footwear products | `NOT_STARTED` | No three-part/80% model | Component model, 80% rule, pictogram/text and locale output |
-| 10 | GPSR technical file and traceability | Consumer products | `PARTIAL` | Some product identity/passport/evidence fields | Risk file, EU operator, warnings, tests and corrective-action records |
+| 10 | GPSR technical file and traceability | Consumer products | `PARTIAL` | Immutable technical-file revisions, product/batch identity, operators, risk/test/warning/Article 19 controls, named review and post-market ledger | Real product/operator validation, destination-language review and externally performed incident/corrective-action/recall pilot |
 | 11 | REACH/SVHC dossier | Conditional by substance/material/threshold | `PARTIAL` | Generic evidence/document records | Substance-level model, list version, thresholds, lab and safe-use output |
 | 12 | Product Carbon Footprint/ISO 14067 support | Buyer/tender/claim dependent | `INTERNAL_ONLY` | Server-authoritative partial PCF PDF/XLSX | Goal/scope, functional unit, DQ, allocation, uncertainty and assurance gate |
 | 13 | Corporate/facility GHG report | Buyer/ESG/assurance dependent | `INTERNAL_ONLY` | Electricity/fuel worksheet | Organisational boundary, full sources/gases, base year and exclusions |
@@ -408,7 +416,25 @@ and a footwear specialist approves physical/online samples.
 intended use/misuse/hazards/vulnerable users; standards/tests; warnings/instructions/languages; supply-chain traceability;
 complaints/incidents/corrective action/recall; retention/version.
 
-**Current:** only partial identity, passport and evidence primitives.
+**Implemented:** migration 033 and limited ruleset `weavecarbon.eu-gpsr-technical-file`
+`R10-GPSR-2026.05.29-1` add immutable shipment technical-file revisions, append-only named product-safety reviews and an
+immutable post-market ledger. The validator covers consumer-product/EU/date scope, harmonisation-law overlap,
+brand/model/type/batch/serial identity, representative product/packaging evidence, manufacturer/importer/EU responsible-
+person contacts, intended use and foreseeable misuse, vulnerable groups, hazard scenarios, initial/residual 1–5 risk,
+mitigation evidence, standards/tests, destination warnings, Article 19 online-offer fields, series-production controls,
+complaint channel, monitoring plan and ten-year retention. Every revision binds normalized input, result, sources and
+locked evidence by SHA-256. Only the newest passing revision can receive a `product_safety_reviewer` approval for
+internal release. Serious/death incidents are flagged for external Safety Business Gateway assessment; WeaveCarbon only
+records a Gateway notification when a genuine external reference and locked receipt evidence are supplied. Post-market
+summaries reject consumer personal data. The UI exposes these controls without claiming certification or authority filing.
+
+**Remaining:** R10 remains `PARTIAL`. The current ruleset is a conservative EU-level control, not a complete product-
+specific legal or standards determination. A qualified product-safety reviewer and the manufacturer/importer/responsible
+person must validate a real product, all applicable harmonisation/sector rules and standards, destination-language safety
+content, physical/packaging/online presentation and supply-chain traceability. Real complaint handling, serious-incident
+assessment, Safety Business Gateway notification, consumer notice, corrective action and recall must be performed by the
+responsible actors outside WeaveCarbon and then recorded with authentic evidence. No real product was approved, filed,
+notified, recalled, deployed or represented as safe.
 
 **Definition of Done:** complete product-specific technical file, EU operator validation, translated safety content,
 test-report links and post-market workflow; tenanted access and retention tests pass.
@@ -656,8 +682,9 @@ specialist reviewer approves high-risk classifications. Never claim the list is 
    isolated staging/CI. Keep R04 waiting for an exact broker schema instead of expanding a guessed mapping.
 3. **Extend the shared product-compliance primitives** introduced through R07/R20/R08 for substances, maintained locale
    packs and market/effective-date rules so R09-R11 do not create competing source-of-truth models.
-4. **Complete obligations already applicable to baseline consumer goods:** R10 GPSR next for CN 61/62; select R09 footwear
-   label when a CN 64 product is in scope, then complete R11 REACH/SVHC. Close R08's real-language/artwork pilot in parallel.
+4. **Complete obligations already applicable to baseline consumer goods:** the limited R10 GPSR workflow now exists for
+   CN 61/62; implement R11 REACH/SVHC next. Select R09 footwear label when a CN 64 product is in scope. Close R08/R10 real-
+   language, artwork, product-safety and responsible-operator pilots in parallel.
 5. **Complete R07 origin only when preferential treatment is claimed**, including BOM/rules/evidence before generating
    EUR.1 or origin-declaration drafts.
 6. **Raise carbon maturity:** R12 PCF, R13 corporate/facility GHG and authentic R14 assurance. Implement R15 from the 2025
@@ -1408,3 +1435,28 @@ Backend carbon trace core:
   `9fd302e7e4e20225aee430fb3ac30344a1c2b93d44ab1d7775223e251cc67ed6`.
 - R08 remains `PARTIAL` pending complete destination-language packs, special-product/derogation rules, representative
   physical and online artwork review, and a qualified real-product pilot. Nothing was pushed, merged or deployed.
+
+### 2026-09-13 — R10 GPSR technical-file and post-market controls
+
+- Backend commit `e6b754b5841cad4de37c7a42f4434b526151939d` and frontend commit
+  `1b8a6ed70f8d05c84574583e2ddac1a68a19ce27` add migration 033, a source-versioned GPSR validator, immutable technical-
+  file revisions, checksum-bound named review, an immutable post-market ledger, OpenAPI contracts and the shipment R10
+  workspace. The frontend contract snapshot/generated types match the backend artifact.
+- The primary source is the 29 May 2026 consolidated Regulation (EU) 2023/988, applicable since 13 December 2024, with
+  Commission business guidance `C/2025/6233` and Safety Business Gateway guidance `C/2025/6238`. Coverage is explicitly
+  limited: automation is neither a safety certification, legal advice nor evidence of an authority notification.
+- Approval is restricted to the newest passing revision, a named `product_safety_reviewer` and current locked evidence
+  bytes. Serious/death incidents expose a Gateway follow-up flag. A Gateway notification event requires an external
+  reference plus locked receipt evidence; internal state cannot manufacture a filing claim. Consumer personal data is
+  prohibited from the ledger.
+- Local gates pass: backend 122/122 suites and 744/744 tests plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend 52/52 files and 212/212 tests, TypeScript/contract/network/policy checks and a production build of all 62 routes.
+  The 20 frontend lint warnings pre-date R10 and there are no lint errors.
+- A fresh PostgreSQL 18.1 database (`weavecarbon_r10_final`) loaded the base schema and migrations 001–033. The guarded
+  cumulative pilot passed 34/34 checks with `productionDataTouched=false`; retained artifact
+  `artifacts/gpsr-technical-file-pilot/result.json` has SHA-256
+  `042c9fbad34216a5035834121874594ca3b5d9ad443cdd0f3d6e5eb3cf7a2b87`.
+- R10 remains `PARTIAL` until qualified reviewers and responsible economic operators validate real products, applicable
+  standards/sector law, destination-language presentation and authentic post-market actions. R11 REACH/SVHC is the next
+  implementation phase for the baseline CN 61/62 lane; R09 remains conditional on a CN 64 footwear product. Nothing was
+  pushed, merged or deployed.
