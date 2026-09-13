@@ -15,7 +15,7 @@ const { createExportShipmentService } = require('../src/services/exportShipmentS
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-pilot-v7',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-pilot-v8',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -25,7 +25,8 @@ const result = {
   customsEvents: [],
   euImportEvents: [],
   ics2Events: [],
-  environmentalClaims: []
+  environmentalClaims: [],
+  textileFibreLabels: []
 };
 
 function check(name, details = {}) {
@@ -41,7 +42,7 @@ async function writeResult() {
   for (const name of [
     'carrier-document-pilot', 'vn-customs-handoff-pilot', 'eu-import-handoff-pilot',
     'ics2-handoff-pilot', 'origin-handoff-pilot', 'compliance-applicability-pilot',
-    'environmental-claim-pilot'
+    'environmental-claim-pilot', 'textile-fibre-label-pilot'
   ]) {
     const directory = path.resolve(__dirname, '..', 'artifacts', name);
     await fs.promises.mkdir(directory, { recursive: true });
@@ -920,6 +921,88 @@ async function run() {
     resultSha256: controlledClaim.resultSha256
   });
   check('r18_claim_revision_is_tenant_isolated_hash_bound_evidence_backed_and_immutable');
+
+  const incompleteTextileLabel = await service.createTextileFibreLabelSpecification(
+    ids.companyId, ids.shipmentId, ids.userId, {
+      specificationReference: `LABEL-BLOCKED-${runId}`, assessmentDate: '2026-09-13',
+      productReference: `R03-SKU-${runId}`, productCategory: 'woven shirt', specialProductCategory: 'standard',
+      textileFibrePercent: 100, marketCodes: ['DE'],
+      components: [{ componentReference: 'shell', componentName: 'Shell', weightPercent: 100,
+        mainLining: false, fibres: [{ fibreCode: 'marketing-bamboo', percentage: 100 }] }],
+      animalOriginPresence: 'present',
+      languageLabels: [{ marketCode: 'DE', languageCode: 'de-DE', labelText: 'Marketing fibre 100%',
+        animalOriginStatementIncluded: false, operatorApproved: true }],
+      economicOperator: { role: 'importer', name: 'Synthetic Importer GmbH', address: 'Berlin' },
+      placement: { method: 'sewn', durable: true, easilyLegible: true, visible: true,
+        accessible: true, securelyAttached: true, onlineBeforePurchase: false },
+      evidenceDocumentIds: [originEvidence.evidenceId], notes: 'Synthetic blocked R08 fixture.'
+    }
+  );
+  assert.equal(incompleteTextileLabel.automatedStatus, 'needs_information');
+  assert.ok(incompleteTextileLabel.result.findings.some((item) => item.code === 'ANNEX_I_FIBRE_NAME_INVALID'));
+  assert.ok(incompleteTextileLabel.result.findings.some((item) => item.code === 'ANIMAL_ORIGIN_STATEMENT_REQUIRED'));
+  const incompleteApproval = await service.reviewTextileFibreLabelSpecification(
+    ids.companyId, ids.shipmentId, incompleteTextileLabel.id, ids.userId, {
+      reviewerRole: 'textile_label_reviewer', decision: 'approved_for_internal_artwork',
+      notes: 'Synthetic incomplete artwork approval must fail.'
+    }
+  );
+  assert.equal(incompleteApproval.code, 'TEXTILE_LABEL_NOT_READY');
+  check('r08_invalid_fibre_animal_origin_and_online_artwork_are_blocked');
+
+  const controlledTextileLabel = await service.createTextileFibreLabelSpecification(
+    ids.companyId, ids.shipmentId, ids.userId, {
+      specificationReference: `LABEL-SHIRT-${runId}`, assessmentDate: '2026-09-13',
+      productReference: `R03-SKU-${runId}`, productCategory: 'woven shirt', specialProductCategory: 'standard',
+      textileFibrePercent: 100, marketCodes: ['DE'],
+      components: [
+        { componentReference: 'shell', componentName: 'Shell', weightPercent: 80, mainLining: false,
+          fibres: [{ fibreCode: '5', percentage: 80 }, { fibreCode: '35', percentage: 20 }] },
+        { componentReference: 'main-lining', componentName: 'Main lining', weightPercent: 20, mainLining: true,
+          fibres: [{ fibreCode: '35', percentage: 100 }] }
+      ],
+      animalOriginPresence: 'absent',
+      languageLabels: [{ marketCode: 'DE', languageCode: 'de-DE',
+        labelText: 'Oberstoff: 80% Baumwolle, 20% Polyester; Hauptfutter: 100% Polyester',
+        animalOriginStatementIncluded: false, operatorApproved: true }],
+      economicOperator: { role: 'importer', name: 'Synthetic Importer GmbH', address: 'Berlin' },
+      placement: { method: 'sewn', durable: true, easilyLegible: true, visible: true,
+        accessible: true, securelyAttached: true, onlineBeforePurchase: true },
+      evidenceDocumentIds: [originEvidence.evidenceId], notes: 'Synthetic R08 control pilot; not market artwork.'
+    }
+  );
+  assert.equal(controlledTextileLabel.automatedStatus, 'ready_for_label_review');
+  assert.match(controlledTextileLabel.result.englishPreview, /80% cotton, 20% polyester/);
+  const wrongTextileRole = await service.reviewTextileFibreLabelSpecification(
+    ids.companyId, ids.shipmentId, controlledTextileLabel.id, ids.userId, {
+      reviewerRole: 'compliance_specialist', decision: 'approved_for_internal_artwork', notes: 'Wrong role test.'
+    }
+  );
+  assert.equal(wrongTextileRole.code, 'TEXTILE_LABEL_REVIEW_ROLE_INVALID');
+  const textileReview = await service.reviewTextileFibreLabelSpecification(
+    ids.companyId, ids.shipmentId, controlledTextileLabel.id, ids.userId, {
+      reviewerRole: 'textile_label_reviewer', decision: 'approved_for_internal_artwork',
+      notes: 'Synthetic component, language, placement and evidence review for internal artwork only.'
+    }
+  );
+  assert.equal(textileReview.inputSha256, controlledTextileLabel.inputSha256);
+  assert.equal(textileReview.resultSha256, controlledTextileLabel.resultSha256);
+  const textileRegister = await service.listTextileFibreLabelSpecifications(ids.companyId, ids.shipmentId);
+  const reopenedTextileLabel = textileRegister.find((item) => item.id === controlledTextileLabel.id);
+  assert.equal(reopenedTextileLabel.artworkStatus, 'approved_for_internal_artwork');
+  assert.equal(await service.listTextileFibreLabelSpecifications(ids.otherCompanyId, ids.shipmentId), null);
+  await assert.rejects(
+    pool.query('UPDATE textile_fibre_label_specifications SET automated_status=$1 WHERE id=$2', [
+      'needs_information', controlledTextileLabel.id
+    ]),
+    /append-only and immutable/i
+  );
+  result.textileFibreLabels.push({
+    id: controlledTextileLabel.id, specificationReference: controlledTextileLabel.specificationReference,
+    revision: controlledTextileLabel.revision, artworkStatus: reopenedTextileLabel.artworkStatus,
+    inputSha256: controlledTextileLabel.inputSha256, resultSha256: controlledTextileLabel.resultSha256
+  });
+  check('r08_label_revision_is_tenant_isolated_hash_bound_evidence_backed_and_immutable');
 
   const firstReadiness = await service.getReadiness(ids.companyId, ids.shipmentId);
   assert.equal(firstReadiness.documents.find((item) => item.type === 'carbon_annex').status, 'ready');

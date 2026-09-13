@@ -667,6 +667,86 @@ const REQUEST_BODY_OVERRIDES = {
     },
     additionalProperties: false
   },
+  'POST /export/shipments/{shipmentId}/textile-fibre-labels': {
+    type: 'object',
+    required: [
+      'specificationReference', 'assessmentDate', 'productReference', 'productCategory',
+      'specialProductCategory', 'textileFibrePercent', 'marketCodes', 'components',
+      'animalOriginPresence', 'languageLabels', 'economicOperator', 'placement', 'evidenceDocumentIds'
+    ],
+    properties: {
+      specificationReference: { type: 'string', minLength: 1, maxLength: 120 },
+      assessmentDate: { type: 'string', format: 'date' },
+      productReference: { type: 'string', minLength: 1, maxLength: 500 },
+      productCategory: { type: 'string', minLength: 1, maxLength: 500 },
+      specialProductCategory: { type: 'string', enum: ['standard', 'annex_iv', 'annex_v', 'annex_vi', 'unknown'] },
+      textileFibrePercent: { type: 'number', minimum: 0, maximum: 100 },
+      marketCodes: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string', pattern: '^[A-Za-z]{2}$' } },
+      components: {
+        type: 'array', minItems: 1, maxItems: 100,
+        items: {
+          type: 'object', required: ['componentReference', 'componentName', 'weightPercent', 'mainLining', 'fibres'],
+          properties: {
+            componentReference: { type: 'string', minLength: 1, maxLength: 200 },
+            componentName: { type: 'string', minLength: 1, maxLength: 500 },
+            weightPercent: { type: 'number', minimum: 0, maximum: 100 },
+            mainLining: { type: 'boolean' },
+            fibres: {
+              type: 'array', maxItems: 50,
+              items: {
+                type: 'object', required: ['fibreCode', 'percentage'],
+                properties: {
+                  fibreCode: { type: 'string', minLength: 1, maxLength: 100 },
+                  percentage: { type: 'number', minimum: 0, exclusiveMinimum: true, maximum: 100 }
+                }, additionalProperties: false
+              }
+            }
+          }, additionalProperties: false
+        }
+      },
+      animalOriginPresence: { type: 'string', enum: ['present', 'absent', 'unknown'] },
+      languageLabels: {
+        type: 'array', minItems: 1, maxItems: 100,
+        items: {
+          type: 'object', required: ['marketCode', 'languageCode', 'labelText', 'animalOriginStatementIncluded', 'operatorApproved'],
+          properties: {
+            marketCode: { type: 'string', pattern: '^[A-Za-z]{2}$' },
+            languageCode: { type: 'string', minLength: 2, maxLength: 35 },
+            labelText: { type: 'string', minLength: 1, maxLength: 10000 },
+            animalOriginStatementIncluded: { type: 'boolean' },
+            operatorApproved: { type: 'boolean' }
+          }, additionalProperties: false
+        }
+      },
+      economicOperator: {
+        type: 'object', required: ['role', 'name', 'address'],
+        properties: {
+          role: { type: 'string', minLength: 1, maxLength: 100 },
+          name: { type: 'string', minLength: 1, maxLength: 500 },
+          address: { type: 'string', minLength: 1, maxLength: 2000 }
+        }, additionalProperties: false
+      },
+      placement: {
+        type: 'object',
+        required: ['method', 'durable', 'easilyLegible', 'visible', 'accessible', 'securelyAttached', 'onlineBeforePurchase'],
+        properties: {
+          method: { type: 'string', minLength: 1, maxLength: 100 }, durable: { type: 'boolean' },
+          easilyLegible: { type: 'boolean' }, visible: { type: 'boolean' }, accessible: { type: 'boolean' },
+          securelyAttached: { type: 'boolean' }, onlineBeforePurchase: { type: 'boolean' }
+        }, additionalProperties: false
+      },
+      evidenceDocumentIds: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
+      notes: { type: 'string', maxLength: 5000 }
+    }, additionalProperties: false
+  },
+  'POST /export/shipments/{shipmentId}/textile-fibre-labels/{specificationId}/reviews': {
+    type: 'object', required: ['reviewerRole', 'decision', 'notes'],
+    properties: {
+      reviewerRole: { type: 'string', enum: ['textile_label_reviewer'] },
+      decision: { type: 'string', enum: ['approved_for_internal_artwork', 'needs_information', 'rejected'] },
+      notes: { type: 'string', minLength: 1, maxLength: 5000 }
+    }, additionalProperties: false
+  },
   'POST /export/shipments/{shipmentId}/environmental-claims': {
     type: 'object',
     required: [

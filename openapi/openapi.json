@@ -10909,6 +10909,456 @@
         ]
       }
     },
+    "/export/shipments/{shipmentId}/textile-fibre-labels": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdTextileFibreLabels",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/textile-fibre-labels",
+        "tags": [
+          "Export"
+        ]
+      },
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdTextileFibreLabels",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "animalOriginPresence": {
+                    "enum": [
+                      "present",
+                      "absent",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  "assessmentDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "components": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "componentName": {
+                          "maxLength": 500,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "componentReference": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "fibres": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "fibreCode": {
+                                "maxLength": 100,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "percentage": {
+                                "exclusiveMinimum": true,
+                                "maximum": 100,
+                                "minimum": 0,
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "fibreCode",
+                              "percentage"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 50,
+                          "type": "array"
+                        },
+                        "mainLining": {
+                          "type": "boolean"
+                        },
+                        "weightPercent": {
+                          "maximum": 100,
+                          "minimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "componentReference",
+                        "componentName",
+                        "weightPercent",
+                        "mainLining",
+                        "fibres"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "economicOperator": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "address": {
+                        "maxLength": 2000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "name": {
+                        "maxLength": 500,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "role": {
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "role",
+                      "name",
+                      "address"
+                    ],
+                    "type": "object"
+                  },
+                  "evidenceDocumentIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "languageLabels": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "animalOriginStatementIncluded": {
+                          "type": "boolean"
+                        },
+                        "labelText": {
+                          "maxLength": 10000,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "languageCode": {
+                          "maxLength": 35,
+                          "minLength": 2,
+                          "type": "string"
+                        },
+                        "marketCode": {
+                          "pattern": "^[A-Za-z]{2}$",
+                          "type": "string"
+                        },
+                        "operatorApproved": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "marketCode",
+                        "languageCode",
+                        "labelText",
+                        "animalOriginStatementIncluded",
+                        "operatorApproved"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "marketCodes": {
+                    "items": {
+                      "pattern": "^[A-Za-z]{2}$",
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "placement": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "accessible": {
+                        "type": "boolean"
+                      },
+                      "durable": {
+                        "type": "boolean"
+                      },
+                      "easilyLegible": {
+                        "type": "boolean"
+                      },
+                      "method": {
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "onlineBeforePurchase": {
+                        "type": "boolean"
+                      },
+                      "securelyAttached": {
+                        "type": "boolean"
+                      },
+                      "visible": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "method",
+                      "durable",
+                      "easilyLegible",
+                      "visible",
+                      "accessible",
+                      "securelyAttached",
+                      "onlineBeforePurchase"
+                    ],
+                    "type": "object"
+                  },
+                  "productCategory": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "productReference": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "specialProductCategory": {
+                    "enum": [
+                      "standard",
+                      "annex_iv",
+                      "annex_v",
+                      "annex_vi",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  "specificationReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "textileFibrePercent": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "specificationReference",
+                  "assessmentDate",
+                  "productReference",
+                  "productCategory",
+                  "specialProductCategory",
+                  "textileFibrePercent",
+                  "marketCodes",
+                  "components",
+                  "animalOriginPresence",
+                  "languageLabels",
+                  "economicOperator",
+                  "placement",
+                  "evidenceDocumentIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/textile-fibre-labels",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/textile-fibre-labels/{specificationId}/reviews": {
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdTextileFibreLabelsBySpecificationIdReviews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "specificationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approved_for_internal_artwork",
+                      "needs_information",
+                      "rejected"
+                    ],
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reviewerRole": {
+                    "enum": [
+                      "textile_label_reviewer"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reviewerRole",
+                  "decision",
+                  "notes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/textile-fibre-labels/{specificationId}/reviews",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
     "/export/shipments/{shipmentId}/vn-customs/events": {
       "get": {
         "operationId": "getExportShipmentsByShipmentIdVnCustomsEvents",

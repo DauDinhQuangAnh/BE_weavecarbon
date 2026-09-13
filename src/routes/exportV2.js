@@ -453,6 +453,52 @@ router.post('/shipments/:shipmentId/compliance/applicability-evaluations/:evalua
   return sendSuccess(res, { status: 201, data: result });
 }));
 
+router.get('/shipments/:shipmentId/textile-fibre-labels', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.listTextileFibreLabelSpecifications(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/textile-fibre-labels', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.createTextileFibreLabelSpecification(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (!result) return sendNotFound(res);
+  if (result.blocked) return sendError(res, { status: 400, code: result.code, message: result.message });
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.textile_fibre_label_specification', newValue: result.id,
+    reason: 'export.textile_fibre_label.create',
+    notes: `${result.specificationReference}:revision-${result.revision}:${result.automatedStatus}`
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
+router.post('/shipments/:shipmentId/textile-fibre-labels/:specificationId/reviews', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.reviewTextileFibreLabelSpecification(
+    companyId, req.params.shipmentId, req.params.specificationId, req.userId, req.body || {}
+  );
+  if (!result) {
+    return sendError(res, {
+      status: 404, code: 'TEXTILE_FIBRE_LABEL_SPECIFICATION_NOT_FOUND',
+      message: 'Textile fibre label specification not found for this shipment.'
+    });
+  }
+  if (result.blocked) return sendError(res, { status: 409, code: result.code, message: result.message });
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.textile_fibre_label_review', newValue: result.id,
+    reason: 'export.textile_fibre_label.review', notes: result.decision
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
 router.get('/shipments/:shipmentId/environmental-claims', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;

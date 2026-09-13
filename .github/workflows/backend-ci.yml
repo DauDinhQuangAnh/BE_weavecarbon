@@ -322,6 +322,14 @@ jobs:
           path: artifacts/environmental-claim-pilot/result.json
           if-no-files-found: error
           retention-days: 14
+      - name: Upload textile fibre label pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: textile-fibre-label-pilot-${{ github.run_id }}
+          path: artifacts/textile-fibre-label-pilot/result.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Audit representative hot-query plans
         run: npm run db:audit-hot-queries

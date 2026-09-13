@@ -57,6 +57,12 @@ const {
   evaluateEnvironmentalClaim,
   derivePublicationStatus
 } = require('./environmentalClaimControls');
+const {
+  RULESET: TEXTILE_FIBRE_LABEL_RULESET,
+  normalizeTextileLabelInput,
+  evaluateTextileFibreLabel,
+  deriveArtworkStatus
+} = require('./textileFibreLabelControls');
 
 const RULESET_VERSION = 'VN-EU-TEXTILE-2026.09.4';
 const CARRIER_RULESET_VERSION = 'R03-CARRIER-RECONCILIATION-2026.09.1';
@@ -805,6 +811,157 @@ class ExportShipmentService {
         evaluation.input_sha256, evaluation.result_sha256, JSON.stringify(evidenceSnapshot)]
     );
     return this._formatComplianceApplicabilityReview(inserted.rows[0]);
+  }
+
+  async createTextileFibreLabelSpecification(companyId, shipmentId, userId, input = {}) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const normalized = normalizeTextileLabelInput(input);
+    if (!normalized.specificationReference || !normalized.assessmentDate) {
+      return {
+        blocked: true, code: 'TEXTILE_LABEL_IDENTITY_REQUIRED',
+        message: 'specificationReference and a valid assessmentDate are required.'
+      };
+    }
+    const evidenceIds = normalized.evidenceDocumentIds;
+    if (evidenceIds.length > 50 || evidenceIds.some((id) => !UUID_REGEX.test(id))) {
+      return {
+        blocked: true, code: 'TEXTILE_LABEL_EVIDENCE_INVALID',
+        message: 'Textile-label evidence must contain at most 50 valid evidence UUIDs.'
+      };
+    }
+    const evidenceSnapshot = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId, evidenceIds);
+    if (evidenceSnapshot.length !== evidenceIds.length) {
+      return {
+        blocked: true, code: 'TEXTILE_LABEL_EVIDENCE_INVALID',
+        message: 'Every evidence id must belong to this company and shipment.'
+      };
+    }
+    const evaluation = evaluateTextileFibreLabel(input, evidenceSnapshot);
+    const client = await this.database.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`${companyId}:${shipmentId}:textile-label:${evaluation.input.specificationReference}`]);
+      const versionResult = await client.query(
+        `SELECT COALESCE(MAX(revision), 0) + 1 AS revision
+         FROM textile_fibre_label_specifications
+         WHERE company_id=$1 AND shipment_id=$2 AND specification_reference=$3`,
+        [companyId, shipmentId, evaluation.input.specificationReference]
+      );
+      const revision = Number(versionResult.rows[0].revision);
+      const inserted = await client.query(
+        `INSERT INTO textile_fibre_label_specifications (
+           company_id, shipment_id, specification_reference, revision, ruleset_id, ruleset_version,
+           ruleset_coverage, source_manifest_sha256, assessment_date, input_snapshot, input_sha256,
+           result_snapshot, result_sha256, evidence_snapshot, automated_status, created_by
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12::jsonb,$13,$14::jsonb,$15,$16)
+         RETURNING *`,
+        [companyId, shipmentId, evaluation.input.specificationReference, revision,
+          evaluation.result.rulesetId, evaluation.result.rulesetVersion,
+          evaluation.result.rulesetCoverage, evaluation.result.sourceManifestSha256,
+          evaluation.input.assessmentDate, JSON.stringify(evaluation.input), evaluation.inputSha256,
+          JSON.stringify(evaluation.result), evaluation.result.resultSha256,
+          JSON.stringify(evidenceSnapshot), evaluation.result.automatedStatus, userId]
+      );
+      await client.query('COMMIT');
+      return this._formatTextileFibreLabelSpecification(inserted.rows[0], evidenceSnapshot);
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally { client.release(); }
+  }
+
+  async listTextileFibreLabelSpecifications(companyId, shipmentId) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const result = await this.database.query(
+      `SELECT specification.*, to_jsonb(latest_review) AS latest_review,
+              MAX(specification.revision) OVER (PARTITION BY specification.specification_reference) AS latest_revision
+       FROM textile_fibre_label_specifications specification
+       LEFT JOIN LATERAL (
+         SELECT review.* FROM textile_fibre_label_reviews review
+         WHERE review.specification_id=specification.id AND review.company_id=specification.company_id
+           AND review.shipment_id=specification.shipment_id
+         ORDER BY review.created_at DESC, review.id DESC LIMIT 1
+       ) latest_review ON true
+       WHERE specification.company_id=$1 AND specification.shipment_id=$2
+       ORDER BY specification.created_at DESC, specification.id DESC`,
+      [companyId, shipmentId]
+    );
+    const evidenceIds = [...new Set(result.rows.flatMap((row) =>
+      array(row.evidence_snapshot).map((item) => item.id).filter(Boolean)
+    ))];
+    const currentEvidence = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId, evidenceIds);
+    return result.rows.map((row) => this._formatTextileFibreLabelSpecification(row, currentEvidence));
+  }
+
+  async reviewTextileFibreLabelSpecification(companyId, shipmentId, specificationId, userId, input = {}) {
+    if (!UUID_REGEX.test(String(specificationId || ''))) return null;
+    const reviewerRole = text(input.reviewerRole || input.reviewer_role);
+    const decision = text(input.decision).toLowerCase();
+    const notes = text(input.notes);
+    if (reviewerRole !== 'textile_label_reviewer') {
+      return {
+        blocked: true, code: 'TEXTILE_LABEL_REVIEW_ROLE_INVALID',
+        message: 'Textile labels require the textile_label_reviewer role.'
+      };
+    }
+    if (!new Set(['approved_for_internal_artwork', 'needs_information', 'rejected']).has(decision)) {
+      return {
+        blocked: true, code: 'TEXTILE_LABEL_REVIEW_DECISION_INVALID',
+        message: 'Unsupported textile-label review decision.'
+      };
+    }
+    if (!notes) return { blocked: true, code: 'TEXTILE_LABEL_REVIEW_NOTES_REQUIRED', message: 'Review notes are required.' };
+    const specificationResult = await this.database.query(
+      `SELECT specification.*,
+              (SELECT MAX(candidate.revision) FROM textile_fibre_label_specifications candidate
+               WHERE candidate.company_id=specification.company_id AND candidate.shipment_id=specification.shipment_id
+                 AND candidate.specification_reference=specification.specification_reference) AS latest_revision
+       FROM textile_fibre_label_specifications specification
+       WHERE specification.id=$1 AND specification.company_id=$2 AND specification.shipment_id=$3`,
+      [specificationId, companyId, shipmentId]
+    );
+    const specification = specificationResult.rows[0];
+    if (!specification) return null;
+    if (decision === 'approved_for_internal_artwork') {
+      if (Number(specification.latest_revision) !== Number(specification.revision)) {
+        return { blocked: true, code: 'TEXTILE_LABEL_REVISION_STALE', message: 'Only the latest specification revision can be approved.' };
+      }
+      if (specification.automated_status !== 'ready_for_label_review') {
+        return { blocked: true, code: 'TEXTILE_LABEL_NOT_READY', message: 'Only a specification that passed automated controls can be approved.' };
+      }
+    }
+    const evidenceSnapshot = await this._loadEnvironmentalClaimEvidence(
+      companyId, shipmentId, array(specification.evidence_snapshot).map((item) => item.id)
+    );
+    if (decision === 'approved_for_internal_artwork') {
+      const derived = deriveArtworkStatus({
+        result_snapshot: specification.result_snapshot,
+        latest_review: { decision, evidence_snapshot: specification.evidence_snapshot }
+      }, evidenceSnapshot);
+      if (derived.status !== 'approved_for_internal_artwork' || evidenceSnapshot.length === 0) {
+        return {
+          blocked: true, code: 'TEXTILE_LABEL_EVIDENCE_STALE',
+          message: 'Approval requires every bound evidence document to remain locked and checksum-identical.'
+        };
+      }
+    }
+    const reviewerResult = await this.database.query('SELECT id, email, full_name FROM users WHERE id=$1', [userId]);
+    const reviewer = reviewerResult.rows[0];
+    if (!reviewer || !text(reviewer.full_name || reviewer.email)) {
+      return { blocked: true, code: 'TEXTILE_LABEL_REVIEWER_NOT_FOUND', message: 'Named reviewer identity is required.' };
+    }
+    const inserted = await this.database.query(
+      `INSERT INTO textile_fibre_label_reviews (
+         company_id, shipment_id, specification_id, reviewer_id, reviewer_name_snapshot,
+         reviewer_email_snapshot, reviewer_role, decision, notes, input_sha256,
+         result_sha256, evidence_snapshot
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) RETURNING *`,
+      [companyId, shipmentId, specificationId, userId, reviewer.full_name || reviewer.email,
+        reviewer.email || null, reviewerRole, decision, notes,
+        specification.input_sha256, specification.result_sha256, JSON.stringify(evidenceSnapshot)]
+    );
+    return this._formatTextileFibreLabelReview(inserted.rows[0]);
   }
 
   async createEnvironmentalClaimDossier(companyId, shipmentId, userId, input = {}) {
@@ -3665,6 +3822,35 @@ class ExportShipmentService {
       evidenceSnapshot: row.evidence_snapshot || [], createdAt: row.created_at
     };
   }
+
+  _formatTextileFibreLabelSpecification(row, currentEvidence = []) {
+    if (!row) return null;
+    const latestReview = row.latest_review ? this._formatTextileFibreLabelReview(row.latest_review) : null;
+    const formatted = {
+      id: row.id, shipmentId: row.shipment_id, specificationReference: row.specification_reference,
+      revision: Number(row.revision), rulesetId: row.ruleset_id, rulesetVersion: row.ruleset_version,
+      rulesetCoverage: row.ruleset_coverage, sourceManifestSha256: row.source_manifest_sha256,
+      assessmentDate: dateOnly(row.assessment_date), input: row.input_snapshot,
+      inputSha256: row.input_sha256, result: row.result_snapshot, resultSha256: row.result_sha256,
+      evidenceSnapshot: row.evidence_snapshot || [], automatedStatus: row.automated_status,
+      createdBy: row.created_by, createdAt: row.created_at, latestReview
+    };
+    const derived = Number(row.latest_revision || row.revision) > Number(row.revision)
+      ? { status: 'superseded', staleEvidenceIds: [] }
+      : deriveArtworkStatus(formatted, currentEvidence);
+    return { ...formatted, artworkStatus: derived.status, staleEvidenceIds: derived.staleEvidenceIds };
+  }
+
+  _formatTextileFibreLabelReview(row) {
+    if (!row) return null;
+    return {
+      id: row.id, specificationId: row.specification_id, reviewerId: row.reviewer_id,
+      reviewerName: row.reviewer_name_snapshot, reviewerEmail: row.reviewer_email_snapshot || null,
+      reviewerRole: row.reviewer_role, decision: row.decision, notes: row.notes,
+      inputSha256: row.input_sha256, resultSha256: row.result_sha256,
+      evidenceSnapshot: row.evidence_snapshot || [], createdAt: row.created_at
+    };
+  }
 }
 
 const service = new ExportShipmentService();
@@ -3678,6 +3864,7 @@ module.exports.documentSourceSnapshotSha256 = documentSourceSnapshotSha256;
 module.exports.carrierReconciliationSha256 = carrierReconciliationSha256;
 module.exports.CARRIER_RULESET_VERSION = CARRIER_RULESET_VERSION;
 module.exports.ENVIRONMENTAL_CLAIM_RULESET = ENVIRONMENTAL_CLAIM_RULESET;
+module.exports.TEXTILE_FIBRE_LABEL_RULESET = TEXTILE_FIBRE_LABEL_RULESET;
 module.exports.VN_CUSTOMS_HANDOFF_SCHEMA = VN_CUSTOMS_HANDOFF_SCHEMA;
 module.exports.EU_IMPORT_HANDOFF_SCHEMA = EU_IMPORT_HANDOFF_SCHEMA;
 module.exports.ICS2_HANDOFF_SCHEMA = ICS2_HANDOFF_SCHEMA;
