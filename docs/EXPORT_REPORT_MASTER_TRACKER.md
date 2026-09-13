@@ -28,7 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
-| Active R10 implementation branch in both repositories | `feat/r10-gpsr-technical-file` (local, stacked on R08 while R04/R05 PRs remain open) |
+| Active R11 implementation branch in both repositories | `feat/r11-reach-svhc-dossier` (local, stacked on R10 while R04/R05 PRs remain open) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -57,6 +57,8 @@ This tracker separates four facts that must never be conflated:
 | Frontend R08 textile-label-workspace commit | `3554a9b04b72c6f76c335ac6cc2ef46668fec839` |
 | Backend R10 GPSR technical-file commit | `e6b754b5841cad4de37c7a42f4434b526151939d` |
 | Frontend R10 GPSR safety-workspace commit | `1b8a6ed70f8d05c84574583e2ddac1a68a19ce27` |
+| Backend R11 REACH/SVHC dossier commit | `edd355217e7587df41939410c04c08c24def00f8` |
+| Frontend R11 REACH/SVHC workspace commit | `613c8f92b48b8f8e0d35abc682dda785dbe8f8f5` |
 | R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
@@ -89,10 +91,10 @@ git -C weavecarbon switch main
 R06 is preserved locally at `feat/r06-ics2-filing-handoff`; R07 is stacked on it at
 `feat/r07-evfta-origin-handoff`; R20 is stacked on R07 at `feat/r20-applicability-core`; R18 is stacked on R20 at
 `feat/r18-environmental-claim-register`; R08 is stacked on R18 at `feat/r08-textile-fibre-label`; R10 is stacked on R08 at
-`feat/r10-gpsr-technical-file`. All contain R05, which
+`feat/r10-gpsr-technical-file`; R11 is stacked on R10 at `feat/r11-reach-svhc-dossier`. All contain R05, which
 contains R04. Preserve that dependency order until the existing R04/R05 pull requests merge, and do not merge or deploy
-R06/R07/R20/R18/R08/R10 as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06, R20
-onto R07, R18 onto R20, R08 onto R18 and R10 onto R08; verify migrations and recorded commits stay ordered.
+R06/R07/R20/R18/R08/R10/R11 as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06,
+R20 onto R07, R18 onto R20, R08 onto R18, R10 onto R08 and R11 onto R10; verify migrations and recorded commits stay ordered.
 
 Then give the next AI this instruction:
 
@@ -161,6 +163,9 @@ Known overall checks at the latest feature commits:
 - Backend R10 local gate: 122/122 suites and 744/744 tests passed plus syntax/OpenAPI/generated-artifact/architecture/lint;
   frontend R10 gate: 52/52 files and 212/212 tests plus TypeScript/contract/network/policy checks and the 62-route
   production build. The fresh PostgreSQL 18.1 pilot passed all 34 cumulative checks.
+- Backend R11 local gate: 125/125 suites and 757/757 tests passed plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend R11 gate: 54/54 files and 216/216 tests plus TypeScript/contract/network/policy checks and the 62-route
+  production build. The isolated PostgreSQL 18.1 pilot passed all 37 cumulative checks.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
@@ -184,7 +189,7 @@ Known overall checks at the latest feature commits:
 | 8 | EU textile fibre label | Textile products | `PARTIAL` | Immutable Annex-I fibre/component specifications, animal-origin/language/placement controls, evidence and named review | Official-language packs, exceptional-product rules and real physical/online artwork pilot |
 | 9 | EU footwear material label | Footwear products | `NOT_STARTED` | No three-part/80% model | Component model, 80% rule, pictogram/text and locale output |
 | 10 | GPSR technical file and traceability | Consumer products | `PARTIAL` | Immutable technical-file revisions, product/batch identity, operators, risk/test/warning/Article 19 controls, named review and post-market ledger | Real product/operator validation, destination-language review and externally performed incident/corrective-action/recall pilot |
-| 11 | REACH/SVHC dossier | Conditional by substance/material/threshold | `PARTIAL` | Generic evidence/document records | Substance-level model, list version, thresholds, lab and safe-use output |
+| 11 | REACH/SVHC dossier | Conditional by substance/material/threshold | `PARTIAL` | Immutable article/component/material/substance dossiers, source snapshots, Article 33/7 and SCIP assessments, Annex XVII results, named review and obligation-event evidence | Import/maintain the complete current Candidate List and applicable restrictions; generate approved safe-use/response artifacts and complete a qualified real-product pilot |
 | 12 | Product Carbon Footprint/ISO 14067 support | Buyer/tender/claim dependent | `INTERNAL_ONLY` | Server-authoritative partial PCF PDF/XLSX | Goal/scope, functional unit, DQ, allocation, uncertainty and assurance gate |
 | 13 | Corporate/facility GHG report | Buyer/ESG/assurance dependent | `INTERNAL_ONLY` | Electricity/fuel worksheet | Organisational boundary, full sources/gases, base year and exclusions |
 | 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Immutable ZIP, exact term/factor evidence coverage, append-only review/internal issue, and isolated PostgreSQL pilot gate | Run human real-evidence staging review; signed share link and external assurance |
@@ -445,7 +450,22 @@ test-report links and post-market workflow; tenanted access and retention tests 
 Annex XVII version/date; supplier declaration/SDS/lab method/result/detection limit; safe-use information; decision,
 reviewer and consumer/authority response workflow.
 
-**Current:** generic evidence records and static requirement labels only.
+**Implemented:** migration 034 and limited ruleset `weavecarbon.eu-reach-svhc-article-dossier`
+`R11-REACH-2026.06.22-1` add immutable shipment dossier revisions, named `chemical_compliance_reviewer` decisions and an
+append-only obligation-event ledger. The model records article/component and homogeneous-material identity, named
+substances and CAS/EC/ECHA identifiers, Candidate List status/version, article-level concentration, annual tonnage,
+supplier/SDS/laboratory evidence and detection limits, destination safe-use information, Article 7 exemptions and
+entry-specific Annex XVII scope/limit/unit/comparator/method/results. Article 33 supply-chain communication, the 45-day
+consumer response, Article 7(2) notification assessment and SCIP assessment remain separate obligations. Outbound claims
+require the newest internally approved dossier, unchanged locked evidence, an external reference and locked receipt.
+The UI and API do not claim a generic REACH certificate or perform an ECHA/SCIP submission.
+
+**Remaining:** R11 remains `PARTIAL`. The ruleset pins a current source snapshot but does not import and maintain the full
+Candidate List substance dataset or every applicable Annex XVII entry/product exemption. A qualified chemical specialist
+and responsible EU actor must validate real supplier declarations/SDS/laboratory evidence, article-level concentration,
+tonnage, restriction scope, safe-use translations and any Article 7/SCIP action. Approved downloadable Article 33 safe-use
+and consumer-response artifacts are still required. No real communication, notification, certificate or authority filing
+was generated, submitted or represented as completed.
 
 **Definition of Done:** versioned chemical rules evaluate thresholds and restrictions, source evidence is immutable, and
 safe-use/response documents are generated and approved. Do not market a generic “REACH certificate”.
@@ -682,9 +702,9 @@ specialist reviewer approves high-risk classifications. Never claim the list is 
    isolated staging/CI. Keep R04 waiting for an exact broker schema instead of expanding a guessed mapping.
 3. **Extend the shared product-compliance primitives** introduced through R07/R20/R08 for substances, maintained locale
    packs and market/effective-date rules so R09-R11 do not create competing source-of-truth models.
-4. **Complete obligations already applicable to baseline consumer goods:** the limited R10 GPSR workflow now exists for
-   CN 61/62; implement R11 REACH/SVHC next. Select R09 footwear label when a CN 64 product is in scope. Close R08/R10 real-
-   language, artwork, product-safety and responsible-operator pilots in parallel.
+4. **Complete obligations already applicable to baseline consumer goods:** limited R10 GPSR and R11 REACH/SVHC workflows
+   now exist for CN 61/62. Select R09 footwear label when a CN 64 product is in scope. Close R08/R10/R11 real-language,
+   artwork, product-safety, chemical-specialist and responsible-operator pilots before any external readiness claim.
 5. **Complete R07 origin only when preferential treatment is claimed**, including BOM/rules/evidence before generating
    EUR.1 or origin-declaration drafts.
 6. **Raise carbon maturity:** R12 PCF, R13 corporate/facility GHG and authentic R14 assurance. Implement R15 from the 2025
@@ -1460,3 +1480,28 @@ Backend carbon trace core:
   standards/sector law, destination-language presentation and authentic post-market actions. R11 REACH/SVHC is the next
   implementation phase for the baseline CN 61/62 lane; R09 remains conditional on a CN 64 footwear product. Nothing was
   pushed, merged or deployed.
+
+### 2026-09-13 — R11 REACH/SVHC article dossier and obligation controls
+
+- Backend commit `edd355217e7587df41939410c04c08c24def00f8` and frontend commit
+  `613c8f92b48b8f8e0d35abc682dda785dbe8f8f5` add migration 034, a source-versioned REACH/SVHC validator, immutable
+  dossier revisions, checksum-bound named chemical review, an immutable obligation ledger, OpenAPI contracts and the
+  shipment R11 workspace. The frontend contract snapshot/generated types match the backend artifact.
+- Primary sources are consolidated Regulation (EC) 1907/2006 dated 22 June 2026 and the ECHA Candidate List snapshot of
+  4 February 2026 with 253 entries, plus ECHA Annex XVII and SCIP guidance. Coverage is explicitly limited and separates
+  Article 33/consumer communication, Article 7 notification assessment, Annex XVII restriction assessment and SCIP.
+- Approval is restricted to the newest passing revision, a named `chemical_compliance_reviewer` and current locked
+  evidence bytes. Every outward communication/notification record also requires an external reference and locked proof;
+  evidence drift after approval blocks the event. Consumer-request records derive a 45-day deadline and reject personal
+  data.
+- Local gates pass: backend 125/125 suites and 757/757 tests plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend 54/54 files and 216/216 tests, TypeScript/contract/network/policy checks and a production build of all 62 routes.
+  The 20 frontend lint warnings pre-date R11 and there are no lint errors.
+- A fresh PostgreSQL 18.1 database (`weavecarbon_r11_final`) loaded the base schema and migrations 001–034. The final
+  guarded cumulative pilot passed 37/37 checks with `productionDataTouched=false`; retained artifact
+  `artifacts/reach-svhc-dossier-pilot/result.json` has SHA-256
+  `f78aa43ea6d7ef63664fb3c278d1c111e00806e91de17117e88b1fa85b65192b`.
+- R11 remains `PARTIAL` pending a maintained complete chemical/restriction dataset, approved generated safe-use/consumer-
+  response artifacts, qualified real-product chemical review and authentic responsible-actor communications or
+  notifications. R12 PCF/ISO 14067 support is the next baseline implementation phase; R09 remains conditional on a CN 64
+  footwear product. Nothing was pushed, merged or deployed.
