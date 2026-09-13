@@ -28,7 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
-| Active R18 public-claim-surface branch in both repositories | `feat/r18-public-claim-surfaces` (local, stacked on R17 while R04/R05 PRs remain open) |
+| Active R18 marketing-claim-containment branch in both repositories | `feat/r18-marketing-claim-containment` (local, stacked on the R18 public-passport increment while R04/R05 PRs remain open) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -67,6 +67,7 @@ This tracker separates four facts that must never be conflated:
 | Frontend R17 EU textile/footwear EPR workspace commit | `31004488a64a3d2cc945bb3230e63d1180675398` |
 | Backend R18 public-passport claim-gate commit | `a14a4a2918f0b4e14d16a0bfb3c21d7db16ed4a9` |
 | Frontend R18 public-passport/QR containment commit | `ae434e52e1331553a4214ad3e5e22b5ae9b1c80f` |
+| Frontend R18 public-marketing containment commit | `4fba20dcac65a42b7f3e33aa2eef4f3f901cca08` |
 | R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
@@ -101,11 +102,12 @@ R06 is preserved locally at `feat/r06-ics2-filing-handoff`; R07 is stacked on it
 `feat/r18-environmental-claim-register`; R08 is stacked on R18 at `feat/r08-textile-fibre-label`; R10 is stacked on R08 at
 `feat/r10-gpsr-technical-file`; R11 is stacked on R10 at `feat/r11-reach-svhc-dossier`; R12 is stacked on R11 at
 `feat/r12-pcf-study-dossier`; R13 is stacked on R12 at `feat/r13-corporate-ghg-inventory`; R17 is stacked on R13 at
-`feat/r17-eu-epr-core`; the R18 public-surface increment is stacked on R17 at `feat/r18-public-claim-surfaces`. All contain R05, which
+`feat/r17-eu-epr-core`; the R18 public-surface increment is stacked on R17 at `feat/r18-public-claim-surfaces`, followed by
+`feat/r18-marketing-claim-containment`. All contain R05, which
 contains R04. Preserve that dependency order until the existing R04/R05 pull requests merge, and do not merge or deploy
 R06/R07/R20/R18/R08/R10/R11/R12/R13/R17 as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06,
 R20 onto R07, R18 onto R20, R08 onto R18, R10 onto R08, R11 onto R10, R12 onto R11, R13 onto R12, R17 onto R13 and
-the R18 public-surface increment onto R17;
+the R18 public-surface increment onto R17 and the marketing-containment increment onto the public-surface increment;
 verify migrations and recorded commits stay ordered.
 
 Then give the next AI this instruction:
@@ -191,6 +193,9 @@ Known overall checks at the latest feature commits:
   syntax/OpenAPI/generated-artifact/architecture/lint; frontend gate: 60/60 files and 233/233 tests, full checks and a
   production build of all 62 routes. The isolated PostgreSQL pilot passed all 47 cumulative checks. Frontend lint retains
   the same 20 pre-existing warnings and no error.
+- Frontend R18 marketing-containment gate: 61/61 files and 237/237 tests passed plus lint, TypeScript, contract, network,
+  policy and release-evidence checks and the 62-route production build. Backend code/schema were unchanged from the
+  preceding 136/796 public-surface gate. Frontend lint retains the same 20 pre-existing warnings and no error.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
@@ -221,7 +226,7 @@ Known overall checks at the latest feature commits:
 | 15 | Apparel & Footwear PEF/PEFCR | Voluntary or buyer-specific | `NOT_STARTED` | Climate-only partial PCF is not PEF | Full life cycle, EF datasets/impact categories and validation statement |
 | 16 | ESPR Digital Product Passport | When product delegated act applies | `BLOCKED_BY_LAW` | Guarded prototype only | Registry/service/access/version architecture; wait for final product schema |
 | 17 | Textile/footwear EPR reporting | EU framework plus Member-State implementation | `PARTIAL` | Immutable EU-core producer/PRO/register dossier, Annex-IVc scope, shipment quantity/weight reconciliation, named review and typed authority/PRO evidence events | Add reviewed Member-State adapters and complete real registration/reporting/fee pilots before the 17 April 2028 scheme deadline |
-| 18 | Green-claim substantiation dossier | Whenever environmental claims are made | `PARTIAL` | Immutable shipment claim revisions bind exact copy/channel/market/language/scope/period/method/hash/limits/evidence; the public passport and generated QR are fail-closed, with exact approved copy only and raw carbon/self-declared labels suppressed | Inventory and bind any future label/marketplace/report/advertising surface; validate Member-State implementation, add real legal reviewer separation and complete a protected real-claim pilot |
+| 18 | Green-claim substantiation dossier | Whenever environmental claims are made | `PARTIAL` | Immutable shipment claim revisions bind exact copy/channel/market/language/scope/period/method/hash/limits/evidence; current passport/QR/landing surfaces are contained and public product claims fail closed | Enforce registration for future label/marketplace/report/advertising surfaces; validate Member-State implementation, add real legal reviewer separation and complete a protected real-claim pilot |
 | 19 | CBAM declaration/operator report | Annex-I CBAM goods only | `NOT_APPLICABLE_BASELINE` | Scope screening; old styled templates remain demo-only | Maintain versioned CN list; implement official fields only for Annex-I goods |
 | 20 | Specialist permits/certificates | Conditional by exact product and lane | `PARTIAL` | Limited, source-versioned EU triage uses shipment HS/TARIC, origin/material, market and effective-date facts; immutable explainable evaluations and evidence-backed specialist review | Add exact CN/TARIC/substance/species datasets, expand specialist domains, then complete a named real-shipment specialist pilot and exact-head CI/staging |
 
@@ -719,8 +724,9 @@ Member State's transposition and enforcement interpretation; require the same re
 label, marketplace, report, advertising or other public copy; add segregation of duties and reviewer authority; bind a
 real approved carbon calculation and PCF study rather than relying only on the current authoritative calculation hash;
 add evidence-revocation/expiry notification jobs; and conduct a protected real-claim pilot with legal/compliance review.
-The landing-page service descriptions also require a separate B2B marketing-claims review. No real public environmental
-claim was approved or deployed by this increment.
+Current landing-page B2B service descriptions have been rewritten as scoped software/data capabilities with a prominent
+same-medium boundary; future copy changes still require legal/compliance review. No real public environmental claim was
+approved or deployed by this increment.
 
 **Definition of Done:** every public claim resolves to an approved, current dossier; prohibited/unqualified claims are blocked;
 expired or changed evidence automatically returns the claim to review.
@@ -768,10 +774,10 @@ specialist reviewer approves high-risk classifications. Never claim the list is 
 
 ## 7. Remaining implementation order from 2026-09-13
 
-1. **The R18 production-copy containment, claim register, public-passport resolver/QR containment, minimum R20
+1. **The R18 production-copy containment, claim register, public-passport resolver/QR/landing containment, minimum R20
    applicability core and limited R08 textile-label control now exist locally.** Next, prevent future public label,
-   marketplace, report or advertising surfaces from bypassing the R18 resolver, review landing-page B2B marketing copy,
-   and expand R20's maintained datasets/domain coverage before allowing external compliance claims.
+   marketplace, report or advertising surfaces from bypassing the R18 control boundary and expand R20's maintained
+   datasets/domain coverage before allowing external compliance claims.
 2. **Close the existing real-world gates:** R01/R02 operator and warehouse pilots; R03 authentic carrier pilot; R05/R06
    isolated staging/CI. Keep R04 waiting for an exact broker schema instead of expanding a guessed mapping.
 3. **Extend the shared product-compliance primitives** introduced through R07/R20/R08 for substances, maintained locale
@@ -1681,3 +1687,22 @@ Backend carbon trace core:
 - R18 remains `PARTIAL`: Member-State validation, segregation of reviewer duties, a real approved PCF/evidence lifecycle,
   expiry/revocation notification, landing-page marketing review and enforcement for any future label/marketplace/report/
   advertising surface remain. Nothing was pushed, merged, deployed or changed on the production host.
+
+### 2026-09-13 — R18 public B2B marketing-claim containment
+
+- Frontend commit `4fba20dcac65a42b7f3e33aa2eef4f3f901cca08` audits the currently rendered landing-page hero, feature, workflow,
+  platform-statistics, CTA and footer copy against R18's public-communication boundary. Backend code/schema remain
+  unchanged from commit `a14a4a2918f0b4e14d16a0bfb3c21d7db16ed4a9`.
+- Unsupported or overbroad claims such as EU-standard dossiers, ISO 14067 calculation, buyer-audit readiness, trusted-by
+  assertions, independent verification, submission-ready CBAM/DPP outputs, market compliance/readiness and quantified
+  reduction recommendations were removed or rewritten as scoped internal data/proxy/workflow capabilities.
+- The hero now displays a same-medium boundary stating that WeaveCarbon is internal data-preparation software and that
+  proxy results are not ISO certification, legal advice, a compliance conclusion, a submitted filing or independent
+  verification. AI extraction and scenario results explicitly require human review before use.
+- New `landingClaimSafety.test.ts` prevents the removed claims from returning and requires the boundary plus scoped proxy,
+  market and output language. Frontend full gates pass: 61/61 files and 237/237 tests, lint/TypeScript/contract/network/
+  policy/release-evidence checks, and the 62-route production build. The same 20 pre-existing lint warnings remain; there
+  are no errors.
+- R18 remains `PARTIAL`, not legally complete. Member-State validation, reviewer segregation, authentic calculation/PCF/
+  evidence lifecycle, expiry/revocation notification and mandatory controls for any future public label/marketplace/
+  report/advertising surface remain. Nothing was pushed, merged, deployed or changed on the production host.
