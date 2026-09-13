@@ -1,0 +1,75 @@
+{
+  "datasetId": "weavecarbon.eu-reach-textile-leather-restriction-routing",
+  "version": "EU-REACH-TEXTILE-LEATHER-2026.09.14.1",
+  "coverageStatus": "limited",
+  "checkedAt": "2026-09-14",
+  "reachConsolidatedAt": "2026-05-11",
+  "sources": [
+    {
+      "id": "EU-REACH-2026-05-11",
+      "title": "Regulation (EC) No 1907/2006 — consolidated REACH",
+      "url": "https://eur-lex.europa.eu/eli/reg/2006/1907/2026-05-11/eng",
+      "version": "consolidated-2026-05-11"
+    },
+    {
+      "id": "ECHA-ANNEX-XVII-ENTRY-43",
+      "title": "ECHA Annex XVII restriction conditions — Entry 43 azocolourants and azodyes",
+      "url": "https://euon.echa.europa.eu/documents/10162/bd51087b-9917-b018-69ac-d7594315e2a9",
+      "version": "checked-2026-09-14"
+    },
+    {
+      "id": "ECHA-ANNEX-XVII-ENTRY-46A",
+      "title": "ECHA Annex XVII restriction conditions — Entry 46a nonylphenol ethoxylates",
+      "url": "https://echa.europa.eu/documents/10162/7dcd73a4-e80d-47c5-ba0a-a5f4361bf4b1",
+      "version": "checked-2026-09-14"
+    },
+    {
+      "id": "ECHA-ANNEX-XVII-ENTRY-47",
+      "title": "ECHA Annex XVII restriction conditions — Entry 47 chromium VI compounds",
+      "url": "https://echa.europa.eu/documents/10162/1f775bd4-b1b0-4847-937f-d6a37e2c0c98",
+      "version": "checked-2026-09-14"
+    }
+  ],
+  "restrictions": [
+    {
+      "ruleId": "ANNEX_XVII_43_AZO_AMINES",
+      "entryNumber": "43",
+      "substanceGroup": "Azodyes releasing Appendix 8 aromatic amines",
+      "threshold": { "operator": "above", "value": 30, "unit": "mg/kg" },
+      "sourceId": "ECHA-ANNEX-XVII-ENTRY-43",
+      "targetCategories": ["apparel", "footwear"],
+      "scope": "Textile or leather articles, or dyed parts, that may come into direct and prolonged contact with human skin or the oral cavity.",
+      "requiredScopeFacts": ["directAndProlongedSkinOrOralContact"],
+      "requiredEvidenceTypes": ["azo_amine_test_report", "dyed_part_material_map", "appendix_8_substance_screen"]
+    },
+    {
+      "ruleId": "ANNEX_XVII_46A_NPE",
+      "entryNumber": "46a",
+      "substanceGroup": "Nonylphenol ethoxylates (NPE)",
+      "threshold": { "operator": "greater_than_or_equal", "value": 0.01, "unit": "percent_by_weight" },
+      "sourceId": "ECHA-ANNEX-XVII-ENTRY-46A",
+      "targetCategories": ["apparel"],
+      "scope": "Textile articles or textile parts with at least 80% textile fibres that can reasonably be expected to be washed in water during their normal lifecycle.",
+      "requiredScopeFacts": ["washableInWaterDuringNormalLifecycle", "secondHand", "exclusivelyRecycledWithoutNpe"],
+      "requiredEvidenceTypes": ["npe_test_report", "washability_assessment", "textile_fibre_composition", "recycled_textile_process_declaration"]
+    },
+    {
+      "ruleId": "ANNEX_XVII_47_CHROMIUM_VI_LEATHER",
+      "entryNumber": "47",
+      "substanceGroup": "Chromium VI compounds in leather",
+      "threshold": { "operator": "greater_than_or_equal", "value": 3, "unit": "mg/kg_dry_leather" },
+      "sourceId": "ECHA-ANNEX-XVII-ENTRY-47",
+      "targetCategories": ["footwear"],
+      "scope": "Leather articles or leather parts coming into contact with skin.",
+      "requiredScopeFacts": ["leatherPartsContactSkin", "secondHand"],
+      "requiredEvidenceTypes": ["chromium_vi_leather_test_report", "leather_part_map", "skin_contact_assessment"]
+    }
+  ],
+  "explicitExclusions": [
+    "Complete REACH Annex XVII coverage or a complete substance list",
+    "Candidate List, Article 33, Article 7 or SCIP decisions",
+    "Laboratory-method selection, sampling, uncertainty or conformity decisions",
+    "Automatic acceptance of supplier declarations or laboratory results",
+    "A generic REACH certificate, legal opinion or market-authority decision"
+  ]
+}

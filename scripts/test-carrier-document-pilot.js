@@ -18,7 +18,7 @@ const { PublicEnvironmentalClaimService } = require('../src/services/publicEnvir
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pcf-corporate-ghg-epr-pilot-v15',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pcf-corporate-ghg-epr-pilot-v16',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -827,6 +827,13 @@ async function run() {
       assessmentDate: '2026-09-14', productCategory: 'apparel', intendedUse: 'everyday wear',
       consumerGroup: 'adults', importerRole: 'EU importer', salesChannels: ['retail', 'online'],
       consumerProduct: true, placedOnEuMarket: true, textileFibrePercent: 100,
+      reachContext: {
+        directAndProlongedSkinOrOralContact: true,
+        washableInWaterDuringNormalLifecycle: true,
+        secondHand: false,
+        exclusivelyRecycledWithoutNpe: false,
+        leatherPartsContactSkin: false
+      },
       packagingContext: {
         present: true, types: ['sales', 'ecommerce'], materials: ['paper', 'plastic'], reusable: false,
         supplierIdentified: true, customerIdentified: true, directDistanceSaleToEuEndUser: true,
@@ -858,8 +865,24 @@ async function run() {
   assert.match(applicability.result.datasets[0].sha256, /^[a-f0-9]{64}$/);
   assert.equal(applicability.result.datasets[1].id, 'weavecarbon.eu-cn-taric-product-routing');
   assert.match(applicability.result.datasets[1].sha256, /^[a-f0-9]{64}$/);
+  assert.equal(applicability.result.datasets[2].id, 'weavecarbon.eu-reach-textile-leather-restriction-routing');
+  assert.match(applicability.result.datasets[2].sha256, /^[a-f0-9]{64}$/);
   assert.equal(applicability.result.classifications[0].matchStatus, 'exact_taric_match');
   assert.equal(applicability.result.classifications[0].datasetDescription, 'Hand-printed by the batik method');
+  assert.ok(applicability.result.matches.some((item) =>
+    item.code === 'EU_REACH_ANNEX_XVII_TEXTILE_LEATHER_ROUTING'
+      && item.matchPrecision === 'exact_classification_plus_operator_scope_facts'
+  ));
+  assert.ok(applicability.result.restrictionScreenings.some((item) =>
+    item.ruleId === 'ANNEX_XVII_43_AZO_AMINES'
+      && item.threshold.value === 30
+      && item.scopeStatus === 'screen_required'
+  ));
+  assert.ok(applicability.result.restrictionScreenings.some((item) =>
+    item.ruleId === 'ANNEX_XVII_46A_NPE'
+      && item.threshold.value === 0.01
+      && item.scopeStatus === 'screen_required'
+  ));
   assert.equal(await service.listComplianceApplicabilityEvaluations(ids.otherCompanyId, ids.shipmentId), null);
   check('r20_source_versioned_applicability_is_explainable_and_tenant_isolated');
 

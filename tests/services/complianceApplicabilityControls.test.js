@@ -2,6 +2,7 @@ const {
   RULESET,
   packagingDataset,
   classificationDataset,
+  reachRestrictionDataset,
   buildInputSnapshot,
   evaluateComplianceApplicability
 } = require('../../src/services/complianceApplicabilityControls');
@@ -36,6 +37,13 @@ const context = {
   assessmentDate: '2026-09-14', productCategory: 'apparel', intendedUse: 'everyday wear',
   consumerGroup: 'adults', importerRole: 'EU importer', salesChannels: ['retail', 'online'],
   consumerProduct: true, placedOnEuMarket: true, textileFibrePercent: 85,
+  reachContext: {
+    directAndProlongedSkinOrOralContact: true,
+    washableInWaterDuringNormalLifecycle: true,
+    secondHand: false,
+    exclusivelyRecycledWithoutNpe: false,
+    leatherPartsContactSkin: false
+  },
   packagingContext: {
     present: true, types: ['Sales', 'ecommerce'], materials: ['Paper', 'plastic'], reusable: false,
     supplierIdentified: true, customerIdentified: true, directDistanceSaleToEuEndUser: true,
@@ -82,7 +90,9 @@ describe('R20 compliance applicability controls', () => {
     expect(evaluation.result.disclaimer).toMatch(/not legal advice/i);
     expect(evaluation.inputSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(evaluation.result.resultSha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(RULESET.sources.every((source) => /^https:\/\/(eur-lex|ec)\.europa\.eu\//.test(source.url))).toBe(true);
+    expect(RULESET.sources.every((source) =>
+      /^https:\/\/(eur-lex|ec|echa|euon\.echa)\.europa\.eu\//.test(source.url)
+    )).toBe(true);
   });
 
   test('uses the maintained PPWR dataset without inferring Member-State EPR compliance', () => {
@@ -126,6 +136,7 @@ describe('R20 compliance applicability controls', () => {
       code: 'R20_EU_RULESET_ROUTE', decision: 'not_triggered'
     });
     expect(evaluation.result.matches[0].reason).toMatch(/no global non-applicability conclusion/i);
+    expect(evaluation.result.restrictionScreenings).toEqual([]);
   });
 
   test('routes missing composition facts to specialist review instead of guessing scope', () => {
@@ -174,7 +185,8 @@ describe('R20 compliance applicability controls', () => {
     value.lines[0].hsCode = '64039996';
     value.euImportLineDetails[0].taricCode = '6403999690';
     const evaluation = evaluateComplianceApplicability(value, {
-      ...context, productCategory: 'footwear', textileFibrePercent: null
+      ...context, productCategory: 'footwear', textileFibrePercent: null,
+      reachContext: { ...context.reachContext, leatherPartsContactSkin: true }
     });
     const footwear = evaluation.result.matches.find((item) =>
       item.code === 'EU_FOOTWEAR_MATERIAL_LABEL_SCOPE'
@@ -187,6 +199,104 @@ describe('R20 compliance applicability controls', () => {
     expect(evaluation.result.classifications[0]).toMatchObject({
       category: 'footwear', matchStatus: 'exact_taric_match', datasetDescription: 'Other'
     });
+    expect(evaluation.result.restrictionScreenings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        ruleId: 'ANNEX_XVII_47_CHROMIUM_VI_LEATHER', scopeStatus: 'screen_required',
+        threshold: { operator: 'greater_than_or_equal', value: 3, unit: 'mg/kg_dry_leather' }
+      })
+    ]));
+  });
+
+  test('routes exact textile products to maintained Annex XVII thresholds without a compliance conclusion', () => {
+    const evaluation = evaluateComplianceApplicability(snapshot(), context);
+    const route = evaluation.result.matches.find((item) =>
+      item.code === 'EU_REACH_ANNEX_XVII_TEXTILE_LEATHER_ROUTING'
+    );
+
+    expect(reachRestrictionDataset.restrictions).toHaveLength(3);
+    expect(Object.isFrozen(reachRestrictionDataset)).toBe(true);
+    expect(evaluation.result.datasets[2]).toMatchObject({
+      id: reachRestrictionDataset.datasetId, version: reachRestrictionDataset.version,
+      sha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+    });
+    expect(route).toMatchObject({
+      decision: 'specialist_review_required',
+      matchPrecision: 'exact_classification_plus_operator_scope_facts',
+      sourceId: 'EU-REACH-2026-05-11'
+    });
+    expect(route.reason).toMatch(/screening boundaries, not compliance conclusions/i);
+    expect(evaluation.result.restrictionScreenings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        ruleId: 'ANNEX_XVII_43_AZO_AMINES', scopeStatus: 'screen_required',
+        threshold: { operator: 'above', value: 30, unit: 'mg/kg' }
+      }),
+      expect.objectContaining({
+        ruleId: 'ANNEX_XVII_46A_NPE', scopeStatus: 'screen_required',
+        threshold: { operator: 'greater_than_or_equal', value: 0.01, unit: 'percent_by_weight' }
+      })
+    ]));
+  });
+
+  test('fails closed when a routed restriction lacks operator scope facts', () => {
+    const evaluation = evaluateComplianceApplicability(snapshot(), {
+      ...context, reachContext: undefined
+    });
+    const route = evaluation.result.matches.find((item) =>
+      item.code === 'EU_REACH_ANNEX_XVII_TEXTILE_LEATHER_ROUTING'
+    );
+
+    expect(route.matchPrecision).toBe('exact_classification_scope_facts_missing');
+    expect(evaluation.result.missingInputs).toEqual(expect.arrayContaining([
+      'marketContext.reach.directAndProlongedSkinOrOralContact',
+      'marketContext.reach.washableInWaterDuringNormalLifecycle',
+      'marketContext.reach.secondHand',
+      'marketContext.reach.exclusivelyRecycledWithoutNpe'
+    ]));
+    expect(evaluation.result.restrictionScreenings.every((item) =>
+      item.scopeStatus === 'scope_facts_required'
+    )).toBe(true);
+  });
+
+  test('requires specialist evidence for a claimed Entry 46a exclusion', () => {
+    const evaluation = evaluateComplianceApplicability(snapshot(), {
+      ...context,
+      reachContext: { ...context.reachContext, exclusivelyRecycledWithoutNpe: true }
+    });
+    const npe = evaluation.result.restrictionScreenings.find((item) =>
+      item.ruleId === 'ANNEX_XVII_46A_NPE'
+    );
+
+    expect(npe.scopeStatus).toBe('specialist_exemption_review');
+    expect(npe.reason).toMatch(/requires product-specific evidence/i);
+  });
+
+  test('does not reuse the restriction snapshot for another assessment date', () => {
+    const value = snapshot();
+    value.euImportLineDetails[0].taricConfirmed = false;
+    const evaluation = evaluateComplianceApplicability(value, {
+      ...context, assessmentDate: '2026-09-13'
+    });
+    const route = evaluation.result.matches.find((item) =>
+      item.code === 'EU_REACH_ANNEX_XVII_TEXTILE_LEATHER_ROUTING'
+    );
+
+    expect(route.matchPrecision).toBe('restriction_dataset_date_mismatch');
+    expect(evaluation.result.restrictionScreenings.every((item) =>
+      item.scopeStatus === 'dataset_date_mismatch'
+    )).toBe(true);
+  });
+
+  test('requires textile fibre percentage to scope Entry 46a', () => {
+    const evaluation = evaluateComplianceApplicability(snapshot(), {
+      ...context, textileFibrePercent: null
+    });
+    const npe = evaluation.result.restrictionScreenings.find((item) =>
+      item.ruleId === 'ANNEX_XVII_46A_NPE'
+    );
+
+    expect(npe.scopeStatus).toBe('scope_facts_required');
+    expect(npe.missingScopeFacts).toContain('textileFibrePercent');
+    expect(evaluation.result.missingInputs).toContain('marketContext.textileFibrePercent');
   });
 
   test('does not fall back to CN routing when a confirmed TARIC conflicts with the dataset', () => {
@@ -223,5 +333,6 @@ describe('R20 compliance applicability controls', () => {
     expect(second.inputSha256).toBe(first.inputSha256);
     expect(second.result.resultSha256).toBe(first.result.resultSha256);
     expect(classificationDataset.entries).toHaveLength(3);
+    expect(first.result.datasets).toHaveLength(3);
   });
 });

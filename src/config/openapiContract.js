@@ -632,6 +632,21 @@ const REQUEST_BODY_OVERRIDES = {
       consumerProduct: { type: 'boolean' },
       placedOnEuMarket: { type: 'boolean' },
       textileFibrePercent: { type: 'number', minimum: 0, maximum: 100, nullable: true },
+      reachContext: {
+        type: 'object',
+        required: [
+          'directAndProlongedSkinOrOralContact', 'washableInWaterDuringNormalLifecycle',
+          'secondHand', 'exclusivelyRecycledWithoutNpe', 'leatherPartsContactSkin'
+        ],
+        properties: {
+          directAndProlongedSkinOrOralContact: { type: 'boolean', nullable: true },
+          washableInWaterDuringNormalLifecycle: { type: 'boolean', nullable: true },
+          secondHand: { type: 'boolean', nullable: true },
+          exclusivelyRecycledWithoutNpe: { type: 'boolean', nullable: true },
+          leatherPartsContactSkin: { type: 'boolean', nullable: true }
+        },
+        additionalProperties: false
+      },
       packagingContext: {
         type: 'object',
         required: [

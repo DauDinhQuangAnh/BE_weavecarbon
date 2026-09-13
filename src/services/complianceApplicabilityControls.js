@@ -7,6 +7,7 @@ function deepFreeze(value) {
 
 const packagingDataset = deepFreeze(require('../data/regulatory/euPackagingApplicabilityDataset.json'));
 const classificationDataset = deepFreeze(require('../data/regulatory/euCnTaricProductRoutingDataset.json'));
+const reachRestrictionDataset = deepFreeze(require('../data/regulatory/euReachTextileLeatherRestrictionDataset.json'));
 
 const EU_COUNTRY_CODES = new Set([
   'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR',
@@ -15,7 +16,7 @@ const EU_COUNTRY_CODES = new Set([
 
 const RULESET = Object.freeze({
   id: 'weavecarbon.eu-product-compliance-triage',
-  version: 'R20-EU-APPLICABILITY-2026.09.3',
+  version: 'R20-EU-APPLICABILITY-2026.09.4',
   coverageStatus: 'limited',
   effectiveFrom: '2024-12-13',
   sources: Object.freeze([
@@ -40,11 +41,12 @@ const RULESET = Object.freeze({
     Object.freeze({
       id: 'EC-1907-2006',
       title: 'Regulation (EC) No 1907/2006 — REACH',
-      url: 'https://eur-lex.europa.eu/eli/reg/2006/1907/oj',
-      version: 'current-version-must-be-verified-at-review'
+      url: 'https://eur-lex.europa.eu/eli/reg/2006/1907/2026-05-11/eng',
+      version: 'consolidated-2026-05-11'
     }),
     ...packagingDataset.sources.map((source) => Object.freeze({ ...source })),
-    ...classificationDataset.sources.map((source) => Object.freeze({ ...source }))
+    ...classificationDataset.sources.map((source) => Object.freeze({ ...source })),
+    ...reachRestrictionDataset.sources.map((source) => Object.freeze({ ...source }))
   ])
 });
 
@@ -203,6 +205,24 @@ function buildInputSnapshot(snapshot = {}, input = {}) {
       consumerProduct: boolOrNull(input.consumerProduct ?? input.consumer_product),
       placedOnEuMarket: boolOrNull(input.placedOnEuMarket ?? input.placed_on_eu_market),
       textileFibrePercent: numberOrNull(input.textileFibrePercent ?? input.textile_fibre_percent),
+      reach: (() => {
+        const reach = input.reachContext || input.reach_context || {};
+        return {
+          directAndProlongedSkinOrOralContact: boolOrNull(
+            reach.directAndProlongedSkinOrOralContact ?? reach.direct_and_prolonged_skin_or_oral_contact
+          ),
+          washableInWaterDuringNormalLifecycle: boolOrNull(
+            reach.washableInWaterDuringNormalLifecycle ?? reach.washable_in_water_during_normal_lifecycle
+          ),
+          secondHand: boolOrNull(reach.secondHand ?? reach.second_hand),
+          exclusivelyRecycledWithoutNpe: boolOrNull(
+            reach.exclusivelyRecycledWithoutNpe ?? reach.exclusively_recycled_without_npe
+          ),
+          leatherPartsContactSkin: boolOrNull(
+            reach.leatherPartsContactSkin ?? reach.leather_parts_contact_skin
+          )
+        };
+      })(),
       packaging: (() => {
         const packaging = input.packagingContext || input.packaging_context || {};
         return {
@@ -221,6 +241,77 @@ function buildInputSnapshot(snapshot = {}, input = {}) {
       notes: text(input.notes)
     }
   };
+}
+
+function buildReachRestrictionScreenings(classifications, marketContext, assessmentDate) {
+  const exactClassifications = classifications.filter((item) =>
+    ['exact_cn_match', 'exact_taric_match'].includes(item.matchStatus)
+  );
+  const reach = marketContext.reach;
+
+  return reachRestrictionDataset.restrictions.flatMap((restriction) => {
+    const routed = exactClassifications.filter((item) => restriction.targetCategories.includes(item.category));
+    if (!routed.length) return [];
+
+    const missingScopeFacts = restriction.requiredScopeFacts.filter((field) => reach[field] === null);
+    if (restriction.ruleId === 'ANNEX_XVII_46A_NPE'
+      && (marketContext.textileFibrePercent === null
+        || marketContext.textileFibrePercent < 0
+        || marketContext.textileFibrePercent > 100)) {
+      missingScopeFacts.push('textileFibrePercent');
+    }
+    let scopeStatus = missingScopeFacts.length ? 'scope_facts_required' : 'specialist_scope_review';
+    let reason = missingScopeFacts.length
+      ? `Scope facts are missing for REACH Annex XVII entry ${restriction.entryNumber}.`
+      : `Operator scope facts require specialist review for REACH Annex XVII entry ${restriction.entryNumber}.`;
+
+    if (assessmentDate !== reachRestrictionDataset.checkedAt) {
+      scopeStatus = 'dataset_date_mismatch';
+      reason = `The limited restriction dataset was checked for ${reachRestrictionDataset.checkedAt}; obtain a current Annex XVII source review.`;
+    } else if (restriction.ruleId === 'ANNEX_XVII_43_AZO_AMINES'
+      && reach.directAndProlongedSkinOrOralContact === true) {
+      scopeStatus = 'screen_required';
+      reason = 'Direct and prolonged skin/oral contact is recorded; the Entry 43 threshold screen is required.';
+    }
+    if (assessmentDate === reachRestrictionDataset.checkedAt
+      && restriction.ruleId === 'ANNEX_XVII_46A_NPE' && !missingScopeFacts.length) {
+      const fibreScope = marketContext.textileFibrePercent !== null
+        && marketContext.textileFibrePercent >= 80;
+      if (reach.secondHand === true || reach.exclusivelyRecycledWithoutNpe === true) {
+        scopeStatus = 'specialist_exemption_review';
+        reason = 'An Entry 46a exclusion fact is claimed and requires product-specific evidence and specialist review.';
+      } else if (fibreScope && reach.washableInWaterDuringNormalLifecycle === true) {
+        scopeStatus = 'screen_required';
+        reason = 'At least 80% textile fibre and normal-lifecycle water washing are recorded; the Entry 46a threshold screen is required.';
+      }
+    }
+    if (assessmentDate === reachRestrictionDataset.checkedAt
+      && restriction.ruleId === 'ANNEX_XVII_47_CHROMIUM_VI_LEATHER' && !missingScopeFacts.length) {
+      if (reach.secondHand === true) {
+        scopeStatus = 'specialist_exemption_review';
+        reason = 'A second-hand status is claimed and the dated Entry 47 exclusion requires evidence and specialist review.';
+      } else if (reach.leatherPartsContactSkin === true) {
+        scopeStatus = 'screen_required';
+        reason = 'Leather-part skin contact is recorded; the Entry 47 threshold screen is required.';
+      }
+    }
+
+    return [{
+      ruleId: restriction.ruleId,
+      entryNumber: restriction.entryNumber,
+      substanceGroup: restriction.substanceGroup,
+      threshold: { ...restriction.threshold },
+      scope: restriction.scope,
+      scopeStatus,
+      reason,
+      missingScopeFacts,
+      matchedProductCodes: routed.map((item) => item.declaredTaricCode || item.declaredCnCode),
+      sourceId: restriction.sourceId,
+      datasetId: reachRestrictionDataset.datasetId,
+      datasetVersion: reachRestrictionDataset.version,
+      requiredEvidenceTypes: [...restriction.requiredEvidenceTypes]
+    }];
+  });
 }
 
 function result(codeValue, decision, reason, {
@@ -291,6 +382,15 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
   );
   const textileCodes = textileClassifications.map((item) => item.declaredTaricCode || item.declaredCnCode);
   const footwearCodes = footwearClassifications.map((item) => item.declaredTaricCode || item.declaredCnCode);
+  const restrictionScreenings = normalized.shipment.destinationIsEu
+    ? buildReachRestrictionScreenings(classifications, normalized.marketContext, normalized.assessmentDate)
+    : [];
+  if (restrictionScreenings.length) {
+    restrictionScreenings.flatMap((item) => item.missingScopeFacts).forEach((field) => {
+      missingInputs.push(field === 'textileFibrePercent'
+        ? 'marketContext.textileFibrePercent' : `marketContext.reach.${field}`);
+    });
+  }
 
   if (!normalized.shipment.destinationIsEu) {
     matches.push(result(
@@ -373,6 +473,25 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
         matchPrecision: 'lane_only'
       }
     ));
+
+    if (restrictionScreenings.length) {
+      matches.push(result(
+        'EU_REACH_ANNEX_XVII_TEXTILE_LEATHER_ROUTING', 'specialist_review_required',
+        `${restrictionScreenings.length} limited Annex XVII restriction route(s) were identified from exact product classification and operator scope facts. Complete the R11 chemical dossier; thresholds shown here are screening boundaries, not compliance conclusions.`,
+        {
+          sourceId: 'EU-REACH-2026-05-11',
+          matchedProductCodes: unique(restrictionScreenings.flatMap((item) => item.matchedProductCodes)),
+          requiredEvidenceTypes: unique([
+            'r11_reach_svhc_dossier',
+            ...restrictionScreenings.flatMap((item) => item.requiredEvidenceTypes)
+          ]),
+          matchPrecision: restrictionScreenings.some((item) => item.scopeStatus === 'dataset_date_mismatch')
+            ? 'restriction_dataset_date_mismatch'
+            : restrictionScreenings.some((item) => item.missingScopeFacts.length)
+              ? 'exact_classification_scope_facts_missing' : 'exact_classification_plus_operator_scope_facts'
+        }
+      ));
+    }
 
     const packaging = normalized.marketContext.packaging;
     const ppwrDateReady = Boolean(normalized.assessmentDate)
@@ -457,7 +576,7 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
     : matches.some((item) => item.decision === 'requirements_identified')
       ? 'requirements_identified' : 'not_applicable';
   const sources = sourceManifest();
-  const datasets = [packagingDataset, classificationDataset].map((dataset) => ({
+  const datasets = [packagingDataset, classificationDataset, reachRestrictionDataset].map((dataset) => ({
     id: dataset.datasetId,
     version: dataset.version,
     coverageStatus: dataset.coverageStatus,
@@ -478,6 +597,7 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
     specialistReviewRequired: requiresSpecialist,
     missingInputs: unique(missingInputs),
     classifications,
+    restrictionScreenings,
     matches,
     requiredEvidenceTypes: unique(matches.flatMap((item) => item.requiredEvidenceTypes)),
     sources,
@@ -495,7 +615,9 @@ module.exports = {
   RULESET,
   packagingDataset,
   classificationDataset,
+  reachRestrictionDataset,
   classifyProduct,
+  buildReachRestrictionScreenings,
   buildInputSnapshot,
   evaluateComplianceApplicability,
   sha256

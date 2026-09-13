@@ -10525,6 +10525,39 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "reachContext": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "directAndProlongedSkinOrOralContact": {
+                        "nullable": true,
+                        "type": "boolean"
+                      },
+                      "exclusivelyRecycledWithoutNpe": {
+                        "nullable": true,
+                        "type": "boolean"
+                      },
+                      "leatherPartsContactSkin": {
+                        "nullable": true,
+                        "type": "boolean"
+                      },
+                      "secondHand": {
+                        "nullable": true,
+                        "type": "boolean"
+                      },
+                      "washableInWaterDuringNormalLifecycle": {
+                        "nullable": true,
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "directAndProlongedSkinOrOralContact",
+                      "washableInWaterDuringNormalLifecycle",
+                      "secondHand",
+                      "exclusivelyRecycledWithoutNpe",
+                      "leatherPartsContactSkin"
+                    ],
+                    "type": "object"
+                  },
                   "salesChannels": {
                     "items": {
                       "maxLength": 100,

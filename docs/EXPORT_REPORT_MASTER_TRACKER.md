@@ -29,7 +29,7 @@ This tracker separates four facts that must never be conflated:
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
 | Active R18 marketing-claim-containment branch in both repositories | `feat/r18-marketing-claim-containment` (local, stacked on the R18 public-passport increment while R04/R05 PRs remain open) |
-| Active R20 CN/TARIC routing branch in both repositories | `feat/r20-cn-taric-routing` (local, stacked on the R20 PPWR applicability increment) |
+| Active R20 REACH-threshold routing branch in both repositories | `feat/r20-reach-threshold-routing` (local, stacked on the R20 exact CN/TARIC increment) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -229,7 +229,7 @@ Known overall checks at the latest feature commits:
 | 17 | Textile/footwear EPR reporting | EU framework plus Member-State implementation | `PARTIAL` | Immutable EU-core producer/PRO/register dossier, Annex-IVc scope, shipment quantity/weight reconciliation, named review and typed authority/PRO evidence events | Add reviewed Member-State adapters and complete real registration/reporting/fee pilots before the 17 April 2028 scheme deadline |
 | 18 | Green-claim substantiation dossier | Whenever environmental claims are made | `PARTIAL` | Immutable shipment claim revisions bind exact copy/channel/market/language/scope/period/method/hash/limits/evidence; current passport/QR/landing surfaces are contained and public product claims fail closed | Enforce registration for future label/marketplace/report/advertising surfaces; validate Member-State implementation, add real legal reviewer separation and complete a protected real-claim pilot |
 | 19 | CBAM declaration/operator report | Annex-I CBAM goods only | `NOT_APPLICABLE_BASELINE` | Scope screening; old styled templates remain demo-only | Maintain versioned CN list; implement official fields only for Annex-I goods |
-| 20 | Specialist permits/certificates | Conditional by exact product and lane | `PARTIAL` | Limited, source-versioned EU triage uses shipment HS/TARIC, origin/material, market and effective-date facts; immutable explainable evaluations, limited PPWR routing, a 3-CN/5-TARIC maintained routing slice and evidence-backed specialist review | Expand exact CN/TARIC coverage, add substance/species datasets and specialist domains, then complete a named real-shipment specialist pilot and exact-head CI/staging |
+| 20 | Specialist permits/certificates | Conditional by exact product and lane | `PARTIAL` | Limited, source-versioned EU triage uses shipment HS/TARIC, origin/material, market and effective-date facts; immutable explainable evaluations, limited PPWR routing, a 3-CN/5-TARIC routing slice, three bounded Annex-XVII textile/leather threshold routes and evidence-backed specialist review | Expand exact CN/TARIC and REACH coverage, add a maintained species dataset and specialist domains, then complete a named real-shipment specialist pilot and exact-head CI/staging |
 
 No item in this matrix is currently confirmed `READY_TO_ISSUE` on production.
 
@@ -755,7 +755,7 @@ consumer group, importer role, channel, shipment value and mode. Possible trigge
 children's products, biocidal treatment, chemical controls, packaging/waste, sanctions or safety standards.
 
 **Implemented:** migration 030 and ruleset `weavecarbon.eu-product-compliance-triage`
-`R20-EU-APPLICABILITY-2026.09.3` create immutable, checksum-bound shipment evaluations from confirmed HS/TARIC, origin,
+`R20-EU-APPLICABILITY-2026.09.4` create immutable, checksum-bound shipment evaluations from confirmed HS/TARIC, origin,
 R07 BOM-derived and supplemental material facts, EU market/use/consumer/importer/channel context and assessment date.
 The deliberately limited first coverage identifies textile labelling, footwear labelling, GPSR baseline, REACH specialist
 review and animal-origin disclosure candidates with an explainable reason, match precision, required evidence, source URL
@@ -771,9 +771,16 @@ exact routing slice: CN `61051000`, `62052000` and `64039996`, with five TARIC l
 Vietnam-origin consultation. Each line records the operator description beside the official dataset description. An
 unlisted code, a conflicting confirmed TARIC or a different TARIC assessment date becomes a dataset gap requiring
 specialist review; the evaluator never falls back to a Chapter 61/62/64 applicability decision.
+Maintained dataset `weavecarbon.eu-reach-textile-leather-restriction-routing` version
+`EU-REACH-TEXTILE-LEATHER-2026.09.14.1` adds three bounded Annex XVII routes: Entry 43 azo aromatic amines above
+`30 mg/kg`, Entry 46a NPE at or above `0.01%` by weight, and Entry 47 chromium VI in skin-contact leather at or above
+`3 mg/kg` dry leather. Exact product routing is combined with explicit skin-contact, washability, second-hand, recycled-
+textile/NPE and leather-contact facts. Missing facts, claimed exclusions or a different assessment date fail closed to
+specialist review. The displayed thresholds only open R11 evidence work; they never assert a laboratory or conformity result.
 
 **Remaining:** expand the limited 3-CN/5-TARIC routing slice to all supported products using a controlled TARIC update
-lifecycle; add maintained REACH substance/threshold and species datasets; encode Member-State and date-versioned rules;
+lifecycle; expand the three-entry REACH slice to the complete applicable current restrictions/Candidate List and add a
+maintained species dataset; encode Member-State and date-versioned rules;
 deepen packaging/waste beyond the limited PPWR routing; cover
 CITES, PPE, children's products, biocidal treatment, sanctions and relevant product-safety standards; validate source-change lifecycle and amendment handling;
 then run exact-head CI/staging and a named specialist pilot using real product/BOM/lab evidence. No global
@@ -1765,3 +1772,31 @@ Backend carbon trace core:
 - R20 remains `PARTIAL`: expand the exact classification dataset and its controlled update lifecycle, add maintained
   substance/threshold and species datasets, broaden specialist domains, then run exact-head CI/staging and a qualified
   real-product specialist pilot. Nothing was pushed, merged, deployed or changed on the production host.
+
+### 2026-09-14 — R20 REACH textile/leather threshold-routing slice
+
+- Ruleset `R20-EU-APPLICABILITY-2026.09.4` adds maintained limited dataset
+  `EU-REACH-TEXTILE-LEATHER-2026.09.14.1`, pinned to consolidated Regulation (EC) 1907/2006 dated 11 May 2026 and dated
+  ECHA restriction conditions for Annex XVII Entries 43, 46a and 47.
+- The bounded dataset records exact operator/value/unit semantics: Entry 43 azo aromatic amines above `30 mg/kg`, Entry
+  46a NPE at or above `0.01%` by weight, and Entry 47 chromium VI at or above `3 mg/kg` dry leather. It explicitly excludes
+  complete Annex XVII/Candidate List coverage, test-method/sampling/conformity decisions and any generic REACH certificate.
+- Only exact CN/TARIC dataset matches open these routes. The immutable input now records direct/prolonged skin-or-oral
+  contact, normal-lifecycle water washability, second-hand status, an exclusively-recycled-without-NPE claim and leather-
+  part skin contact. Missing facts, claimed exclusions and a snapshot-date mismatch require specialist review rather than
+  producing a non-applicability or chemical-conformity conclusion.
+- Each immutable result stores the restriction dataset id/version/SHA-256 and entry-level threshold, scope, status, missing
+  facts, matched product codes, official source and required evidence. The UI shows the bounded thresholds and requires the
+  existing R11 dossier and chemical-specialist workflow for substance/test decisions.
+- No migration was added: migration 030 already stores the additive input/result JSONB snapshots, and existing tenant/
+  shipment indexes cover the unchanged query paths. Backend OpenAPI and frontend contract/generated types are synchronized.
+- Full local gates pass: backend 139/139 suites and 815/815 tests plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend 61/61 files and 239/239 tests, TypeScript/contract/network/policy checks and the 62-route production build. The
+  same 20 pre-existing frontend lint warnings remain; there are no errors.
+- The cumulative guarded pilot passed 47/47 checks on isolated PostgreSQL 18 database `weavecarbon_r20_ppwr`, with
+  `productionDataTouched=false`. Retained artifact `artifacts/compliance-applicability-pilot/result.json` has SHA-256
+  `cbcd4065c6083d913ee817639cf6782a4eb502c427a07389eb7050457d183fed`.
+- R20 remains `PARTIAL`: expand exact CN/TARIC and applicable REACH coverage with a controlled source-change lifecycle,
+  add a maintained species dataset and other specialist domains, then run exact-head CI/staging and a qualified real-product
+  specialist pilot using authentic BOM/laboratory evidence. Nothing was pushed, merged, deployed or changed on the
+  production host.
