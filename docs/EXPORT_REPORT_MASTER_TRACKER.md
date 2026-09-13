@@ -28,7 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
-| Active R13 implementation branch in both repositories | `feat/r13-corporate-ghg-inventory` (local, stacked on R12 while R04/R05 PRs remain open) |
+| Active R17 implementation branch in both repositories | `feat/r17-eu-epr-core` (local, stacked on R13 while R04/R05 PRs remain open) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -63,6 +63,8 @@ This tracker separates four facts that must never be conflated:
 | Frontend R12 PCF study-workspace commit | `83cd39358165b573ec0d335bc41aa132983a9942` |
 | Backend R13 corporate-GHG controls commit | `4125c8c302534f5eaae111988119ed93cec8ae08` |
 | Frontend R13 corporate-GHG workspace commit | `b62c6b821dc91d43d0d49cab2bf1f87c18fcbb9a` |
+| Backend R17 EU textile/footwear EPR-core commit | `f088b1d86a9b360d2d901050a58f2cfd87c751ff` |
+| Frontend R17 EU textile/footwear EPR workspace commit | `31004488a64a3d2cc945bb3230e63d1180675398` |
 | R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
@@ -96,16 +98,17 @@ R06 is preserved locally at `feat/r06-ics2-filing-handoff`; R07 is stacked on it
 `feat/r07-evfta-origin-handoff`; R20 is stacked on R07 at `feat/r20-applicability-core`; R18 is stacked on R20 at
 `feat/r18-environmental-claim-register`; R08 is stacked on R18 at `feat/r08-textile-fibre-label`; R10 is stacked on R08 at
 `feat/r10-gpsr-technical-file`; R11 is stacked on R10 at `feat/r11-reach-svhc-dossier`; R12 is stacked on R11 at
-`feat/r12-pcf-study-dossier`; R13 is stacked on R12 at `feat/r13-corporate-ghg-inventory`. All contain R05, which
+`feat/r12-pcf-study-dossier`; R13 is stacked on R12 at `feat/r13-corporate-ghg-inventory`; R17 is stacked on R13 at
+`feat/r17-eu-epr-core`. All contain R05, which
 contains R04. Preserve that dependency order until the existing R04/R05 pull requests merge, and do not merge or deploy
-R06/R07/R20/R18/R08/R10/R11/R12 as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06,
-R20 onto R07, R18 onto R20, R08 onto R18, R10 onto R08, R11 onto R10, R12 onto R11 and R13 onto R12; verify migrations and recorded
-commits stay ordered.
+R06/R07/R20/R18/R08/R10/R11/R12/R13/R17 as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06,
+R20 onto R07, R18 onto R20, R08 onto R18, R10 onto R08, R11 onto R10, R12 onto R11, R13 onto R12 and R17 onto R13;
+verify migrations and recorded commits stay ordered.
 
 Then give the next AI this instruction:
 
 > Read `BE_weavecarbon/docs/EXPORT_REPORT_MASTER_TRACKER.md` completely. Verify the two repository HEADs,
-> inspect current diffs, select only the first unfinished report in section 6, implement its Definition of Done,
+> inspect current diffs, select the first applicable engineering gate in section 7, implement its Definition of Done,
 > run the required tests, and update this tracker in the same commit. Do not merge or deploy until the release
 > gates in section 9 pass.
 
@@ -178,6 +181,9 @@ Known overall checks at the latest feature commits:
 - Backend R13 local gate: 131/131 suites and 779/779 tests passed plus syntax/OpenAPI/generated-artifact/architecture/lint;
   frontend R13 gate: 58/58 files and 224/224 tests plus TypeScript/contract/network/policy checks and the 62-route
   production build. The fresh isolated PostgreSQL pilot passed all 43 cumulative checks.
+- Backend R17 local gate: 134/134 suites and 791/791 tests passed plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend R17 gate: 60/60 files and 228/228 tests plus TypeScript/contract/network/policy checks and the 62-route
+  production build. The isolated PostgreSQL pilot passed all 46 cumulative checks.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
@@ -207,7 +213,7 @@ Known overall checks at the latest feature commits:
 | 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Immutable ZIP, exact term/factor evidence coverage, append-only review/internal issue, and isolated PostgreSQL pilot gate | Run human real-evidence staging review; signed share link and external assurance |
 | 15 | Apparel & Footwear PEF/PEFCR | Voluntary or buyer-specific | `NOT_STARTED` | Climate-only partial PCF is not PEF | Full life cycle, EF datasets/impact categories and validation statement |
 | 16 | ESPR Digital Product Passport | When product delegated act applies | `BLOCKED_BY_LAW` | Guarded prototype only | Registry/service/access/version architecture; wait for final product schema |
-| 17 | Textile/footwear EPR reporting | EU framework plus Member-State implementation | `PARTIAL` | EU framework is final; only static requirement labels exist in the application | Build EU-core producer/register/market-volume model, then country adapters before the 17 April 2028 scheme deadline |
+| 17 | Textile/footwear EPR reporting | EU framework plus Member-State implementation | `PARTIAL` | Immutable EU-core producer/PRO/register dossier, Annex-IVc scope, shipment quantity/weight reconciliation, named review and typed authority/PRO evidence events | Add reviewed Member-State adapters and complete real registration/reporting/fee pilots before the 17 April 2028 scheme deadline |
 | 18 | Green-claim substantiation dossier | Whenever environmental claims are made | `PARTIAL` | Immutable shipment claim revisions bind exact copy/channel/market/language/scope/period/method/hash/limits/evidence; source-versioned prohibitions, named legal review and derived expiry/withdrawal/supersession controls exist | Validate Member-State implementation, connect every production claim surface, add real legal reviewer separation and complete a protected real-claim pilot |
 | 19 | CBAM declaration/operator report | Annex-I CBAM goods only | `NOT_APPLICABLE_BASELINE` | Scope screening; old styled templates remain demo-only | Maintain versioned CN list; implement official fields only for Annex-I goods |
 | 20 | Specialist permits/certificates | Conditional by exact product and lane | `PARTIAL` | Limited, source-versioned EU triage uses shipment HS/TARIC, origin/material, market and effective-date facts; immutable explainable evaluations and evidence-backed specialist review | Add exact CN/TARIC/substance/species datasets, expand specialist domains, then complete a named real-shipment specialist pilot and exact-head CI/staging |
@@ -655,10 +661,22 @@ interoperability, access, integrity, backup, version and registry interfaces; ad
 **Required baseline:** producer identity/tax/trade IDs; Member State; product/CN group; authorised representative and PRO;
 registration/status; quantities placed on market; fee/modulation; collection/treatment reporting; evidence/version.
 
-**Current:** Directive (EU) 2025/1892 establishes the EU textile/textile-related/footwear EPR framework and requires
-Member-State schemes by 17 April 2028. The application still has only a static requirement label. EU-core producer,
-register, product/market-volume and reporting concepts can now be implemented; fee, PRO, registration and submission
-details still require versioned Member-State adapters.
+**Implemented:** Directive (EU) 2025/1892 is pinned in limited ruleset
+`R17-WFD-2025-1892-EU-CORE-1`. Migration 037 and `/api/eu-textile-epr` add immutable, company-scoped assessment revisions,
+named append-only `eu_epr_specialist` decisions and typed authority/PRO receipt events. Assessments capture the Article
+3(4b) producer role and exclusions, producer/trade/tax identity, Member State, authorised-representative rule, PRO identity
+and mandate, Annex-IVc CN scope, country-adapter source/version/status, truth confirmation, limitations and controlled
+evidence. Declared quantities and net weight reconcile by exact CN code/unit to confirmed shipment ledger lines for the
+selected Member State and invoice period. Changed evidence, superseding revisions or negative authority events change the
+derived lifecycle status; internal approval never creates a registration, submission or payment claim. The Reports UI
+supports dossier creation, review and receipt-backed external events while displaying the EU-core boundary.
+
+**Remaining:** R17 stays `PARTIAL`. Add primary-source-reviewed adapters for each Member State with effective dates,
+competent authority, national register, reporting cadence, fee/modulation method, representative rule and transition
+handling. Replace broad Annex-IVc prefixes with a maintained exact CN table, update the harmonised registration format when
+the Commission implementing act is published, add collection/treatment reporting and authentic PRO calculations, and run
+real-company registration/report/fee pilots with authorised national actors. No authority registration, PRO membership,
+submission or payment was performed by this increment.
 
 **Definition of Done:** country-versioned rule set and registrations exist; market quantities reconcile to sales/shipments;
 external registration/payment/submission status is backed by authority/PRO evidence.
@@ -751,7 +769,8 @@ specialist reviewer approves high-risk classifications. Never claim the list is 
    Next close their qualified real-data and authentic R14 practitioner/assurance gates. Implement R15 from the 2025 Apparel
    & Footwear PEFCR only when commercially required.
 7. **Build versioned future foundations:** R16 generic DPP architecture without inventing delegated-act product fields;
-   implement R17 EU-core EPR now and add Member-State adapters as national schemes are published.
+   limited R17 EU-core EPR now exists, so add reviewed Member-State adapters as national schemes and the harmonised
+   registration format are published.
 8. **Maintain R19 scope screening:** baseline CN 61/62/64 must remain `CBAM_NOT_APPLICABLE`; Annex-I matches require
    customs review and may not generate a charge, filing or authority status from an internal calculation.
 
@@ -774,8 +793,8 @@ Do not mark an item complete based only on unit tests. Attach or record the stag
 Before merging or deploying this branch:
 
 1. Back up PostgreSQL and the uploads directory and verify restoration instructions.
-2. Apply every export/audit migration from `017_shipment_export_workflow.sql` through
-   `028_r06_ics2_filing_handoff.sql` to staging cloned from a safe schema/data fixture.
+2. Apply every export/audit/compliance migration from `017_shipment_export_workflow.sql` through
+   `037_r17_eu_textile_epr_core.sql` to staging cloned from a safe schema/data fixture.
 3. Run migration rollback/forward compatibility checks appropriate to the environment.
 4. Create one real-like Vietnam-to-EU shipment with more than 20 lines and multiple/partial packages.
 5. Upload and approve a real-like carrier document; fill profile, package and carbon data without placeholders.
@@ -1595,3 +1614,29 @@ Backend carbon trace core:
   authentic independent assurance. The next implementable baseline phase is R17 EU-core textile/footwear EPR; R15 remains
   commercial-use dependent, R16 product fields remain blocked by delegated acts, and R12–R14 still have external real-data/
   assurance gates. Nothing was pushed, merged, deployed or changed on the production host.
+
+### 2026-09-13 — R17 EU textile/footwear EPR core controls
+
+- Backend commit `f088b1d86a9b360d2d901050a58f2cfd87c751ff` and frontend commit
+  `31004488a64a3d2cc945bb3230e63d1180675398` add migration 037, the limited EU-core evaluator, immutable
+  assessment/review/external-event records, OpenAPI contracts, cumulative pilot coverage and the Reports-tab EPR
+  workspace.
+- The source manifest pins Directive (EU) 2025/1892 and the consolidated Waste Framework Directive dated 16 October 2025.
+  It encodes Article 3(4b) producer roles/exclusions, Article 22b registration inputs, Article 22c weight/quantity reporting,
+  Annex IVc coverage and the 17 April 2028 scheme deadline; microenterprises transition to 17 April 2029.
+- Implemented-scheme adapter claims are blocked unless effective date, authority, HTTPS register, reporting schedule,
+  fee-method status and controlled review evidence exist. Exact CN/unit quantity and net weight must match confirmed,
+  Member-State/period-scoped shipments. Submission receipts must match the assessed reporting period. Only typed, locked
+  authority/PRO evidence can create an external-evidence event, and it never substitutes for the external actor's status.
+- Local gates pass: backend 134/134 suites and 791/791 tests plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend 60/60 files and 228/228 tests, full checks and a production build of all 62 routes. The same 20 pre-existing
+  frontend lint warnings remain and there are no errors.
+- Dedicated isolated database `weavecarbon_r17_final` contains the base schema and migrations 001–037. The final guarded
+  cumulative pilot passed 46/46 checks with `productionDataTouched=false`; retained artifact
+  `artifacts/eu-textile-epr-pilot/result.json` has SHA-256
+  `77d08c4ee5dc96ea38ce2a27027e302ea01ef6b0a9b561cac7689eccf659a26d`.
+- R17 remains `PARTIAL` pending authoritative Member-State adapters, the future harmonised registration format, exact CN
+  maintenance, collection/treatment reporting and authentic registration/PRO/report/payment pilots. The next engineering
+  priority is to connect all production claim surfaces to R18 and expand R20 maintained datasets; R09/R15 remain product/
+  commercial-use dependent and R16 product fields remain law-dependent. Nothing was pushed, merged, deployed or changed
+  on the production host.
