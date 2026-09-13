@@ -349,6 +349,15 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload product carbon footprint study pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pcf-study-pilot-${{ github.run_id }}
+          path: artifacts/pcf-study-pilot/result.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Audit representative hot-query plans
         run: npm run db:audit-hot-queries
 

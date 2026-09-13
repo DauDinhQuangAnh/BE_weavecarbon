@@ -637,6 +637,46 @@ router.post('/shipments/:shipmentId/reach/dossiers/:dossierId/obligation-events'
   return sendSuccess(res, { status: 201, data: result });
 }));
 
+router.get('/shipments/:shipmentId/pcf/calculation-snapshots', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res); if (!companyId) return;
+  const data = await exportShipmentService.listPcfCalculationSnapshots(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.get('/shipments/:shipmentId/pcf/studies', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res); if (!companyId) return;
+  const data = await exportShipmentService.listPcfStudies(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/pcf/studies', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res); if (!companyId) return;
+  const result = await exportShipmentService.createPcfStudyRevision(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (!result) return sendNotFound(res);
+  if (result.blocked) return sendError(res, { status: 400, code: result.code, message: result.message });
+  await logAuditTrail({ companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.pcf_study_revision', newValue: result.id,
+    reason: 'export.pcf.study.create', notes: `${result.studyReference}:revision-${result.revision}:${result.automatedStatus}` });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
+router.post('/shipments/:shipmentId/pcf/studies/:studyId/reviews', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res); if (!companyId) return;
+  const result = await exportShipmentService.reviewPcfStudy(
+    companyId, req.params.shipmentId, req.params.studyId, req.userId, req.body || {}
+  );
+  if (!result) return sendError(res, { status: 404, code: 'PCF_STUDY_NOT_FOUND', message: 'PCF study not found for this shipment.' });
+  if (result.blocked) return sendError(res, { status: 409, code: result.code, message: result.message });
+  await logAuditTrail({ companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.pcf_study_review', newValue: result.id,
+    reason: 'export.pcf.study.review', notes: result.decision });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
 router.get('/shipments/:shipmentId/environmental-claims', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;

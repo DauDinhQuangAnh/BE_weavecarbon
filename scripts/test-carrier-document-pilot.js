@@ -15,7 +15,7 @@ const { createExportShipmentService } = require('../src/services/exportShipmentS
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pilot-v10',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pcf-pilot-v11',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -30,7 +30,8 @@ const result = {
   gpsrTechnicalFiles: [],
   gpsrPostMarketEvents: [],
   reachSvhcDossiers: [],
-  reachObligationEvents: []
+  reachObligationEvents: [],
+  pcfStudies: []
 };
 
 function check(name, details = {}) {
@@ -46,7 +47,8 @@ async function writeResult() {
   for (const name of [
     'carrier-document-pilot', 'vn-customs-handoff-pilot', 'eu-import-handoff-pilot',
     'ics2-handoff-pilot', 'origin-handoff-pilot', 'compliance-applicability-pilot',
-    'environmental-claim-pilot', 'textile-fibre-label-pilot', 'gpsr-technical-file-pilot', 'reach-svhc-dossier-pilot'
+    'environmental-claim-pilot', 'textile-fibre-label-pilot', 'gpsr-technical-file-pilot', 'reach-svhc-dossier-pilot',
+    'pcf-study-pilot'
   ]) {
     const directory = path.resolve(__dirname, '..', 'artifacts', name);
     await fs.promises.mkdir(directory, { recursive: true });
@@ -117,6 +119,7 @@ async function insertFixture(runId) {
       result: carbonResult,
       calculatedAt: new Date('2026-09-10T00:00:00.000Z')
     });
+    ids.calculationSnapshotId = snapshot.row.snapshot_id;
     await client.query(
       `INSERT INTO shipments (id, company_id, reference_number, origin_country, origin_city,
          destination_country, destination_city, status, total_weight_kg, simulation_enabled)
@@ -1252,6 +1255,95 @@ async function run() {
   result.reachObligationEvents.push(...reachEvents.map((item) => ({ id: item.id, eventReference: item.eventReference,
     eventType: item.eventType, responseDueAt: item.responseDueAt, externalReference: item.externalReference })));
   check('r11_consumer_deadline_and_external_scip_proof_are_enforced');
+
+  const pcfSnapshots = await service.listPcfCalculationSnapshots(ids.companyId, ids.shipmentId);
+  const pcfSnapshot = pcfSnapshots.find((item) => item.id === ids.calculationSnapshotId);
+  assert.equal(pcfSnapshot.canonicalInputHash.length, 64);
+  assert.equal(pcfSnapshot.reportedTotalKgCO2e, ids.carbonResult.reportedTotalKgCO2e);
+  const pcfBase = {
+    studyDate: '2026-09-13', calculationSnapshotId: ids.calculationSnapshotId,
+    productReference: `R03-SKU-${runId}`, productName: 'Synthetic cotton shirt',
+    reportingPeriodStart: '2026-01-01', reportingPeriodEnd: '2026-09-13',
+    intendedApplication: 'Internal buyer data review', intendedAudience: 'Buyer sustainability team',
+    comparativeAssertion: false,
+    functionalUnit: { quantity: 1, unit: 'piece', description: 'One finished synthetic cotton shirt' },
+    referenceFlow: { amount: 0.5, unit: 'kg finished product', basis: 'Measured unit mass' },
+    boundaryType: 'cradle_to_gate_plus_gate_to_market_extension',
+    includedStages: ids.carbonResult.boundary.includedStages,
+    processMap: [{ processReference: `MAT-${runId}`, processName: 'Material and shipment model', stage: 'materials',
+      included: true, dataSource: 'Synthetic source records and frozen factor snapshot',
+      evidenceDocumentIds: [originEvidence.evidenceId] }],
+    excludedProcesses: [{ processName: 'Use and end-of-life', rationale: 'Outside declared partial CFP boundary.', estimatedImpactPercent: 0 }],
+    cutoff: { massPercent: 1, energyPercent: 1, environmentalSignificanceApplied: true,
+      rationale: 'Mass, energy and potential climate significance screened; no significant known flow omitted.' },
+    pcr: { status: 'not_identified', name: '', publisher: '', version: '', validFrom: null, validTo: null,
+      rationale: 'No product-category rule identified in this synthetic pilot; practitioner confirmation required.' },
+    allocation: { required: false, method: '', rationale: 'No multifunctional process modeled.',
+      hierarchyJustification: '', sensitivityPerformed: false, sensitivitySummary: '' },
+    recyclingModel: { method: 'cut-off', rationale: 'Recycled-input burdens follow the factor dataset; end-of-life is excluded.' },
+    dataQualityAssessment: 'Technological, geographical, temporal, completeness and reliability dimensions reviewed.',
+    dataImprovementPlan: 'Replace proxy factors and supplier estimates with primary records when available.',
+    uncertaintyAssessment: { method: 'rss_fallback', parameter: 'Factor and activity-data ranges.',
+      scenario: 'Transport and sourcing alternatives.', model: 'Partial-boundary model limitations.',
+      sensitivityScenarios: ['Replace proxy factors', 'Vary transport distance'] },
+    landUseChangeMethod: 'Not modeled; disclosed separately as unavailable.',
+    biogenicCarbonTreatment: 'Reported separately and never netted against fossil GWP.',
+    evidenceDocumentIds: [originEvidence.evidenceId], externalAssuranceRecordId: null,
+    limitations: 'Climate-only partial CFP; use and end-of-life excluded; not independently verified.',
+    notes: 'Synthetic R12 control pilot; not ISO certification, EPD, PEF or assurance.'
+  };
+  const blockedPcf = await service.createPcfStudyRevision(ids.companyId, ids.shipmentId, ids.userId, {
+    ...pcfBase, studyReference: `PCF-BLOCKED-${runId}`, comparativeAssertion: true,
+    processMap: [], cutoff: { massPercent: 1, energyPercent: 1, environmentalSignificanceApplied: false, rationale: '' },
+    dataQualityAssessment: '', uncertaintyAssessment: { method: 'rss_fallback', parameter: '', scenario: '', model: '', sensitivityScenarios: [] }
+  });
+  assert.equal(blockedPcf.automatedStatus, 'needs_information');
+  assert.ok(blockedPcf.result.findings.some((item) => item.code === 'PCF_COMPARATIVE_ASSERTION_BLOCKED'));
+  assert.ok(blockedPcf.result.findings.some((item) => item.code === 'PCF_CUTOFF_CRITERIA_INCOMPLETE'));
+  assert.ok(blockedPcf.result.findings.some((item) => item.code === 'PCF_UNCERTAINTY_INCOMPLETE'));
+  const blockedPcfApproval = await service.reviewPcfStudy(ids.companyId, ids.shipmentId, blockedPcf.id, ids.userId, {
+    reviewerRole: 'pcf_practitioner_reviewer', decision: 'approved_for_internal_report', notes: 'Must fail.'
+  });
+  assert.equal(blockedPcfApproval.code, 'PCF_STUDY_NOT_CURRENT');
+  check('r12_incomplete_scope_reproducibility_and_comparison_are_blocked');
+
+  const invalidAssurancePcf = await service.createPcfStudyRevision(ids.companyId, ids.shipmentId, ids.userId, {
+    ...pcfBase, studyReference: `PCF-ASSURANCE-BLOCKED-${runId}`, externalAssuranceRecordId: crypto.randomUUID()
+  });
+  assert.equal(invalidAssurancePcf.automatedStatus, 'needs_information');
+  assert.ok(invalidAssurancePcf.result.findings.some((item) => item.code === 'PCF_ASSURANCE_INVALID'));
+  assert.equal(invalidAssurancePcf.result.claimStatus, 'not_independently_verified');
+  check('r12_verified_language_requires_authentic_assurance');
+
+  const controlledPcf = await service.createPcfStudyRevision(ids.companyId, ids.shipmentId, ids.userId, {
+    ...pcfBase, studyReference: `PCF-SHIRT-${runId}`
+  });
+  assert.equal(controlledPcf.automatedStatus, 'practitioner_review_required');
+  assert.equal(controlledPcf.result.calculation.reportedTotalKgCO2e, controlledPcf.result.calculation.reproducedTotalKgCO2e);
+  assert.equal(controlledPcf.result.claimStatus, 'not_independently_verified');
+  const wrongPcfRole = await service.reviewPcfStudy(ids.companyId, ids.shipmentId, controlledPcf.id, ids.userId, {
+    reviewerRole: 'sustainability_manager', decision: 'approved_for_internal_report', notes: 'Wrong role.'
+  });
+  assert.equal(wrongPcfRole.code, 'PCF_REVIEW_ROLE_INVALID');
+  const pcfReview = await service.reviewPcfStudy(ids.companyId, ids.shipmentId, controlledPcf.id, ids.userId, {
+    reviewerRole: 'pcf_practitioner_reviewer', decision: 'approved_for_internal_report',
+    notes: 'Synthetic goal, scope, boundary, calculation, data quality, uncertainty and evidence review for internal reporting only.'
+  });
+  assert.equal(pcfReview.inputSha256, controlledPcf.inputSha256);
+  assert.equal(pcfReview.resultSha256, controlledPcf.resultSha256);
+  assert.equal(pcfReview.calculationCanonicalInputHash, pcfSnapshot.canonicalInputHash);
+  const pcfRegister = await service.listPcfStudies(ids.companyId, ids.shipmentId);
+  const reopenedPcf = pcfRegister.find((item) => item.id === controlledPcf.id);
+  assert.equal(reopenedPcf.studyStatus, 'approved_for_internal_report');
+  assert.equal(await service.listPcfStudies(ids.otherCompanyId, ids.shipmentId), null);
+  await assert.rejects(pool.query('UPDATE pcf_study_revisions SET automated_status=$1 WHERE id=$2', [
+    'needs_information', controlledPcf.id
+  ]), /append-only and immutable/i);
+  result.pcfStudies.push({ id: controlledPcf.id, studyReference: controlledPcf.studyReference,
+    revision: controlledPcf.revision, studyStatus: reopenedPcf.studyStatus,
+    calculationCanonicalInputHash: controlledPcf.calculationCanonicalInputHash,
+    inputSha256: controlledPcf.inputSha256, resultSha256: controlledPcf.resultSha256 });
+  check('r12_study_is_calculation_hash_and_evidence_bound');
 
   const firstReadiness = await service.getReadiness(ids.companyId, ids.shipmentId);
   assert.equal(firstReadiness.documents.find((item) => item.type === 'carbon_annex').status, 'ready');

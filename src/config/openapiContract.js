@@ -847,6 +847,14 @@ const REQUEST_BODY_OVERRIDES = {
       metadata: { type: 'object' }
     }, additionalProperties: false
   },
+  'POST /export/shipments/{shipmentId}/pcf/studies': { $ref: '#/components/schemas/PcfStudyInput' },
+  'POST /export/shipments/{shipmentId}/pcf/studies/{studyId}/reviews': {
+    type: 'object', required: ['reviewerRole', 'decision', 'notes'], properties: {
+      reviewerRole: { type: 'string', enum: ['pcf_practitioner_reviewer'] },
+      decision: { type: 'string', enum: ['approved_for_internal_report', 'needs_information', 'rejected'] },
+      notes: { type: 'string', minLength: 1, maxLength: 5000 }
+    }, additionalProperties: false
+  },
   'POST /export/shipments/{shipmentId}/environmental-claims': {
     type: 'object',
     required: [
@@ -1331,6 +1339,71 @@ function contractComponents() {
               substances: { type: 'array', minItems: 1, maxItems: 500, items: { $ref: '#/components/schemas/ReachSubstanceInput' } }
             }, additionalProperties: false } },
           supplierDeclarationEvidenceIds: { type: 'array', minItems: 1, maxItems: 200, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
+          notes: { type: 'string', maxLength: 5000 }
+        }, additionalProperties: false
+      },
+      PcfStudyInput: {
+        type: 'object', required: ['studyReference', 'studyDate', 'calculationSnapshotId', 'productReference', 'productName',
+          'reportingPeriodStart', 'reportingPeriodEnd', 'intendedApplication', 'intendedAudience', 'comparativeAssertion',
+          'functionalUnit', 'referenceFlow', 'boundaryType', 'includedStages', 'processMap', 'excludedProcesses', 'cutoff',
+          'pcr', 'allocation', 'recyclingModel', 'dataQualityAssessment', 'dataImprovementPlan', 'uncertaintyAssessment',
+          'landUseChangeMethod', 'biogenicCarbonTreatment', 'evidenceDocumentIds', 'limitations'],
+        properties: {
+          studyReference: { type: 'string', minLength: 1, maxLength: 120 }, studyDate: { type: 'string', format: 'date' },
+          calculationSnapshotId: { type: 'string', format: 'uuid' }, productReference: { type: 'string', minLength: 1, maxLength: 500 },
+          productName: { type: 'string', minLength: 1, maxLength: 500 }, reportingPeriodStart: { type: 'string', format: 'date' },
+          reportingPeriodEnd: { type: 'string', format: 'date' }, intendedApplication: { type: 'string', minLength: 1, maxLength: 5000 },
+          intendedAudience: { type: 'string', minLength: 1, maxLength: 2000 }, comparativeAssertion: { type: 'boolean' },
+          functionalUnit: { type: 'object', required: ['quantity', 'unit', 'description'], properties: {
+            quantity: { type: 'number', minimum: 0, exclusiveMinimum: true }, unit: { type: 'string', minLength: 1, maxLength: 100 },
+            description: { type: 'string', minLength: 1, maxLength: 2000 }
+          }, additionalProperties: false },
+          referenceFlow: { type: 'object', required: ['amount', 'unit', 'basis'], properties: {
+            amount: { type: 'number', minimum: 0, exclusiveMinimum: true }, unit: { type: 'string', minLength: 1, maxLength: 100 },
+            basis: { type: 'string', minLength: 1, maxLength: 2000 }
+          }, additionalProperties: false },
+          boundaryType: { type: 'string', minLength: 1, maxLength: 200 },
+          includedStages: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 200 } },
+          processMap: { type: 'array', minItems: 1, maxItems: 300, items: { type: 'object',
+            required: ['processReference', 'processName', 'stage', 'included', 'dataSource', 'evidenceDocumentIds'], properties: {
+              processReference: { type: 'string', minLength: 1, maxLength: 200 }, processName: { type: 'string', minLength: 1, maxLength: 500 },
+              stage: { type: 'string', minLength: 1, maxLength: 200 }, included: { type: 'boolean' },
+              dataSource: { type: 'string', minLength: 1, maxLength: 2000 }, evidenceDocumentIds: {
+                type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' }
+              }
+            }, additionalProperties: false } },
+          excludedProcesses: { type: 'array', maxItems: 200, items: { type: 'object',
+            required: ['processName', 'rationale', 'estimatedImpactPercent'], properties: {
+              processName: { type: 'string', minLength: 1, maxLength: 500 }, rationale: { type: 'string', minLength: 1, maxLength: 5000 },
+              estimatedImpactPercent: { type: 'number', minimum: 0, maximum: 100 }
+            }, additionalProperties: false } },
+          cutoff: { type: 'object', required: ['massPercent', 'energyPercent', 'environmentalSignificanceApplied', 'rationale'], properties: {
+            massPercent: { type: 'number', minimum: 0, maximum: 100 }, energyPercent: { type: 'number', minimum: 0, maximum: 100 },
+            environmentalSignificanceApplied: { type: 'boolean' }, rationale: { type: 'string', minLength: 1, maxLength: 5000 }
+          }, additionalProperties: false },
+          pcr: { type: 'object', required: ['status', 'name', 'publisher', 'version', 'validFrom', 'validTo', 'rationale'], properties: {
+            status: { type: 'string', enum: ['applicable', 'not_identified', 'not_applicable'] }, name: { type: 'string', maxLength: 1000 },
+            publisher: { type: 'string', maxLength: 500 }, version: { type: 'string', maxLength: 200 },
+            validFrom: { type: 'string', format: 'date', nullable: true }, validTo: { type: 'string', format: 'date', nullable: true },
+            rationale: { type: 'string', minLength: 1, maxLength: 5000 }
+          }, additionalProperties: false },
+          allocation: { type: 'object', required: ['required', 'method', 'rationale', 'hierarchyJustification', 'sensitivityPerformed', 'sensitivitySummary'], properties: {
+            required: { type: 'boolean' }, method: { type: 'string', enum: ['physical', 'economic', 'mass', 'energy', 'other', ''] },
+            rationale: { type: 'string', maxLength: 5000 }, hierarchyJustification: { type: 'string', maxLength: 5000 },
+            sensitivityPerformed: { type: 'boolean' }, sensitivitySummary: { type: 'string', maxLength: 5000 }
+          }, additionalProperties: false },
+          recyclingModel: { type: 'object', required: ['method', 'rationale'], properties: {
+            method: { type: 'string', minLength: 1, maxLength: 500 }, rationale: { type: 'string', minLength: 1, maxLength: 5000 }
+          }, additionalProperties: false },
+          dataQualityAssessment: { type: 'string', minLength: 1, maxLength: 10000 }, dataImprovementPlan: { type: 'string', minLength: 1, maxLength: 10000 },
+          uncertaintyAssessment: { type: 'object', required: ['method', 'parameter', 'scenario', 'model', 'sensitivityScenarios'], properties: {
+            method: { type: 'string', enum: ['qualitative', 'rss_fallback', 'monte_carlo'] }, parameter: { type: 'string', minLength: 1, maxLength: 5000 },
+            scenario: { type: 'string', minLength: 1, maxLength: 5000 }, model: { type: 'string', minLength: 1, maxLength: 5000 },
+            sensitivityScenarios: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 2000 } }
+          }, additionalProperties: false },
+          landUseChangeMethod: { type: 'string', minLength: 1, maxLength: 5000 }, biogenicCarbonTreatment: { type: 'string', minLength: 1, maxLength: 5000 },
+          evidenceDocumentIds: { type: 'array', minItems: 1, maxItems: 200, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
+          externalAssuranceRecordId: { type: 'string', format: 'uuid', nullable: true }, limitations: { type: 'string', minLength: 1, maxLength: 10000 },
           notes: { type: 'string', maxLength: 5000 }
         }, additionalProperties: false
       },

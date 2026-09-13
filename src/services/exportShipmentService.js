@@ -75,6 +75,12 @@ const {
   evaluateReachDossier,
   deriveReachReleaseStatus
 } = require('./reachSvhcDossierControls');
+const {
+  RULESET: PCF_STUDY_RULESET,
+  normalizePcfStudyInput,
+  evaluatePcfStudy,
+  derivePcfStudyStatus
+} = require('./pcfStudyControls');
 
 const RULESET_VERSION = 'VN-EU-TEXTILE-2026.09.4';
 const CARRIER_RULESET_VERSION = 'R03-CARRIER-RECONCILIATION-2026.09.1';
@@ -1412,6 +1418,176 @@ class ExportShipmentService {
       [companyId, shipmentId, dossierId]
     );
     return result.rows.map((row) => this._formatReachObligationEvent(row));
+  }
+
+  async listPcfCalculationSnapshots(companyId, shipmentId) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const result = await this.database.query(
+      `SELECT DISTINCT ON (snapshot.id) snapshot.*, product.sku, product.name AS product_name,
+              MAX(snapshot.version) OVER (PARTITION BY snapshot.product_id) AS latest_version
+       FROM shipment_export_lines line
+       JOIN product_assessment_snapshots snapshot ON snapshot.id=line.carbon_snapshot_id
+         AND snapshot.company_id=line.company_id AND snapshot.product_id=line.source_product_id
+       JOIN products product ON product.id=snapshot.product_id AND product.company_id=snapshot.company_id
+       WHERE line.company_id=$1 AND line.shipment_id=$2 AND snapshot.is_legacy=false
+       ORDER BY snapshot.id, line.line_number`, [companyId, shipmentId]
+    );
+    return result.rows.map((row) => ({
+      id: row.id, productId: row.product_id, productReference: row.sku, productName: row.product_name,
+      version: Number(row.version), latestVersion: Number(row.latest_version), calculatedAt: row.calculated_at,
+      finalizedAt: row.finalized_at, canonicalInputHash: row.canonical_input_hash,
+      engineVersion: row.engine_version, methodologyVersion: row.methodology_version,
+      factorRegistryVersion: row.factor_registry_version, gwpBasis: row.gwp_basis,
+      reportedTotalKgCO2e: numberOrNull(row.payload?.carbonResults?.reportedTotalKgCO2e
+        ?? row.payload?.carbonResults?.perProduct?.total),
+      boundary: row.payload?.carbonResults?.boundary || null,
+      quality: row.payload?.carbonResults?.quality || null, uncertainty: row.payload?.carbonResults?.uncertainty || null
+    }));
+  }
+
+  async createPcfStudyRevision(companyId, shipmentId, userId, input = {}) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const normalized = normalizePcfStudyInput(input);
+    if (!normalized.studyReference || !normalized.studyDate || !UUID_REGEX.test(normalized.calculationSnapshotId)) {
+      return { blocked: true, code: 'PCF_STUDY_IDENTITY_REQUIRED', message: 'studyReference, studyDate and a valid calculationSnapshotId are required.' };
+    }
+    const snapshotResult = await this.database.query(
+      `SELECT snapshot.* FROM product_assessment_snapshots snapshot
+       WHERE snapshot.id=$1 AND snapshot.company_id=$2
+         AND EXISTS (SELECT 1 FROM shipment_export_lines line WHERE line.company_id=$2 AND line.shipment_id=$3
+           AND line.source_product_id=snapshot.product_id AND line.carbon_snapshot_id=snapshot.id)`,
+      [normalized.calculationSnapshotId, companyId, shipmentId]
+    );
+    const snapshot = snapshotResult.rows[0];
+    if (!snapshot) return { blocked: true, code: 'PCF_CALCULATION_SNAPSHOT_NOT_FOUND', message: 'Calculation snapshot is not bound to this shipment.' };
+    const evidenceIds = [...new Set(normalized.evidenceDocumentIds.concat(
+      normalized.processMap.flatMap((process) => process.evidenceDocumentIds)).filter(Boolean))].sort();
+    if (evidenceIds.length > 200 || evidenceIds.some((id) => !UUID_REGEX.test(id))) {
+      return { blocked: true, code: 'PCF_EVIDENCE_INVALID', message: 'PCF study evidence must contain at most 200 valid UUIDs.' };
+    }
+    const evidenceSnapshot = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId, evidenceIds);
+    if (evidenceSnapshot.length !== evidenceIds.length) {
+      return { blocked: true, code: 'PCF_EVIDENCE_INVALID', message: 'Every PCF evidence id must belong to this company and shipment.' };
+    }
+    let assuranceRecord = null;
+    if (normalized.externalAssuranceRecordId) {
+      if (!UUID_REGEX.test(normalized.externalAssuranceRecordId)) {
+        return { blocked: true, code: 'PCF_ASSURANCE_INVALID', message: 'External assurance record id must be a UUID.' };
+      }
+      const assuranceResult = await this.database.query(
+        `SELECT assurance.* FROM audit_bundle_assurance_records assurance
+         JOIN audit_bundles bundle ON bundle.id=assurance.audit_bundle_id AND bundle.company_id=assurance.company_id
+         WHERE assurance.id=$1 AND assurance.company_id=$2 AND bundle.calculation_snapshot_id=$3
+           AND (assurance.valid_to IS NULL OR assurance.valid_to >= $4::date)`,
+        [normalized.externalAssuranceRecordId, companyId, snapshot.id, normalized.studyDate]
+      );
+      assuranceRecord = assuranceResult.rows[0] || null;
+    }
+    const evaluation = evaluatePcfStudy(input, snapshot, evidenceSnapshot, assuranceRecord);
+    const client = await this.database.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`${companyId}:${shipmentId}:pcf-study:${evaluation.input.studyReference}`]);
+      const versionResult = await client.query(
+        `SELECT COALESCE(MAX(revision), 0) + 1 AS revision FROM pcf_study_revisions
+         WHERE company_id=$1 AND shipment_id=$2 AND study_reference=$3`,
+        [companyId, shipmentId, evaluation.input.studyReference]
+      );
+      const revision = Number(versionResult.rows[0].revision);
+      const inserted = await client.query(
+        `INSERT INTO pcf_study_revisions (
+           company_id, shipment_id, product_id, calculation_snapshot_id, study_reference, revision,
+           ruleset_id, ruleset_version, ruleset_coverage, source_manifest_sha256, study_date,
+           reporting_period_start, reporting_period_end, calculation_canonical_input_hash,
+           input_snapshot, input_sha256, result_snapshot, result_sha256, evidence_snapshot,
+           automated_status, created_by
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17::jsonb,$18,$19::jsonb,$20,$21)
+         RETURNING *`,
+        [companyId, shipmentId, snapshot.product_id, snapshot.id, evaluation.input.studyReference, revision,
+          evaluation.result.rulesetId, evaluation.result.rulesetVersion, evaluation.result.rulesetCoverage,
+          evaluation.result.sourceManifestSha256, evaluation.input.studyDate, evaluation.input.reportingPeriodStart,
+          evaluation.input.reportingPeriodEnd, snapshot.canonical_input_hash, JSON.stringify(evaluation.input),
+          evaluation.inputSha256, JSON.stringify(evaluation.result), evaluation.result.resultSha256,
+          JSON.stringify(evidenceSnapshot), evaluation.result.automatedStatus, userId]
+      );
+      await client.query('COMMIT');
+      return this._formatPcfStudy(inserted.rows[0], evidenceSnapshot, snapshot.id);
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {}); throw error;
+    } finally { client.release(); }
+  }
+
+  async listPcfStudies(companyId, shipmentId) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const result = await this.database.query(
+      `SELECT study.*, to_jsonb(latest_review) AS latest_review,
+              MAX(study.revision) OVER (PARTITION BY study.study_reference) AS latest_revision,
+              latest_snapshot.id AS latest_calculation_snapshot_id
+       FROM pcf_study_revisions study
+       LEFT JOIN LATERAL (SELECT review.* FROM pcf_study_reviews review
+         WHERE review.study_id=study.id AND review.company_id=study.company_id AND review.shipment_id=study.shipment_id
+         ORDER BY review.created_at DESC, review.id DESC LIMIT 1) latest_review ON true
+       LEFT JOIN LATERAL (SELECT snapshot.id FROM product_assessment_snapshots snapshot
+         WHERE snapshot.company_id=study.company_id AND snapshot.product_id=study.product_id AND snapshot.is_legacy=false
+         ORDER BY snapshot.version DESC, snapshot.calculated_at DESC LIMIT 1) latest_snapshot ON true
+       WHERE study.company_id=$1 AND study.shipment_id=$2 ORDER BY study.created_at DESC, study.id DESC`,
+      [companyId, shipmentId]
+    );
+    const evidenceIds = [...new Set(result.rows.flatMap((row) => array(row.evidence_snapshot).map((item) => item.id).filter(Boolean)))];
+    const currentEvidence = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId, evidenceIds);
+    return result.rows.map((row) => this._formatPcfStudy(row, currentEvidence, row.latest_calculation_snapshot_id));
+  }
+
+  async reviewPcfStudy(companyId, shipmentId, studyId, userId, input = {}) {
+    if (!UUID_REGEX.test(String(studyId || ''))) return null;
+    const reviewerRole = text(input.reviewerRole || input.reviewer_role);
+    const decision = text(input.decision).toLowerCase(); const notes = text(input.notes);
+    if (reviewerRole !== 'pcf_practitioner_reviewer') {
+      return { blocked: true, code: 'PCF_REVIEW_ROLE_INVALID', message: 'PCF studies require the pcf_practitioner_reviewer role.' };
+    }
+    if (!new Set(['approved_for_internal_report', 'needs_information', 'rejected']).has(decision) || !notes) {
+      return { blocked: true, code: 'PCF_REVIEW_INVALID', message: 'A supported decision and review notes are required.' };
+    }
+    const studyResult = await this.database.query(
+      `SELECT study.*,
+              (SELECT MAX(candidate.revision) FROM pcf_study_revisions candidate WHERE candidate.company_id=study.company_id
+                AND candidate.shipment_id=study.shipment_id AND candidate.study_reference=study.study_reference) AS latest_revision,
+              (SELECT snapshot.id FROM product_assessment_snapshots snapshot WHERE snapshot.company_id=study.company_id
+                AND snapshot.product_id=study.product_id AND snapshot.is_legacy=false ORDER BY snapshot.version DESC LIMIT 1) AS latest_calculation_snapshot_id
+       FROM pcf_study_revisions study WHERE study.id=$1 AND study.company_id=$2 AND study.shipment_id=$3`,
+      [studyId, companyId, shipmentId]
+    );
+    const study = studyResult.rows[0]; if (!study) return null;
+    if (decision === 'approved_for_internal_report' && (study.automated_status !== 'practitioner_review_required'
+      || Number(study.latest_revision) !== Number(study.revision)
+      || study.latest_calculation_snapshot_id !== study.calculation_snapshot_id)) {
+      return { blocked: true, code: 'PCF_STUDY_NOT_CURRENT', message: 'Only the latest passing study tied to the latest calculation can be approved.' };
+    }
+    const evidenceSnapshot = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId,
+      array(study.evidence_snapshot).map((item) => item.id));
+    if (decision === 'approved_for_internal_report') {
+      const derived = derivePcfStudyStatus({ result_snapshot: study.result_snapshot,
+        latest_review: { decision, evidence_snapshot: study.evidence_snapshot } }, evidenceSnapshot, study.latest_calculation_snapshot_id);
+      if (derived.status !== 'approved_for_internal_report' || evidenceSnapshot.length === 0) {
+        return { blocked: true, code: 'PCF_EVIDENCE_STALE', message: 'Approval requires every bound evidence document to remain locked and checksum-identical.' };
+      }
+    }
+    const reviewerResult = await this.database.query('SELECT id, email, full_name FROM users WHERE id=$1', [userId]);
+    const reviewer = reviewerResult.rows[0];
+    if (!reviewer || !text(reviewer.full_name || reviewer.email)) {
+      return { blocked: true, code: 'PCF_REVIEWER_NOT_FOUND', message: 'Named PCF practitioner identity is required.' };
+    }
+    const inserted = await this.database.query(
+      `INSERT INTO pcf_study_reviews (company_id, shipment_id, study_id, reviewer_id, reviewer_name_snapshot,
+         reviewer_email_snapshot, reviewer_role, decision, notes, input_sha256, result_sha256,
+         calculation_canonical_input_hash, evidence_snapshot)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) RETURNING *`,
+      [companyId, shipmentId, studyId, userId, reviewer.full_name || reviewer.email, reviewer.email || null,
+        reviewerRole, decision, notes, study.input_sha256, study.result_sha256,
+        study.calculation_canonical_input_hash, JSON.stringify(evidenceSnapshot)]
+    );
+    return this._formatPcfStudyReview(inserted.rows[0]);
   }
 
   async createEnvironmentalClaimDossier(companyId, shipmentId, userId, input = {}) {
@@ -4395,6 +4571,40 @@ class ExportShipmentService {
       recorderEmail: row.recorder_email_snapshot || null, metadata: row.metadata || {}, createdAt: row.created_at
     };
   }
+
+  _formatPcfStudy(row, currentEvidence = [], latestCalculationSnapshotId = null) {
+    if (!row) return null;
+    const latestReview = row.latest_review ? this._formatPcfStudyReview(row.latest_review) : null;
+    const formatted = {
+      id: row.id, shipmentId: row.shipment_id, productId: row.product_id,
+      calculationSnapshotId: row.calculation_snapshot_id, studyReference: row.study_reference,
+      revision: Number(row.revision), rulesetId: row.ruleset_id, rulesetVersion: row.ruleset_version,
+      rulesetCoverage: row.ruleset_coverage, sourceManifestSha256: row.source_manifest_sha256,
+      studyDate: dateOnly(row.study_date), reportingPeriodStart: dateOnly(row.reporting_period_start),
+      reportingPeriodEnd: dateOnly(row.reporting_period_end),
+      calculationCanonicalInputHash: row.calculation_canonical_input_hash,
+      input: row.input_snapshot, inputSha256: row.input_sha256,
+      result: row.result_snapshot, resultSha256: row.result_sha256,
+      evidenceSnapshot: row.evidence_snapshot || [], automatedStatus: row.automated_status,
+      createdBy: row.created_by, createdAt: row.created_at, latestReview
+    };
+    const derived = Number(row.latest_revision || row.revision) > Number(row.revision)
+      ? { status: 'superseded', staleEvidenceIds: [] }
+      : derivePcfStudyStatus(formatted, currentEvidence, latestCalculationSnapshotId);
+    return { ...formatted, studyStatus: derived.status, staleEvidenceIds: derived.staleEvidenceIds };
+  }
+
+  _formatPcfStudyReview(row) {
+    if (!row) return null;
+    return {
+      id: row.id, studyId: row.study_id, reviewerId: row.reviewer_id,
+      reviewerName: row.reviewer_name_snapshot, reviewerEmail: row.reviewer_email_snapshot || null,
+      reviewerRole: row.reviewer_role, decision: row.decision, notes: row.notes,
+      inputSha256: row.input_sha256, resultSha256: row.result_sha256,
+      calculationCanonicalInputHash: row.calculation_canonical_input_hash,
+      evidenceSnapshot: row.evidence_snapshot || [], createdAt: row.created_at
+    };
+  }
 }
 
 const service = new ExportShipmentService();
@@ -4411,6 +4621,7 @@ module.exports.ENVIRONMENTAL_CLAIM_RULESET = ENVIRONMENTAL_CLAIM_RULESET;
 module.exports.TEXTILE_FIBRE_LABEL_RULESET = TEXTILE_FIBRE_LABEL_RULESET;
 module.exports.GPSR_TECHNICAL_FILE_RULESET = GPSR_TECHNICAL_FILE_RULESET;
 module.exports.REACH_SVHC_RULESET = REACH_SVHC_RULESET;
+module.exports.PCF_STUDY_RULESET = PCF_STUDY_RULESET;
 module.exports.VN_CUSTOMS_HANDOFF_SCHEMA = VN_CUSTOMS_HANDOFF_SCHEMA;
 module.exports.EU_IMPORT_HANDOFF_SCHEMA = EU_IMPORT_HANDOFF_SCHEMA;
 module.exports.ICS2_HANDOFF_SCHEMA = ICS2_HANDOFF_SCHEMA;

@@ -532,6 +532,468 @@
         },
         "type": "object"
       },
+      "PcfStudyInput": {
+        "additionalProperties": false,
+        "properties": {
+          "allocation": {
+            "additionalProperties": false,
+            "properties": {
+              "hierarchyJustification": {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              "method": {
+                "enum": [
+                  "physical",
+                  "economic",
+                  "mass",
+                  "energy",
+                  "other",
+                  ""
+                ],
+                "type": "string"
+              },
+              "rationale": {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "sensitivityPerformed": {
+                "type": "boolean"
+              },
+              "sensitivitySummary": {
+                "maxLength": 5000,
+                "type": "string"
+              }
+            },
+            "required": [
+              "required",
+              "method",
+              "rationale",
+              "hierarchyJustification",
+              "sensitivityPerformed",
+              "sensitivitySummary"
+            ],
+            "type": "object"
+          },
+          "biogenicCarbonTreatment": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "boundaryType": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "calculationSnapshotId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "comparativeAssertion": {
+            "type": "boolean"
+          },
+          "cutoff": {
+            "additionalProperties": false,
+            "properties": {
+              "energyPercent": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              "environmentalSignificanceApplied": {
+                "type": "boolean"
+              },
+              "massPercent": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              "rationale": {
+                "maxLength": 5000,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "massPercent",
+              "energyPercent",
+              "environmentalSignificanceApplied",
+              "rationale"
+            ],
+            "type": "object"
+          },
+          "dataImprovementPlan": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "dataQualityAssessment": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "evidenceDocumentIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "excludedProcesses": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "estimatedImpactPercent": {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "processName": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "rationale": {
+                  "maxLength": 5000,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "processName",
+                "rationale",
+                "estimatedImpactPercent"
+              ],
+              "type": "object"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
+          "externalAssuranceRecordId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "functionalUnit": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "quantity": {
+                "exclusiveMinimum": true,
+                "minimum": 0,
+                "type": "number"
+              },
+              "unit": {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "quantity",
+              "unit",
+              "description"
+            ],
+            "type": "object"
+          },
+          "includedStages": {
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "intendedApplication": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "intendedAudience": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "landUseChangeMethod": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limitations": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "notes": {
+            "maxLength": 5000,
+            "type": "string"
+          },
+          "pcr": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              "publisher": {
+                "maxLength": 500,
+                "type": "string"
+              },
+              "rationale": {
+                "maxLength": 5000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "applicable",
+                  "not_identified",
+                  "not_applicable"
+                ],
+                "type": "string"
+              },
+              "validFrom": {
+                "format": "date",
+                "nullable": true,
+                "type": "string"
+              },
+              "validTo": {
+                "format": "date",
+                "nullable": true,
+                "type": "string"
+              },
+              "version": {
+                "maxLength": 200,
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "name",
+              "publisher",
+              "version",
+              "validFrom",
+              "validTo",
+              "rationale"
+            ],
+            "type": "object"
+          },
+          "processMap": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "dataSource": {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "evidenceDocumentIds": {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "maxItems": 100,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "included": {
+                  "type": "boolean"
+                },
+                "processName": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "processReference": {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "stage": {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "processReference",
+                "processName",
+                "stage",
+                "included",
+                "dataSource",
+                "evidenceDocumentIds"
+              ],
+              "type": "object"
+            },
+            "maxItems": 300,
+            "minItems": 1,
+            "type": "array"
+          },
+          "productName": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "productReference": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "recyclingModel": {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              "rationale": {
+                "maxLength": 5000,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "method",
+              "rationale"
+            ],
+            "type": "object"
+          },
+          "referenceFlow": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "exclusiveMinimum": true,
+                "minimum": 0,
+                "type": "number"
+              },
+              "basis": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "unit": {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "amount",
+              "unit",
+              "basis"
+            ],
+            "type": "object"
+          },
+          "reportingPeriodEnd": {
+            "format": "date",
+            "type": "string"
+          },
+          "reportingPeriodStart": {
+            "format": "date",
+            "type": "string"
+          },
+          "studyDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "studyReference": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "uncertaintyAssessment": {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "enum": [
+                  "qualitative",
+                  "rss_fallback",
+                  "monte_carlo"
+                ],
+                "type": "string"
+              },
+              "model": {
+                "maxLength": 5000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "parameter": {
+                "maxLength": 5000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "scenario": {
+                "maxLength": 5000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "sensitivityScenarios": {
+                "items": {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "method",
+              "parameter",
+              "scenario",
+              "model",
+              "sensitivityScenarios"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "studyReference",
+          "studyDate",
+          "calculationSnapshotId",
+          "productReference",
+          "productName",
+          "reportingPeriodStart",
+          "reportingPeriodEnd",
+          "intendedApplication",
+          "intendedAudience",
+          "comparativeAssertion",
+          "functionalUnit",
+          "referenceFlow",
+          "boundaryType",
+          "includedStages",
+          "processMap",
+          "excludedProcesses",
+          "cutoff",
+          "pcr",
+          "allocation",
+          "recyclingModel",
+          "dataQualityAssessment",
+          "dataImprovementPlan",
+          "uncertaintyAssessment",
+          "landUseChangeMethod",
+          "biogenicCarbonTreatment",
+          "evidenceDocumentIds",
+          "limitations"
+        ],
+        "type": "object"
+      },
       "Product": {
         "additionalProperties": true,
         "example": {
@@ -11971,6 +12433,259 @@
           }
         ],
         "summary": "PATCH /export/shipments/{shipmentId}/packages/{packageId}",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/pcf/calculation-snapshots": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdPcfCalculationSnapshots",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/pcf/calculation-snapshots",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/pcf/studies": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdPcfStudies",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/pcf/studies",
+        "tags": [
+          "Export"
+        ]
+      },
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdPcfStudies",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PcfStudyInput"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/pcf/studies",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/pcf/studies/{studyId}/reviews": {
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdPcfStudiesByStudyIdReviews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "studyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approved_for_internal_report",
+                      "needs_information",
+                      "rejected"
+                    ],
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reviewerRole": {
+                    "enum": [
+                      "pcf_practitioner_reviewer"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reviewerRole",
+                  "decision",
+                  "notes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/pcf/studies/{studyId}/reviews",
         "tags": [
           "Export"
         ]
