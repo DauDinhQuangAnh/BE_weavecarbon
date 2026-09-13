@@ -196,6 +196,28 @@
         },
         "description": "Paginated product list"
       },
+      "PublicPassport": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/GenericSuccessResponse"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PublicPassportData"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        },
+        "description": "Public product passport with fail-closed R18 environmental-claim resolution"
+      },
       "TooManyRequests": {
         "content": {
           "application/json": {
@@ -2165,6 +2187,337 @@
         "required": [
           "items",
           "pagination"
+        ],
+        "type": "object"
+      },
+      "PublicEnvironmentalClaim": {
+        "additionalProperties": false,
+        "properties": {
+          "claimReference": {
+            "type": "string"
+          },
+          "communicationEnd": {
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "communicationStart": {
+            "format": "date",
+            "type": "string"
+          },
+          "dossierId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "exactClaimText": {
+            "type": "string"
+          },
+          "languageCode": {
+            "type": "string"
+          },
+          "marketCodes": {
+            "items": {
+              "pattern": "^[A-Z]{2}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resultSha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "rulesetId": {
+            "type": "string"
+          },
+          "rulesetVersion": {
+            "type": "string"
+          },
+          "specificationText": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dossierId",
+          "claimReference",
+          "revision",
+          "exactClaimText",
+          "specificationText",
+          "languageCode",
+          "marketCodes",
+          "communicationStart",
+          "rulesetId",
+          "rulesetVersion",
+          "resultSha256"
+        ],
+        "type": "object"
+      },
+      "PublicPassportData": {
+        "additionalProperties": false,
+        "properties": {
+          "environmentalClaimStatus": {
+            "enum": [
+              "approved_current",
+              "not_authorized"
+            ],
+            "type": "string"
+          },
+          "environmentalClaims": {
+            "items": {
+              "$ref": "#/components/schemas/PublicEnvironmentalClaim"
+            },
+            "type": "array"
+          },
+          "product": {
+            "$ref": "#/components/schemas/PublicPassportProduct"
+          },
+          "shipment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PublicPassportShipment"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "product",
+          "shipment",
+          "environmentalClaimStatus",
+          "environmentalClaims"
+        ],
+        "type": "object"
+      },
+      "PublicPassportProduct": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "destinationAddress": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "destinationMarket": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "manufacturingLocation": {
+            "type": "string"
+          },
+          "materials": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "materialType": {
+                  "type": "string"
+                },
+                "percentage": {
+                  "type": "number"
+                },
+                "weight": {
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "originAddress": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "productCode": {
+            "type": "string"
+          },
+          "productName": {
+            "type": "string"
+          },
+          "productType": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string"
+          },
+          "transportLegs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "destination": {
+                  "type": "string"
+                },
+                "estimatedDistance": {
+                  "type": "number"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "origin": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "weightPerUnit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "productCode",
+          "productName",
+          "materials",
+          "transportLegs"
+        ],
+        "type": "object"
+      },
+      "PublicPassportShipment": {
+        "additionalProperties": false,
+        "properties": {
+          "actualArrival": {
+            "nullable": true,
+            "type": "string"
+          },
+          "actualArrivalAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "destination": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "estimatedArrival": {
+            "nullable": true,
+            "type": "string"
+          },
+          "estimatedArrivalAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "legs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "carrierName": {
+                  "type": "string"
+                },
+                "destinationLocation": {
+                  "type": "string"
+                },
+                "distanceKm": {
+                  "type": "number"
+                },
+                "durationHours": {
+                  "nullable": true,
+                  "type": "number"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "legOrder": {
+                  "type": "integer"
+                },
+                "originLocation": {
+                  "type": "string"
+                },
+                "transportMode": {
+                  "type": "string"
+                },
+                "vehicleType": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "origin": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "pendingUntil": {
+            "nullable": true,
+            "type": "string"
+          },
+          "products": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "productId": {
+                  "type": "string"
+                },
+                "productName": {
+                  "type": "string"
+                },
+                "quantity": {
+                  "type": "number"
+                },
+                "sku": {
+                  "type": "string"
+                },
+                "weightKg": {
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "referenceNumber": {
+            "type": "string"
+          },
+          "simulationEnabled": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "totalDistanceKm": {
+            "type": "number"
+          },
+          "totalWeightKg": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "referenceNumber",
+          "legs",
+          "products"
         ],
         "type": "object"
       },
@@ -16535,7 +16888,7 @@
             "$ref": "#/components/responses/InternalError"
           },
           "2XX": {
-            "$ref": "#/components/responses/GenericSuccess"
+            "$ref": "#/components/responses/PublicPassport"
           }
         },
         "security": [],

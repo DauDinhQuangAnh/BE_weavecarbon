@@ -37,6 +37,17 @@ describe('OpenAPI runtime contract', () => {
     );
   });
 
+  test('keeps the public passport contract allowlisted and claim-gated', () => {
+    const passport = swaggerSpec.paths['/passport/{productId}'].get;
+    expect(passport.responses['2XX'].$ref).toBe('#/components/responses/PublicPassport');
+    expect(swaggerSpec.components.schemas.PublicPassportProduct.additionalProperties).toBe(false);
+    expect(swaggerSpec.components.schemas.PublicPassportShipment.additionalProperties).toBe(false);
+    expect(swaggerSpec.components.schemas.PublicPassportProduct.properties).not.toHaveProperty('carbonResults');
+    expect(swaggerSpec.components.schemas.PublicPassportShipment.properties).not.toHaveProperty('totalCo2e');
+    expect(swaggerSpec.components.schemas.PublicPassportData.properties.environmentalClaimStatus.enum)
+      .toEqual(['approved_current', 'not_authorized']);
+  });
+
   test('documents auth, errors, multipart and binary transports', () => {
     expect(swaggerSpec.paths['/products'].get.security).toEqual([{ bearerAuth: [] }]);
     expect(swaggerSpec.paths['/auth/signin'].post.security).toEqual([]);

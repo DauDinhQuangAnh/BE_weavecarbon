@@ -246,7 +246,8 @@ function derivePublicationStatus(dossier, currentEvidence = [], asOf = new Date(
     return !current || !['locked', 'third_party_verified'].includes(current.status)
       || current.checksumSha256 !== item.checksumSha256
       || Number(current.fileSizeBytes || 0) !== Number(item.fileSizeBytes || 0)
-      || (item.validTo && item.validTo < asOf);
+      || (current.validTo || null) !== (item.validTo || null)
+      || (current.validTo && current.validTo < asOf);
   }).map((item) => item.id);
   if (staleEvidenceIds.length) return { status: 'evidence_review_required', staleEvidenceIds };
   if (input.communicationEnd && input.communicationEnd < asOf) return { status: 'expired', staleEvidenceIds: [] };

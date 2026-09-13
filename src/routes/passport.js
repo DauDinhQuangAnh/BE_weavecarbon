@@ -8,6 +8,7 @@ const router = express.Router();
 router.get(
   '/:productId',
   asyncHandler(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
     const payload = await passportService.getPublicPassportPayload(req.params.productId);
 
     if (!payload) {

@@ -14,10 +14,11 @@ const { insertFinalizedProductSnapshot } = require('../src/modules/carbon/calcul
 const { createExportShipmentService } = require('../src/services/exportShipmentService');
 const { CorporateGhgInventoryService } = require('../src/services/corporateGhgInventoryService');
 const { EuTextileEprService } = require('../src/services/euTextileEprService');
+const { PublicEnvironmentalClaimService } = require('../src/services/publicEnvironmentalClaimService');
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pcf-corporate-ghg-epr-pilot-v13',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pcf-corporate-ghg-epr-pilot-v14',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -905,16 +906,16 @@ async function run() {
   const controlledClaim = await service.createEnvironmentalClaimDossier(
     ids.companyId, ids.shipmentId, ids.userId, {
       claimReference: `PCF-${runId}`,
-      exactClaimText: 'This SKU records 20% lower cradle-to-gate CO2e than the named synthetic baseline.',
-      publicCommunication: true, channel: 'website', marketCodes: ['DE'], languageCode: 'de-DE',
-      communicationStart: '2026-09-27', communicationEnd: '2027-06-30',
-      subjectType: 'sku', subjectReference: `SKU-${runId}`,
+      exactClaimText: `This SKU has a recorded partial cradle-to-gate footprint of ${ids.carbonResult.reportedTotalKgCO2e} kg CO2e per piece.`,
+      publicCommunication: true, channel: 'website', marketCodes: ['NL'], languageCode: 'en',
+      communicationStart: '2026-09-01', communicationEnd: '2027-06-30',
+      subjectType: 'sku', subjectReference: `R03-SKU-${runId}`,
       scopeStatement: 'One synthetic SKU; cradle-to-gate boundary only.', claimKind: 'specific_environmental',
-      specificationText: '20% against synthetic 2025 baseline using the recorded method and dataset.',
+      specificationText: 'Synthetic climate-only partial boundary; use and end-of-life are excluded.',
       claimScopeMode: 'specific_aspect', actualCoverage: 'aspect_only',
       methodology: {
         standard: 'Synthetic internal PCF method', version: '1.0', pcr: '',
-        calculationSha256: 'c'.repeat(64),
+        calculationSha256: lines[0].carbonAuthority.canonicalInputHash,
         datasetReferences: ['synthetic-carbon-snapshot'], factorReferences: ['synthetic-factor-registry']
       },
       limitations: ['Synthetic data only'], exclusions: ['Use phase'], uncertaintyStatement: 'Synthetic uncertainty ±15%.',
@@ -940,7 +941,7 @@ async function run() {
   assert.equal(claimReview.resultSha256, controlledClaim.resultSha256);
   const claimRegister = await service.listEnvironmentalClaimDossiers(ids.companyId, ids.shipmentId);
   const reopenedClaim = claimRegister.find((item) => item.id === controlledClaim.id);
-  assert.equal(reopenedClaim.publicationStatus, 'approved_scheduled');
+  assert.equal(reopenedClaim.publicationStatus, 'approved_current');
   assert.equal(await service.listEnvironmentalClaimDossiers(ids.otherCompanyId, ids.shipmentId), null);
   await assert.rejects(
     pool.query('UPDATE environmental_claim_dossiers SET automated_status=$1 WHERE id=$2', [
@@ -954,6 +955,19 @@ async function run() {
     resultSha256: controlledClaim.resultSha256
   });
   check('r18_claim_revision_is_tenant_isolated_hash_bound_evidence_backed_and_immutable');
+  const publicClaimService = new PublicEnvironmentalClaimService(pool);
+  const publicClaims = await publicClaimService.resolvePassportClaims({
+    companyId: ids.companyId, shipmentId: ids.shipmentId, shipmentReference: `R03-${runId}`,
+    destinationCountry: 'NL', productId: ids.productId, productSku: `R03-SKU-${runId}`,
+    calculationSha256: lines[0].carbonAuthority.canonicalInputHash
+  });
+  assert.equal(publicClaims.length, 1);
+  assert.equal(publicClaims[0].dossierId, controlledClaim.id);
+  assert.equal((await publicClaimService.resolvePassportClaims({
+    companyId: ids.companyId, shipmentId: ids.shipmentId, destinationCountry: 'NL',
+    productId: ids.productId, productSku: `R03-SKU-${runId}`, calculationSha256: 'f'.repeat(64)
+  })).length, 0);
+  check('r18_public_passport_claim_is_exact_hash_market_subject_and_evidence_bound');
 
   const incompleteTextileLabel = await service.createTextileFibreLabelSpecification(
     ids.companyId, ids.shipmentId, ids.userId, {

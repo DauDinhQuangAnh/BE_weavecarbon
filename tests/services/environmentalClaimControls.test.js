@@ -62,6 +62,8 @@ describe('R18 environmental claim controls', () => {
     expect(derivePublicationStatus(dossier, evidence, '2026-10-01').status).toBe('approved_current');
     expect(derivePublicationStatus(dossier, [{ ...evidence[0], checksumSha256: 'c'.repeat(64) }], '2026-10-01'))
       .toEqual({ status: 'evidence_review_required', staleEvidenceIds: [evidence[0].id] });
+    expect(derivePublicationStatus(dossier, [{ ...evidence[0], validTo: '2027-11-30' }], '2026-10-01').status)
+      .toBe('evidence_review_required');
     expect(derivePublicationStatus(dossier, evidence, '2028-01-01').status).toBe('evidence_review_required');
     const nonExpiringEvidence = evidence.map((item) => ({ ...item, validTo: null }));
     expect(derivePublicationStatus({

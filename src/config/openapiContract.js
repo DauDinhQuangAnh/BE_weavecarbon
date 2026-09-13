@@ -1172,6 +1172,7 @@ function successResponse(operationKey) {
     'GET /company/members': '#/components/responses/CompanyMembersList',
     'GET /products': '#/components/responses/ProductList',
     'GET /products/{id}': '#/components/responses/Product',
+    'GET /passport/{productId}': '#/components/responses/PublicPassport',
     'POST /products': '#/components/responses/Product',
     'PUT /products/{id}': '#/components/responses/Product'
   };
@@ -1667,6 +1668,103 @@ function contractComponents() {
           disabled: { type: 'integer', minimum: 0 }
         },
         additionalProperties: false
+      },
+      PublicEnvironmentalClaim: {
+        type: 'object',
+        required: ['dossierId', 'claimReference', 'revision', 'exactClaimText', 'specificationText', 'languageCode',
+          'marketCodes', 'communicationStart', 'rulesetId', 'rulesetVersion', 'resultSha256'],
+        properties: {
+          dossierId: { type: 'string', format: 'uuid' }, claimReference: { type: 'string' },
+          revision: { type: 'integer', minimum: 1 }, exactClaimText: { type: 'string' },
+          specificationText: { type: 'string' }, languageCode: { type: 'string' },
+          marketCodes: { type: 'array', items: { type: 'string', pattern: '^[A-Z]{2}$' } },
+          communicationStart: { type: 'string', format: 'date' },
+          communicationEnd: { type: 'string', format: 'date', nullable: true },
+          rulesetId: { type: 'string' }, rulesetVersion: { type: 'string' },
+          resultSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' }
+        },
+        additionalProperties: false
+      },
+      PublicPassportProduct: {
+        type: 'object',
+        required: ['id', 'productCode', 'productName', 'materials', 'transportLegs'],
+        properties: {
+          id: { type: 'string', format: 'uuid' }, productCode: { type: 'string' },
+          productName: { type: 'string' }, productType: { type: 'string' },
+          weightPerUnit: { type: 'number' }, quantity: { type: 'number' }, status: { type: 'string' },
+          createdAt: { type: 'string', format: 'date-time' }, updatedAt: { type: 'string', format: 'date-time' },
+          destinationMarket: { type: 'string' }, manufacturingLocation: { type: 'string' },
+          originAddress: { type: 'object', additionalProperties: true },
+          destinationAddress: { type: 'object', additionalProperties: true },
+          materials: {
+            type: 'array', items: {
+              type: 'object',
+              properties: {
+                materialType: { type: 'string' }, percentage: { type: 'number' }, weight: { type: 'number' }
+              },
+              additionalProperties: false
+            }
+          },
+          transportLegs: {
+            type: 'array', items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' }, mode: { type: 'string' }, origin: { type: 'string' },
+                destination: { type: 'string' }, estimatedDistance: { type: 'number' }
+              },
+              additionalProperties: false
+            }
+          }
+        },
+        additionalProperties: false
+      },
+      PublicPassportShipment: {
+        type: 'object',
+        required: ['id', 'referenceNumber', 'legs', 'products'],
+        properties: {
+          id: { type: 'string', format: 'uuid' }, referenceNumber: { type: 'string' }, status: { type: 'string' },
+          origin: { type: 'object', additionalProperties: true },
+          destination: { type: 'object', additionalProperties: true },
+          totalWeightKg: { type: 'number' }, totalDistanceKm: { type: 'number' },
+          pendingUntil: { type: 'string', nullable: true }, estimatedArrival: { type: 'string', nullable: true },
+          estimatedArrivalAt: { type: 'string', nullable: true }, actualArrival: { type: 'string', nullable: true },
+          actualArrivalAt: { type: 'string', nullable: true }, simulationEnabled: { type: 'boolean' },
+          createdAt: { type: 'string', format: 'date-time' }, updatedAt: { type: 'string', format: 'date-time' },
+          legs: {
+            type: 'array', items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' }, legOrder: { type: 'integer' }, transportMode: { type: 'string' },
+                originLocation: { type: 'string' }, destinationLocation: { type: 'string' },
+                distanceKm: { type: 'number' }, durationHours: { type: 'number', nullable: true },
+                carrierName: { type: 'string' }, vehicleType: { type: 'string' }
+              },
+              additionalProperties: false
+            }
+          },
+          products: {
+            type: 'array', items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' }, productId: { type: 'string' }, quantity: { type: 'number' },
+                weightKg: { type: 'number' }, sku: { type: 'string' }, productName: { type: 'string' }
+              },
+              additionalProperties: false
+            }
+          }
+        },
+        additionalProperties: false
+      },
+      PublicPassportData: {
+        type: 'object',
+        required: ['product', 'shipment', 'environmentalClaimStatus', 'environmentalClaims'],
+        properties: {
+          product: { $ref: '#/components/schemas/PublicPassportProduct' },
+          shipment: { allOf: [{ $ref: '#/components/schemas/PublicPassportShipment' }], nullable: true },
+          environmentalClaimStatus: { type: 'string', enum: ['approved_current', 'not_authorized'] },
+          environmentalClaims: { type: 'array', items: { $ref: '#/components/schemas/PublicEnvironmentalClaim' } }
+        },
+        additionalProperties: false
       }
     },
     responses: {
@@ -1710,6 +1808,19 @@ function contractComponents() {
                 }],
                 pagination: { page: 1, page_size: 20, total: 1, total_pages: 1 }
               }
+            }
+          }
+        }
+      },
+      PublicPassport: {
+        description: 'Public product passport with fail-closed R18 environmental-claim resolution',
+        content: {
+          'application/json': {
+            schema: {
+              allOf: [
+                { $ref: '#/components/schemas/GenericSuccessResponse' },
+                { type: 'object', properties: { data: { $ref: '#/components/schemas/PublicPassportData' } } }
+              ]
             }
           }
         }
