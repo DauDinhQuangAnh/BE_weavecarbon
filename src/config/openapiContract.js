@@ -830,6 +830,23 @@ const REQUEST_BODY_OVERRIDES = {
       consumerPersonalDataIncluded: { type: 'boolean', enum: [false] }, metadata: { type: 'object' }
     }, additionalProperties: false
   },
+  'POST /export/shipments/{shipmentId}/reach/dossiers': { $ref: '#/components/schemas/ReachSvhcDossierInput' },
+  'POST /export/shipments/{shipmentId}/reach/dossiers/{dossierId}/reviews': {
+    type: 'object', required: ['reviewerRole', 'decision', 'notes'], properties: {
+      reviewerRole: { type: 'string', enum: ['chemical_compliance_reviewer'] },
+      decision: { type: 'string', enum: ['approved_for_internal_release', 'needs_information', 'rejected'] },
+      notes: { type: 'string', minLength: 1, maxLength: 5000 }
+    }, additionalProperties: false
+  },
+  'POST /export/shipments/{shipmentId}/reach/dossiers/{dossierId}/obligation-events': {
+    type: 'object', required: ['eventType', 'eventReference', 'occurredAt', 'summary'], properties: {
+      eventType: { type: 'string', enum: ['supply_chain_communication', 'consumer_request_received', 'consumer_response_sent', 'article7_notification', 'scip_notification', 'authority_request', 'authority_response', 'corrective_action'] },
+      eventReference: { type: 'string', minLength: 1, maxLength: 200 }, occurredAt: { type: 'string', format: 'date-time' },
+      summary: { type: 'string', minLength: 1, maxLength: 10000 }, externalReference: { type: 'string', maxLength: 1000 },
+      evidenceDocumentId: { type: 'string', format: 'uuid' }, consumerPersonalDataIncluded: { type: 'boolean', enum: [false] },
+      metadata: { type: 'object' }
+    }, additionalProperties: false
+  },
   'POST /export/shipments/{shipmentId}/environmental-claims': {
     type: 'object',
     required: [
@@ -1257,6 +1274,65 @@ function contractComponents() {
           euEstablished: { type: 'boolean' }
         },
         additionalProperties: false
+      },
+      ReachRestrictionAssessmentInput: {
+        type: 'object', required: ['entryNumber', 'scopeDecision', 'scopeRationale', 'prohibitedWhen', 'exemptionClaimed', 'evidenceDocumentIds'],
+        properties: {
+          entryNumber: { type: 'string', minLength: 1, maxLength: 100 },
+          scopeDecision: { type: 'string', enum: ['applies', 'not_applies', 'unknown'] },
+          scopeRationale: { type: 'string', minLength: 1, maxLength: 5000 }, legalLimit: { type: 'number', minimum: 0, nullable: true },
+          limitUnit: { type: 'string', enum: ['percent_w_w', 'mg_kg', 'mg_kg_material', 'mg_kg_extracted', ''] },
+          prohibitedWhen: { type: 'string', enum: ['at_or_above_limit', 'above_limit', ''] },
+          measuredValue: { type: 'number', minimum: 0, nullable: true }, testMethod: { type: 'string', maxLength: 1000 },
+          exemptionClaimed: { type: 'boolean' }, exemptionRationale: { type: 'string', maxLength: 5000 },
+          evidenceDocumentIds: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } }
+        }, additionalProperties: false
+      },
+      ReachSubstanceInput: {
+        type: 'object', required: ['substanceName', 'candidateListStatus', 'concentrationPercentWw', 'location',
+          'evidenceBasis', 'safeUseInstructions', 'article7Exemption', 'evidenceDocumentIds', 'restrictionAssessments'],
+        properties: {
+          substanceName: { type: 'string', minLength: 1, maxLength: 1000 }, casNumber: { type: 'string', maxLength: 100 },
+          ecNumber: { type: 'string', maxLength: 100 }, echaId: { type: 'string', maxLength: 200 },
+          candidateListStatus: { type: 'string', enum: ['included', 'not_included', 'unknown'] },
+          candidateInclusionDate: { type: 'string', format: 'date', nullable: true }, concentrationPercentWw: { type: 'number', minimum: 0, maximum: 100 },
+          annualTonnage: { type: 'number', minimum: 0, nullable: true }, location: { type: 'string', minLength: 1, maxLength: 2000 },
+          evidenceBasis: { type: 'string', enum: ['supplier_declaration', 'sds', 'laboratory_test', 'calculation', 'unknown'] },
+          detectionLimit: { type: 'number', minimum: 0, nullable: true }, detectionLimitUnit: { type: 'string', maxLength: 100 },
+          safeUseInstructions: { type: 'array', maxItems: 100, items: { type: 'object',
+            required: ['marketCode', 'languageCode', 'text', 'operatorApproved'], properties: {
+              marketCode: { type: 'string', pattern: '^[A-Za-z]{2}$' }, languageCode: { type: 'string', minLength: 2, maxLength: 35 },
+              text: { type: 'string', minLength: 1, maxLength: 10000 }, operatorApproved: { type: 'boolean' }
+            }, additionalProperties: false } },
+          article7Exemption: { type: 'string', enum: ['none', 'registered_for_use', 'exposure_excluded', ''] },
+          article7ExemptionRationale: { type: 'string', maxLength: 5000 },
+          evidenceDocumentIds: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
+          restrictionAssessments: { type: 'array', minItems: 1, maxItems: 100, items: { $ref: '#/components/schemas/ReachRestrictionAssessmentInput' } }
+        }, additionalProperties: false
+      },
+      ReachSvhcDossierInput: {
+        type: 'object', required: ['dossierReference', 'assessmentDate', 'productReference', 'productName', 'articleCategory',
+          'consumerArticle', 'placedOnEuMarket', 'marketCodes', 'euActorRole', 'articleLevelAssessmentConfirmed',
+          'candidateListSnapshotDate', 'candidateListEntryCount', 'reachConsolidatedDate', 'components', 'supplierDeclarationEvidenceIds'],
+        properties: {
+          dossierReference: { type: 'string', minLength: 1, maxLength: 120 }, assessmentDate: { type: 'string', format: 'date' },
+          productReference: { type: 'string', minLength: 1, maxLength: 500 }, productName: { type: 'string', minLength: 1, maxLength: 500 },
+          articleCategory: { type: 'string', minLength: 1, maxLength: 500 }, consumerArticle: { type: 'boolean' }, placedOnEuMarket: { type: 'boolean' },
+          marketCodes: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string', pattern: '^[A-Za-z]{2}$' } },
+          euActorRole: { type: 'string', minLength: 1, maxLength: 100 }, articleLevelAssessmentConfirmed: { type: 'boolean' },
+          candidateListSnapshotDate: { type: 'string', format: 'date' }, candidateListEntryCount: { type: 'integer', minimum: 1 },
+          reachConsolidatedDate: { type: 'string', format: 'date' },
+          components: { type: 'array', minItems: 1, maxItems: 200, items: { type: 'object',
+            required: ['componentReference', 'componentName', 'articleReference', 'homogeneousMaterialReference', 'materialName', 'materialLocation', 'substances'],
+            properties: {
+              componentReference: { type: 'string', minLength: 1, maxLength: 500 }, componentName: { type: 'string', minLength: 1, maxLength: 500 },
+              articleReference: { type: 'string', minLength: 1, maxLength: 500 }, homogeneousMaterialReference: { type: 'string', minLength: 1, maxLength: 500 },
+              materialName: { type: 'string', minLength: 1, maxLength: 500 }, materialLocation: { type: 'string', minLength: 1, maxLength: 2000 },
+              substances: { type: 'array', minItems: 1, maxItems: 500, items: { $ref: '#/components/schemas/ReachSubstanceInput' } }
+            }, additionalProperties: false } },
+          supplierDeclarationEvidenceIds: { type: 'array', minItems: 1, maxItems: 200, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
+          notes: { type: 'string', maxLength: 5000 }
+        }, additionalProperties: false
       },
       Product: {
         type: 'object',

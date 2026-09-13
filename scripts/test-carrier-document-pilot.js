@@ -15,7 +15,7 @@ const { createExportShipmentService } = require('../src/services/exportShipmentS
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-pilot-v9',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pilot-v10',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -28,7 +28,9 @@ const result = {
   environmentalClaims: [],
   textileFibreLabels: [],
   gpsrTechnicalFiles: [],
-  gpsrPostMarketEvents: []
+  gpsrPostMarketEvents: [],
+  reachSvhcDossiers: [],
+  reachObligationEvents: []
 };
 
 function check(name, details = {}) {
@@ -44,7 +46,7 @@ async function writeResult() {
   for (const name of [
     'carrier-document-pilot', 'vn-customs-handoff-pilot', 'eu-import-handoff-pilot',
     'ics2-handoff-pilot', 'origin-handoff-pilot', 'compliance-applicability-pilot',
-    'environmental-claim-pilot', 'textile-fibre-label-pilot', 'gpsr-technical-file-pilot'
+    'environmental-claim-pilot', 'textile-fibre-label-pilot', 'gpsr-technical-file-pilot', 'reach-svhc-dossier-pilot'
   ]) {
     const directory = path.resolve(__dirname, '..', 'artifacts', name);
     await fs.promises.mkdir(directory, { recursive: true });
@@ -1140,6 +1142,116 @@ async function run() {
     externalReference: item.externalReference, safetyBusinessGatewayNotificationRequired: item.safetyBusinessGatewayNotificationRequired
   })));
   check('r10_serious_incident_requires_gateway_follow_up_and_gateway_claim_requires_external_proof');
+
+  const blockedReach = await service.createReachSvhcDossierRevision(
+    ids.companyId, ids.shipmentId, ids.userId, {
+      dossierReference: `REACH-BLOCKED-${runId}`, assessmentDate: '2026-09-13', productReference: `R03-SKU-${runId}`,
+      productName: 'Synthetic cotton shirt', articleCategory: 'consumer clothing', consumerArticle: true,
+      placedOnEuMarket: true, marketCodes: ['DE'], euActorRole: 'importer', articleLevelAssessmentConfirmed: false,
+      candidateListSnapshotDate: '2026-02-04', candidateListEntryCount: 252, reachConsolidatedDate: '2026-06-22',
+      components: [{ componentReference: 'button', componentName: 'Button', articleReference: `BUTTON-${runId}`,
+        homogeneousMaterialReference: `RESIN-${runId}`, materialName: 'Synthetic resin', materialLocation: 'Front closure',
+        substances: [{ substanceName: 'n-hexane', casNumber: '110-54-3', candidateListStatus: 'included',
+          candidateInclusionDate: '2026-02-04', concentrationPercentWw: 0.2, annualTonnage: null, location: 'Button resin',
+          evidenceBasis: 'laboratory_test', detectionLimit: null, detectionLimitUnit: '', safeUseInstructions: [],
+          article7Exemption: '', evidenceDocumentIds: [originEvidence.evidenceId], restrictionAssessments: [] }] }],
+      supplierDeclarationEvidenceIds: [originEvidence.evidenceId], notes: 'Synthetic blocked R11 fixture.'
+    }
+  );
+  assert.equal(blockedReach.automatedStatus, 'needs_information');
+  assert.ok(blockedReach.result.findings.some((item) => item.code === 'ARTICLE_LEVEL_ASSESSMENT_REQUIRED'));
+  assert.ok(blockedReach.result.findings.some((item) => item.code === 'CHEMICAL_SOURCE_VERSION_MISMATCH'));
+  assert.ok(blockedReach.result.findings.some((item) => item.code === 'SAFE_USE_INFORMATION_REQUIRED'));
+  const blockedReachApproval = await service.reviewReachSvhcDossier(
+    ids.companyId, ids.shipmentId, blockedReach.id, ids.userId, {
+      reviewerRole: 'chemical_compliance_reviewer', decision: 'approved_for_internal_release',
+      notes: 'Synthetic incomplete dossier approval must fail.'
+    }
+  );
+  assert.equal(blockedReachApproval.code, 'REACH_DOSSIER_NOT_READY');
+  check('r11_wrong_source_article_level_and_missing_safe_use_are_blocked');
+
+  const controlledReach = await service.createReachSvhcDossierRevision(
+    ids.companyId, ids.shipmentId, ids.userId, {
+      dossierReference: `REACH-SHIRT-${runId}`, assessmentDate: '2026-09-13', productReference: `R03-SKU-${runId}`,
+      productName: 'Synthetic cotton shirt', articleCategory: 'consumer clothing', consumerArticle: true,
+      placedOnEuMarket: true, marketCodes: ['DE'], euActorRole: 'importer', articleLevelAssessmentConfirmed: true,
+      candidateListSnapshotDate: '2026-02-04', candidateListEntryCount: 253, reachConsolidatedDate: '2026-06-22',
+      components: [{ componentReference: 'button', componentName: 'Button', articleReference: `BUTTON-${runId}`,
+        homogeneousMaterialReference: `RESIN-${runId}`, materialName: 'Synthetic resin', materialLocation: 'Front closure',
+        substances: [{ substanceName: 'n-hexane', casNumber: '110-54-3', ecNumber: '203-777-6',
+          candidateListStatus: 'included', candidateInclusionDate: '2026-02-04', concentrationPercentWw: 0.2,
+          annualTonnage: 0.2, location: 'Button resin', evidenceBasis: 'laboratory_test', detectionLimit: 0.01,
+          detectionLimitUnit: 'percent_w_w', safeUseInstructions: [{ marketCode: 'DE', languageCode: 'de-DE',
+            text: 'Nicht verbrennen; bei der Entsorgung örtliche Hinweise beachten.', operatorApproved: true }],
+          article7Exemption: 'none', evidenceDocumentIds: [originEvidence.evidenceId],
+          restrictionAssessments: [{ entryNumber: '72', scopeDecision: 'not_applies',
+            scopeRationale: 'n-hexane is not listed in Appendix 12 for this recorded source snapshot.',
+            legalLimit: null, limitUnit: '', measuredValue: null, prohibitedWhen: '', testMethod: '', exemptionClaimed: false,
+            evidenceDocumentIds: [originEvidence.evidenceId] }] }] }],
+      supplierDeclarationEvidenceIds: [originEvidence.evidenceId],
+      notes: 'Synthetic R11 control pilot; not a REACH certificate or ECHA submission.'
+    }
+  );
+  assert.equal(controlledReach.automatedStatus, 'ready_for_chemical_review');
+  assert.ok(controlledReach.result.obligations.some((item) => item.code === 'ARTICLE_33_COMMUNICATION_REQUIRED'));
+  assert.ok(controlledReach.result.obligations.some((item) => item.code === 'SCIP_NOTIFICATION_ASSESSMENT_REQUIRED'));
+  const wrongReachRole = await service.reviewReachSvhcDossier(
+    ids.companyId, ids.shipmentId, controlledReach.id, ids.userId, {
+      reviewerRole: 'compliance_specialist', decision: 'approved_for_internal_release', notes: 'Wrong role.'
+    }
+  );
+  assert.equal(wrongReachRole.code, 'REACH_REVIEW_ROLE_INVALID');
+  const reachReview = await service.reviewReachSvhcDossier(
+    ids.companyId, ids.shipmentId, controlledReach.id, ids.userId, {
+      reviewerRole: 'chemical_compliance_reviewer', decision: 'approved_for_internal_release',
+      notes: 'Synthetic source, article, substance, threshold, safe-use and evidence review for internal release only.'
+    }
+  );
+  assert.equal(reachReview.inputSha256, controlledReach.inputSha256);
+  assert.equal(reachReview.resultSha256, controlledReach.resultSha256);
+  const reachRegister = await service.listReachSvhcDossiers(ids.companyId, ids.shipmentId);
+  const reopenedReach = reachRegister.find((item) => item.id === controlledReach.id);
+  assert.equal(reopenedReach.releaseStatus, 'approved_for_internal_release');
+  assert.equal(await service.listReachSvhcDossiers(ids.otherCompanyId, ids.shipmentId), null);
+  await assert.rejects(pool.query('UPDATE reach_svhc_dossier_revisions SET automated_status=$1 WHERE id=$2', [
+    'needs_information', controlledReach.id
+  ]), /append-only and immutable/i);
+  result.reachSvhcDossiers.push({ id: controlledReach.id, dossierReference: controlledReach.dossierReference,
+    revision: controlledReach.revision, releaseStatus: reopenedReach.releaseStatus,
+    inputSha256: controlledReach.inputSha256, resultSha256: controlledReach.resultSha256 });
+  check('r11_dossier_is_tenant_isolated_hash_bound_evidence_backed_and_immutable');
+
+  const consumerRequest = await service.recordReachObligationEvent(
+    ids.companyId, ids.shipmentId, controlledReach.id, ids.userId, {
+      eventType: 'consumer_request_received', eventReference: `REACH-REQ-${runId}`, occurredAt: '2026-09-13T00:00:00Z',
+      summary: 'Synthetic opaque consumer request reference without personal data.', consumerPersonalDataIncluded: false
+    }
+  );
+  assert.equal(String(consumerRequest.responseDueAt), '2026-10-28T00:00:00.000Z');
+  const unprovenScip = await service.recordReachObligationEvent(
+    ids.companyId, ids.shipmentId, controlledReach.id, ids.userId, {
+      eventType: 'scip_notification', eventReference: `SCIP-MISSING-${runId}`, occurredAt: '2026-09-13T01:00:00Z',
+      summary: 'Synthetic unproven SCIP claim.'
+    }
+  );
+  assert.equal(unprovenScip.code, 'REACH_EXTERNAL_PROOF_REQUIRED');
+  const scip = await service.recordReachObligationEvent(
+    ids.companyId, ids.shipmentId, controlledReach.id, ids.userId, {
+      eventType: 'scip_notification', eventReference: `SCIP-${runId}`, occurredAt: '2026-09-13T01:00:00Z',
+      summary: 'Synthetic external SCIP receipt recorded.', externalReference: `SYNTHETIC-SCIP-${runId}`,
+      evidenceDocumentId: originEvidence.evidenceId, consumerPersonalDataIncluded: false
+    }
+  );
+  assert.equal(scip.externalReference, `SYNTHETIC-SCIP-${runId}`);
+  const reachEvents = await service.listReachObligationEvents(ids.companyId, ids.shipmentId, controlledReach.id);
+  assert.equal(reachEvents.length, 2);
+  assert.equal(await service.listReachObligationEvents(ids.otherCompanyId, ids.shipmentId), null);
+  await assert.rejects(pool.query('UPDATE reach_obligation_events SET summary=$1 WHERE id=$2', ['tampered', scip.id]),
+    /append-only and immutable/i);
+  result.reachObligationEvents.push(...reachEvents.map((item) => ({ id: item.id, eventReference: item.eventReference,
+    eventType: item.eventType, responseDueAt: item.responseDueAt, externalReference: item.externalReference })));
+  check('r11_consumer_deadline_and_external_scip_proof_are_enforced');
 
   const firstReadiness = await service.getReadiness(ids.companyId, ids.shipmentId);
   assert.equal(firstReadiness.documents.find((item) => item.type === 'carbon_annex').status, 'ready');

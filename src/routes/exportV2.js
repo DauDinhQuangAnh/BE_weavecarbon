@@ -570,6 +570,73 @@ router.post('/shipments/:shipmentId/gpsr/technical-files/:technicalFileId/post-m
   return sendSuccess(res, { status: 201, data: result });
 }));
 
+router.get('/shipments/:shipmentId/reach/dossiers', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.listReachSvhcDossiers(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/reach/dossiers', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.createReachSvhcDossierRevision(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (!result) return sendNotFound(res);
+  if (result.blocked) return sendError(res, { status: 400, code: result.code, message: result.message });
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.reach_svhc_dossier', newValue: result.id,
+    reason: 'export.reach.dossier.create',
+    notes: `${result.dossierReference}:revision-${result.revision}:${result.automatedStatus}`
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
+router.post('/shipments/:shipmentId/reach/dossiers/:dossierId/reviews', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.reviewReachSvhcDossier(
+    companyId, req.params.shipmentId, req.params.dossierId, req.userId, req.body || {}
+  );
+  if (!result) return sendError(res, { status: 404, code: 'REACH_DOSSIER_NOT_FOUND', message: 'REACH dossier not found for this shipment.' });
+  if (result.blocked) return sendError(res, { status: 409, code: result.code, message: result.message });
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.reach_svhc_review', newValue: result.id,
+    reason: 'export.reach.dossier.review', notes: result.decision
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
+router.get('/shipments/:shipmentId/reach/obligation-events', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.listReachObligationEvents(
+    companyId, req.params.shipmentId, req.query.dossierId || null
+  );
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/reach/dossiers/:dossierId/obligation-events', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.recordReachObligationEvent(
+    companyId, req.params.shipmentId, req.params.dossierId, req.userId, req.body || {}
+  );
+  if (!result) return sendError(res, { status: 404, code: 'REACH_DOSSIER_NOT_FOUND', message: 'REACH dossier not found for this shipment.' });
+  if (result.blocked) return sendError(res, { status: 400, code: result.code, message: result.message });
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.reach_obligation_event', newValue: result.id,
+    reason: 'export.reach.obligation_event.create', notes: result.eventType
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
 router.get('/shipments/:shipmentId/environmental-claims', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;

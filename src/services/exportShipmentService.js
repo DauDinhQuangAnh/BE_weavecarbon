@@ -69,6 +69,12 @@ const {
   evaluateGpsrTechnicalFile,
   deriveSafetyFileStatus
 } = require('./gpsrTechnicalFileControls');
+const {
+  RULESET: REACH_SVHC_RULESET,
+  normalizeReachDossierInput,
+  evaluateReachDossier,
+  deriveReachReleaseStatus
+} = require('./reachSvhcDossierControls');
 
 const RULESET_VERSION = 'VN-EU-TEXTILE-2026.09.4';
 const CARRIER_RULESET_VERSION = 'R03-CARRIER-RECONCILIATION-2026.09.1';
@@ -1192,6 +1198,220 @@ class ExportShipmentService {
       [companyId, shipmentId, technicalFileId]
     );
     return result.rows.map((row) => this._formatGpsrPostMarketEvent(row));
+  }
+
+  async createReachSvhcDossierRevision(companyId, shipmentId, userId, input = {}) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const normalized = normalizeReachDossierInput(input);
+    if (!normalized.dossierReference || !normalized.assessmentDate) {
+      return { blocked: true, code: 'REACH_DOSSIER_IDENTITY_REQUIRED', message: 'dossierReference and assessmentDate are required.' };
+    }
+    const evidenceIds = [...new Set(normalized.supplierDeclarationEvidenceIds.concat(
+      normalized.components.flatMap((component) => component.substances.flatMap((substance) =>
+        substance.evidenceDocumentIds.concat(substance.restrictionAssessments.flatMap((item) => item.evidenceDocumentIds))
+      ))
+    ).filter(Boolean))].sort();
+    if (evidenceIds.length > 200 || evidenceIds.some((id) => !UUID_REGEX.test(id))) {
+      return { blocked: true, code: 'REACH_EVIDENCE_INVALID', message: 'REACH evidence must contain at most 200 valid evidence UUIDs.' };
+    }
+    const evidenceSnapshot = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId, evidenceIds);
+    if (evidenceSnapshot.length !== evidenceIds.length) {
+      return { blocked: true, code: 'REACH_EVIDENCE_INVALID', message: 'Every REACH evidence id must belong to this company and shipment.' };
+    }
+    const evaluation = evaluateReachDossier(input, evidenceSnapshot);
+    const client = await this.database.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`${companyId}:${shipmentId}:reach:${evaluation.input.dossierReference}`]);
+      const versionResult = await client.query(
+        `SELECT COALESCE(MAX(revision), 0) + 1 AS revision FROM reach_svhc_dossier_revisions
+         WHERE company_id=$1 AND shipment_id=$2 AND dossier_reference=$3`,
+        [companyId, shipmentId, evaluation.input.dossierReference]
+      );
+      const revision = Number(versionResult.rows[0].revision);
+      const inserted = await client.query(
+        `INSERT INTO reach_svhc_dossier_revisions (
+           company_id, shipment_id, dossier_reference, revision, ruleset_id, ruleset_version,
+           ruleset_coverage, source_manifest_sha256, assessment_date, candidate_list_snapshot_date,
+           reach_consolidated_date, input_snapshot, input_sha256, result_snapshot, result_sha256,
+           evidence_snapshot, automated_status, created_by
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14::jsonb,$15,$16::jsonb,$17,$18)
+         RETURNING *`,
+        [companyId, shipmentId, evaluation.input.dossierReference, revision,
+          evaluation.result.rulesetId, evaluation.result.rulesetVersion, evaluation.result.rulesetCoverage,
+          evaluation.result.sourceManifestSha256, evaluation.input.assessmentDate,
+          evaluation.input.candidateListSnapshotDate, evaluation.input.reachConsolidatedDate,
+          JSON.stringify(evaluation.input), evaluation.inputSha256, JSON.stringify(evaluation.result),
+          evaluation.result.resultSha256, JSON.stringify(evidenceSnapshot), evaluation.result.automatedStatus, userId]
+      );
+      await client.query('COMMIT');
+      return this._formatReachSvhcDossier(inserted.rows[0], evidenceSnapshot);
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally { client.release(); }
+  }
+
+  async listReachSvhcDossiers(companyId, shipmentId) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const result = await this.database.query(
+      `SELECT dossier.*, to_jsonb(latest_review) AS latest_review,
+              MAX(dossier.revision) OVER (PARTITION BY dossier.dossier_reference) AS latest_revision
+       FROM reach_svhc_dossier_revisions dossier
+       LEFT JOIN LATERAL (
+         SELECT review.* FROM reach_svhc_dossier_reviews review
+         WHERE review.dossier_id=dossier.id AND review.company_id=dossier.company_id AND review.shipment_id=dossier.shipment_id
+         ORDER BY review.created_at DESC, review.id DESC LIMIT 1
+       ) latest_review ON true
+       WHERE dossier.company_id=$1 AND dossier.shipment_id=$2
+       ORDER BY dossier.created_at DESC, dossier.id DESC`, [companyId, shipmentId]
+    );
+    const evidenceIds = [...new Set(result.rows.flatMap((row) => array(row.evidence_snapshot).map((item) => item.id).filter(Boolean)))];
+    const currentEvidence = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId, evidenceIds);
+    return result.rows.map((row) => this._formatReachSvhcDossier(row, currentEvidence));
+  }
+
+  async reviewReachSvhcDossier(companyId, shipmentId, dossierId, userId, input = {}) {
+    if (!UUID_REGEX.test(String(dossierId || ''))) return null;
+    const reviewerRole = text(input.reviewerRole || input.reviewer_role);
+    const decision = text(input.decision).toLowerCase();
+    const notes = text(input.notes);
+    if (reviewerRole !== 'chemical_compliance_reviewer') {
+      return { blocked: true, code: 'REACH_REVIEW_ROLE_INVALID', message: 'REACH dossiers require the chemical_compliance_reviewer role.' };
+    }
+    if (!new Set(['approved_for_internal_release', 'needs_information', 'rejected']).has(decision)) {
+      return { blocked: true, code: 'REACH_REVIEW_DECISION_INVALID', message: 'Unsupported REACH review decision.' };
+    }
+    if (!notes) return { blocked: true, code: 'REACH_REVIEW_NOTES_REQUIRED', message: 'Review notes are required.' };
+    const dossierResult = await this.database.query(
+      `SELECT dossier.*,
+              (SELECT MAX(candidate.revision) FROM reach_svhc_dossier_revisions candidate
+               WHERE candidate.company_id=dossier.company_id AND candidate.shipment_id=dossier.shipment_id
+                 AND candidate.dossier_reference=dossier.dossier_reference) AS latest_revision
+       FROM reach_svhc_dossier_revisions dossier WHERE dossier.id=$1 AND dossier.company_id=$2 AND dossier.shipment_id=$3`,
+      [dossierId, companyId, shipmentId]
+    );
+    const dossier = dossierResult.rows[0];
+    if (!dossier) return null;
+    if (decision === 'approved_for_internal_release') {
+      if (Number(dossier.latest_revision) !== Number(dossier.revision)) {
+        return { blocked: true, code: 'REACH_REVISION_STALE', message: 'Only the latest REACH dossier revision can be approved.' };
+      }
+      if (dossier.automated_status !== 'ready_for_chemical_review') {
+        return { blocked: true, code: 'REACH_DOSSIER_NOT_READY', message: 'Only a dossier that passed automated controls can be approved.' };
+      }
+    }
+    const evidenceSnapshot = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId,
+      array(dossier.evidence_snapshot).map((item) => item.id));
+    if (decision === 'approved_for_internal_release') {
+      const derived = deriveReachReleaseStatus({ result_snapshot: dossier.result_snapshot,
+        latest_review: { decision, evidence_snapshot: dossier.evidence_snapshot } }, evidenceSnapshot);
+      if (derived.status !== 'approved_for_internal_release' || evidenceSnapshot.length === 0) {
+        return { blocked: true, code: 'REACH_EVIDENCE_STALE', message: 'Approval requires every bound evidence document to remain locked and checksum-identical.' };
+      }
+    }
+    const reviewerResult = await this.database.query('SELECT id, email, full_name FROM users WHERE id=$1', [userId]);
+    const reviewer = reviewerResult.rows[0];
+    if (!reviewer || !text(reviewer.full_name || reviewer.email)) {
+      return { blocked: true, code: 'REACH_REVIEWER_NOT_FOUND', message: 'Named chemical reviewer identity is required.' };
+    }
+    const inserted = await this.database.query(
+      `INSERT INTO reach_svhc_dossier_reviews (
+         company_id, shipment_id, dossier_id, reviewer_id, reviewer_name_snapshot, reviewer_email_snapshot,
+         reviewer_role, decision, notes, input_sha256, result_sha256, evidence_snapshot
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) RETURNING *`,
+      [companyId, shipmentId, dossierId, userId, reviewer.full_name || reviewer.email, reviewer.email || null,
+        reviewerRole, decision, notes, dossier.input_sha256, dossier.result_sha256, JSON.stringify(evidenceSnapshot)]
+    );
+    return this._formatReachSvhcReview(inserted.rows[0]);
+  }
+
+  async recordReachObligationEvent(companyId, shipmentId, dossierId, userId, input = {}) {
+    if (!UUID_REGEX.test(String(dossierId || ''))) return null;
+    const eventType = text(input.eventType || input.event_type).toLowerCase();
+    const eventReference = text(input.eventReference || input.event_reference);
+    const summary = text(input.summary);
+    const externalReference = text(input.externalReference || input.external_reference) || null;
+    const evidenceDocumentId = text(input.evidenceDocumentId || input.evidence_document_id) || null;
+    const occurredValue = text(input.occurredAt || input.occurred_at);
+    const occurredAt = occurredValue && !Number.isNaN(Date.parse(occurredValue)) ? new Date(occurredValue).toISOString() : null;
+    const eventTypes = new Set(['supply_chain_communication', 'consumer_request_received', 'consumer_response_sent',
+      'article7_notification', 'scip_notification', 'authority_request', 'authority_response', 'corrective_action']);
+    if (!eventTypes.has(eventType) || !eventReference || !summary || !occurredAt) {
+      return { blocked: true, code: 'REACH_OBLIGATION_EVENT_INVALID', message: 'A valid event type, reference, timestamp and summary are required.' };
+    }
+    if (input.consumerPersonalDataIncluded === true || input.consumer_personal_data_included === true) {
+      return { blocked: true, code: 'REACH_CONSUMER_DATA_PROHIBITED', message: 'Do not store consumer personal data in the REACH obligation ledger.' };
+    }
+    const dossierResult = await this.database.query(
+      `SELECT dossier.*,
+              (SELECT MAX(candidate.revision) FROM reach_svhc_dossier_revisions candidate
+               WHERE candidate.company_id=dossier.company_id AND candidate.shipment_id=dossier.shipment_id
+                 AND candidate.dossier_reference=dossier.dossier_reference) AS latest_revision,
+              (SELECT review.decision FROM reach_svhc_dossier_reviews review
+               WHERE review.dossier_id=dossier.id ORDER BY review.created_at DESC, review.id DESC LIMIT 1) AS latest_decision,
+              (SELECT to_jsonb(review) FROM reach_svhc_dossier_reviews review
+               WHERE review.dossier_id=dossier.id ORDER BY review.created_at DESC, review.id DESC LIMIT 1) AS latest_review
+       FROM reach_svhc_dossier_revisions dossier WHERE dossier.id=$1 AND dossier.company_id=$2 AND dossier.shipment_id=$3`,
+      [dossierId, companyId, shipmentId]
+    );
+    const dossier = dossierResult.rows[0];
+    if (!dossier) return null;
+    const outbound = new Set(['supply_chain_communication', 'consumer_response_sent', 'article7_notification', 'scip_notification', 'authority_response']);
+    if (outbound.has(eventType) && (Number(dossier.latest_revision) !== Number(dossier.revision)
+      || dossier.latest_decision !== 'approved_for_internal_release')) {
+      return { blocked: true, code: 'REACH_RELEASE_REQUIRED', message: 'Outbound communication/notification evidence requires the latest internally approved dossier.' };
+    }
+    if (outbound.has(eventType)) {
+      const currentDossierEvidence = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId,
+        array(dossier.evidence_snapshot).map((item) => item.id));
+      const release = deriveReachReleaseStatus(dossier, currentDossierEvidence);
+      if (release.status !== 'approved_for_internal_release') {
+        return { blocked: true, code: 'REACH_EVIDENCE_STALE', message: 'Outbound communication/notification is blocked because approved dossier evidence changed.' };
+      }
+    }
+    let evidence = null;
+    if (evidenceDocumentId) {
+      if (!UUID_REGEX.test(evidenceDocumentId)) return { blocked: true, code: 'REACH_EVENT_EVIDENCE_INVALID', message: 'A valid evidence UUID is required.' };
+      evidence = (await this._loadEnvironmentalClaimEvidence(companyId, shipmentId, [evidenceDocumentId]))[0] || null;
+      if (!evidence || !['locked', 'third_party_verified'].includes(evidence.status)
+        || !/^[a-f0-9]{64}$/i.test(text(evidence.checksumSha256)) || Number(evidence.fileSizeBytes || 0) <= 0) {
+        return { blocked: true, code: 'REACH_EVENT_EVIDENCE_INVALID', message: 'Event evidence must belong to the shipment and remain controlled.' };
+      }
+    }
+    if (outbound.has(eventType) && (!externalReference || !evidence)) {
+      return { blocked: true, code: 'REACH_EXTERNAL_PROOF_REQUIRED', message: 'Outbound communication or notification requires an external reference and locked proof.' };
+    }
+    const responseDueAt = eventType === 'consumer_request_received'
+      ? new Date(new Date(occurredAt).getTime() + REACH_SVHC_RULESET.consumerResponseDays * 86400000).toISOString() : null;
+    const recorderResult = await this.database.query('SELECT id, email, full_name FROM users WHERE id=$1', [userId]);
+    const recorder = recorderResult.rows[0];
+    if (!recorder || !text(recorder.full_name || recorder.email)) {
+      return { blocked: true, code: 'REACH_RECORDER_NOT_FOUND', message: 'Named recorder identity is required.' };
+    }
+    const inserted = await this.database.query(
+      `INSERT INTO reach_obligation_events (
+         company_id, shipment_id, dossier_id, event_type, event_reference, occurred_at, response_due_at,
+         summary, external_reference, evidence_document_id, evidence_sha256, evidence_file_size_bytes,
+         consumer_personal_data_included, recorded_by, recorder_name_snapshot, recorder_email_snapshot, metadata
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,false,$13,$14,$15,$16::jsonb) RETURNING *`,
+      [companyId, shipmentId, dossierId, eventType, eventReference, occurredAt, responseDueAt, summary,
+        externalReference, evidence?.id || null, evidence?.checksumSha256 || null, evidence?.fileSizeBytes || null,
+        userId, recorder.full_name || recorder.email, recorder.email || null, JSON.stringify(object(input.metadata))]
+    );
+    return this._formatReachObligationEvent(inserted.rows[0]);
+  }
+
+  async listReachObligationEvents(companyId, shipmentId, dossierId = null) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    if (dossierId && !UUID_REGEX.test(String(dossierId))) return null;
+    const result = await this.database.query(
+      `SELECT * FROM reach_obligation_events WHERE company_id=$1 AND shipment_id=$2
+       AND ($3::uuid IS NULL OR dossier_id=$3) ORDER BY occurred_at DESC, created_at DESC, id DESC`,
+      [companyId, shipmentId, dossierId]
+    );
+    return result.rows.map((row) => this._formatReachObligationEvent(row));
   }
 
   async createEnvironmentalClaimDossier(companyId, shipmentId, userId, input = {}) {
@@ -4129,6 +4349,52 @@ class ExportShipmentService {
         && ['serious', 'death'].includes(row.severity)
     };
   }
+
+  _formatReachSvhcDossier(row, currentEvidence = []) {
+    if (!row) return null;
+    const latestReview = row.latest_review ? this._formatReachSvhcReview(row.latest_review) : null;
+    const formatted = {
+      id: row.id, shipmentId: row.shipment_id, dossierReference: row.dossier_reference,
+      revision: Number(row.revision), rulesetId: row.ruleset_id, rulesetVersion: row.ruleset_version,
+      rulesetCoverage: row.ruleset_coverage, sourceManifestSha256: row.source_manifest_sha256,
+      assessmentDate: dateOnly(row.assessment_date), candidateListSnapshotDate: dateOnly(row.candidate_list_snapshot_date),
+      reachConsolidatedDate: dateOnly(row.reach_consolidated_date), input: row.input_snapshot,
+      inputSha256: row.input_sha256, result: row.result_snapshot, resultSha256: row.result_sha256,
+      evidenceSnapshot: row.evidence_snapshot || [], automatedStatus: row.automated_status,
+      createdBy: row.created_by, createdAt: row.created_at, latestReview
+    };
+    const derived = Number(row.latest_revision || row.revision) > Number(row.revision)
+      ? { status: 'superseded', staleEvidenceIds: [] } : deriveReachReleaseStatus(formatted, currentEvidence);
+    return { ...formatted, releaseStatus: derived.status, staleEvidenceIds: derived.staleEvidenceIds };
+  }
+
+  _formatReachSvhcReview(row) {
+    if (!row) return null;
+    return {
+      id: row.id, dossierId: row.dossier_id, reviewerId: row.reviewer_id,
+      reviewerName: row.reviewer_name_snapshot, reviewerEmail: row.reviewer_email_snapshot || null,
+      reviewerRole: row.reviewer_role, decision: row.decision, notes: row.notes,
+      inputSha256: row.input_sha256, resultSha256: row.result_sha256,
+      evidenceSnapshot: row.evidence_snapshot || [], createdAt: row.created_at
+    };
+  }
+
+  _formatReachObligationEvent(row) {
+    if (!row) return null;
+    const due = row.response_due_at ? new Date(row.response_due_at) : null;
+    return {
+      id: row.id, shipmentId: row.shipment_id, dossierId: row.dossier_id,
+      eventType: row.event_type, eventReference: row.event_reference, occurredAt: row.occurred_at,
+      responseDueAt: due && !Number.isNaN(due.getTime()) ? due.toISOString() : null,
+      responseOverdue: Boolean(due && due.getTime() < Date.now()),
+      summary: row.summary, externalReference: row.external_reference || null,
+      evidenceDocumentId: row.evidence_document_id || null, evidenceSha256: row.evidence_sha256 || null,
+      evidenceFileSizeBytes: row.evidence_file_size_bytes === null || row.evidence_file_size_bytes === undefined
+        ? null : Number(row.evidence_file_size_bytes),
+      recorderId: row.recorded_by, recorderName: row.recorder_name_snapshot,
+      recorderEmail: row.recorder_email_snapshot || null, metadata: row.metadata || {}, createdAt: row.created_at
+    };
+  }
 }
 
 const service = new ExportShipmentService();
@@ -4144,6 +4410,7 @@ module.exports.CARRIER_RULESET_VERSION = CARRIER_RULESET_VERSION;
 module.exports.ENVIRONMENTAL_CLAIM_RULESET = ENVIRONMENTAL_CLAIM_RULESET;
 module.exports.TEXTILE_FIBRE_LABEL_RULESET = TEXTILE_FIBRE_LABEL_RULESET;
 module.exports.GPSR_TECHNICAL_FILE_RULESET = GPSR_TECHNICAL_FILE_RULESET;
+module.exports.REACH_SVHC_RULESET = REACH_SVHC_RULESET;
 module.exports.VN_CUSTOMS_HANDOFF_SCHEMA = VN_CUSTOMS_HANDOFF_SCHEMA;
 module.exports.EU_IMPORT_HANDOFF_SCHEMA = EU_IMPORT_HANDOFF_SCHEMA;
 module.exports.ICS2_HANDOFF_SCHEMA = ICS2_HANDOFF_SCHEMA;

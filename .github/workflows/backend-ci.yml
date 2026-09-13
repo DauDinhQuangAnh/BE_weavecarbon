@@ -340,6 +340,15 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload REACH/SVHC dossier pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reach-svhc-dossier-pilot-${{ github.run_id }}
+          path: artifacts/reach-svhc-dossier-pilot/result.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Audit representative hot-query plans
         run: npm run db:audit-hot-queries
 

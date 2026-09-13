@@ -617,6 +617,386 @@
           "pagination"
         ],
         "type": "object"
+      },
+      "ReachRestrictionAssessmentInput": {
+        "additionalProperties": false,
+        "properties": {
+          "entryNumber": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "evidenceDocumentIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "exemptionClaimed": {
+            "type": "boolean"
+          },
+          "exemptionRationale": {
+            "maxLength": 5000,
+            "type": "string"
+          },
+          "legalLimit": {
+            "minimum": 0,
+            "nullable": true,
+            "type": "number"
+          },
+          "limitUnit": {
+            "enum": [
+              "percent_w_w",
+              "mg_kg",
+              "mg_kg_material",
+              "mg_kg_extracted",
+              ""
+            ],
+            "type": "string"
+          },
+          "measuredValue": {
+            "minimum": 0,
+            "nullable": true,
+            "type": "number"
+          },
+          "prohibitedWhen": {
+            "enum": [
+              "at_or_above_limit",
+              "above_limit",
+              ""
+            ],
+            "type": "string"
+          },
+          "scopeDecision": {
+            "enum": [
+              "applies",
+              "not_applies",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "scopeRationale": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "testMethod": {
+            "maxLength": 1000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "entryNumber",
+          "scopeDecision",
+          "scopeRationale",
+          "prohibitedWhen",
+          "exemptionClaimed",
+          "evidenceDocumentIds"
+        ],
+        "type": "object"
+      },
+      "ReachSubstanceInput": {
+        "additionalProperties": false,
+        "properties": {
+          "annualTonnage": {
+            "minimum": 0,
+            "nullable": true,
+            "type": "number"
+          },
+          "article7Exemption": {
+            "enum": [
+              "none",
+              "registered_for_use",
+              "exposure_excluded",
+              ""
+            ],
+            "type": "string"
+          },
+          "article7ExemptionRationale": {
+            "maxLength": 5000,
+            "type": "string"
+          },
+          "candidateInclusionDate": {
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "candidateListStatus": {
+            "enum": [
+              "included",
+              "not_included",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "casNumber": {
+            "maxLength": 100,
+            "type": "string"
+          },
+          "concentrationPercentWw": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "number"
+          },
+          "detectionLimit": {
+            "minimum": 0,
+            "nullable": true,
+            "type": "number"
+          },
+          "detectionLimitUnit": {
+            "maxLength": 100,
+            "type": "string"
+          },
+          "ecNumber": {
+            "maxLength": 100,
+            "type": "string"
+          },
+          "echaId": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "evidenceBasis": {
+            "enum": [
+              "supplier_declaration",
+              "sds",
+              "laboratory_test",
+              "calculation",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "evidenceDocumentIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "location": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "restrictionAssessments": {
+            "items": {
+              "$ref": "#/components/schemas/ReachRestrictionAssessmentInput"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "safeUseInstructions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "languageCode": {
+                  "maxLength": 35,
+                  "minLength": 2,
+                  "type": "string"
+                },
+                "marketCode": {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                "operatorApproved": {
+                  "type": "boolean"
+                },
+                "text": {
+                  "maxLength": 10000,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "marketCode",
+                "languageCode",
+                "text",
+                "operatorApproved"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "substanceName": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "substanceName",
+          "candidateListStatus",
+          "concentrationPercentWw",
+          "location",
+          "evidenceBasis",
+          "safeUseInstructions",
+          "article7Exemption",
+          "evidenceDocumentIds",
+          "restrictionAssessments"
+        ],
+        "type": "object"
+      },
+      "ReachSvhcDossierInput": {
+        "additionalProperties": false,
+        "properties": {
+          "articleCategory": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "articleLevelAssessmentConfirmed": {
+            "type": "boolean"
+          },
+          "assessmentDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "candidateListEntryCount": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "candidateListSnapshotDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "components": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "articleReference": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "componentName": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "componentReference": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "homogeneousMaterialReference": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "materialLocation": {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "materialName": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "substances": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReachSubstanceInput"
+                  },
+                  "maxItems": 500,
+                  "minItems": 1,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "componentReference",
+                "componentName",
+                "articleReference",
+                "homogeneousMaterialReference",
+                "materialName",
+                "materialLocation",
+                "substances"
+              ],
+              "type": "object"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array"
+          },
+          "consumerArticle": {
+            "type": "boolean"
+          },
+          "dossierReference": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "euActorRole": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "marketCodes": {
+            "items": {
+              "pattern": "^[A-Za-z]{2}$",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "notes": {
+            "maxLength": 5000,
+            "type": "string"
+          },
+          "placedOnEuMarket": {
+            "type": "boolean"
+          },
+          "productName": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "productReference": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reachConsolidatedDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "supplierDeclarationEvidenceIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "dossierReference",
+          "assessmentDate",
+          "productReference",
+          "productName",
+          "articleCategory",
+          "consumerArticle",
+          "placedOnEuMarket",
+          "marketCodes",
+          "euActorRole",
+          "articleLevelAssessmentConfirmed",
+          "candidateListSnapshotDate",
+          "candidateListEntryCount",
+          "reachConsolidatedDate",
+          "components",
+          "supplierDeclarationEvidenceIds"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -11700,6 +12080,380 @@
           }
         ],
         "summary": "PUT /export/shipments/{shipmentId}/profile",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/reach/dossiers": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdReachDossiers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/reach/dossiers",
+        "tags": [
+          "Export"
+        ]
+      },
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdReachDossiers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReachSvhcDossierInput"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/reach/dossiers",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/reach/dossiers/{dossierId}/obligation-events": {
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdReachDossiersByDossierIdObligationEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dossierId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "consumerPersonalDataIncluded": {
+                    "enum": [
+                      false
+                    ],
+                    "type": "boolean"
+                  },
+                  "eventReference": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "eventType": {
+                    "enum": [
+                      "supply_chain_communication",
+                      "consumer_request_received",
+                      "consumer_response_sent",
+                      "article7_notification",
+                      "scip_notification",
+                      "authority_request",
+                      "authority_response",
+                      "corrective_action"
+                    ],
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "externalReference": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "type": "object"
+                  },
+                  "occurredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "summary": {
+                    "maxLength": 10000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "eventType",
+                  "eventReference",
+                  "occurredAt",
+                  "summary"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/reach/dossiers/{dossierId}/obligation-events",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/reach/dossiers/{dossierId}/reviews": {
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdReachDossiersByDossierIdReviews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dossierId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approved_for_internal_release",
+                      "needs_information",
+                      "rejected"
+                    ],
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reviewerRole": {
+                    "enum": [
+                      "chemical_compliance_reviewer"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reviewerRole",
+                  "decision",
+                  "notes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/reach/dossiers/{dossierId}/reviews",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/reach/obligation-events": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdReachObligationEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/reach/obligation-events",
         "tags": [
           "Export"
         ]
