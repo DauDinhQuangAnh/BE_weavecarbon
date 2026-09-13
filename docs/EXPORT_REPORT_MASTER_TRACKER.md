@@ -28,7 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
-| Active R12 implementation branch in both repositories | `feat/r12-pcf-study-dossier` (local, stacked on R11 while R04/R05 PRs remain open) |
+| Active R13 implementation branch in both repositories | `feat/r13-corporate-ghg-inventory` (local, stacked on R12 while R04/R05 PRs remain open) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -61,6 +61,8 @@ This tracker separates four facts that must never be conflated:
 | Frontend R11 REACH/SVHC workspace commit | `613c8f92b48b8f8e0d35abc682dda785dbe8f8f5` |
 | Backend R12 PCF study-controls commit | `781f12981e120d2c4463722758f3a60ab355035a` |
 | Frontend R12 PCF study-workspace commit | `83cd39358165b573ec0d335bc41aa132983a9942` |
+| Backend R13 corporate-GHG controls commit | `4125c8c302534f5eaae111988119ed93cec8ae08` |
+| Frontend R13 corporate-GHG workspace commit | `b62c6b821dc91d43d0d49cab2bf1f87c18fcbb9a` |
 | R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
@@ -94,10 +96,10 @@ R06 is preserved locally at `feat/r06-ics2-filing-handoff`; R07 is stacked on it
 `feat/r07-evfta-origin-handoff`; R20 is stacked on R07 at `feat/r20-applicability-core`; R18 is stacked on R20 at
 `feat/r18-environmental-claim-register`; R08 is stacked on R18 at `feat/r08-textile-fibre-label`; R10 is stacked on R08 at
 `feat/r10-gpsr-technical-file`; R11 is stacked on R10 at `feat/r11-reach-svhc-dossier`; R12 is stacked on R11 at
-`feat/r12-pcf-study-dossier`. All contain R05, which
+`feat/r12-pcf-study-dossier`; R13 is stacked on R12 at `feat/r13-corporate-ghg-inventory`. All contain R05, which
 contains R04. Preserve that dependency order until the existing R04/R05 pull requests merge, and do not merge or deploy
 R06/R07/R20/R18/R08/R10/R11/R12 as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06,
-R20 onto R07, R18 onto R20, R08 onto R18, R10 onto R08, R11 onto R10 and R12 onto R11; verify migrations and recorded
+R20 onto R07, R18 onto R20, R08 onto R18, R10 onto R08, R11 onto R10, R12 onto R11 and R13 onto R12; verify migrations and recorded
 commits stay ordered.
 
 Then give the next AI this instruction:
@@ -173,6 +175,9 @@ Known overall checks at the latest feature commits:
 - Backend R12 local gate: 128/128 suites and 769/769 tests passed plus syntax/OpenAPI/generated-artifact/architecture/lint;
   frontend R12 gate: 56/56 files and 220/220 tests plus TypeScript/contract/network/policy checks and the 62-route
   production build. The isolated local PostgreSQL pilot passed all 40 cumulative checks.
+- Backend R13 local gate: 131/131 suites and 779/779 tests passed plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend R13 gate: 58/58 files and 224/224 tests plus TypeScript/contract/network/policy checks and the 62-route
+  production build. The fresh isolated PostgreSQL pilot passed all 43 cumulative checks.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
@@ -198,7 +203,7 @@ Known overall checks at the latest feature commits:
 | 10 | GPSR technical file and traceability | Consumer products | `PARTIAL` | Immutable technical-file revisions, product/batch identity, operators, risk/test/warning/Article 19 controls, named review and post-market ledger | Real product/operator validation, destination-language review and externally performed incident/corrective-action/recall pilot |
 | 11 | REACH/SVHC dossier | Conditional by substance/material/threshold | `PARTIAL` | Immutable article/component/material/substance dossiers, source snapshots, Article 33/7 and SCIP assessments, Annex XVII results, named review and obligation-event evidence | Import/maintain the complete current Candidate List and applicable restrictions; generate approved safe-use/response artifacts and complete a qualified real-product pilot |
 | 12 | Product Carbon Footprint/ISO 14067 support | Buyer/tender/claim dependent | `INTERNAL_ONLY` | Immutable study revisions bind goal/scope, functional/reference flow, boundary/process/cutoff/PCR/allocation/recycling, DQ/uncertainty, AD×EF reproduction, evidence and named internal practitioner review to an authoritative partial-PCF snapshot | Complete a qualified real-product study/full relevant life-cycle boundary and link authentic critical review/assurance before any external, comparative or verified claim |
-| 13 | Corporate/facility GHG report | Buyer/ESG/assurance dependent | `INTERNAL_ONLY` | Electricity/fuel worksheet | Organisational boundary, full sources/gases, base year and exclusions |
+| 13 | Corporate/facility GHG report | Buyer/ESG/assurance dependent | `INTERNAL_ONLY` | Immutable organization-level revisions cover organizational/facility and operational boundaries, seven-gas decisions, base year/recalculation, reviewed AD×EF sources, factor provenance, dual Scope 2 gate, exclusions/quality/uncertainty, separate biogenic/removal/offset disclosure and named internal review | Load complete real facility/source data, validate material Scope 3 if claimed, and obtain authentic independent assurance before verified/external use |
 | 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Immutable ZIP, exact term/factor evidence coverage, append-only review/internal issue, and isolated PostgreSQL pilot gate | Run human real-evidence staging review; signed share link and external assurance |
 | 15 | Apparel & Footwear PEF/PEFCR | Voluntary or buyer-specific | `NOT_STARTED` | Climate-only partial PCF is not PEF | Full life cycle, EF datasets/impact categories and validation statement |
 | 16 | ESPR Digital Product Passport | When product delegated act applies | `BLOCKED_BY_LAW` | Guarded prototype only | Registry/service/access/version architecture; wait for final product schema |
@@ -510,7 +515,24 @@ scope is accurate, and verification language is impossible unless an actual assu
 base year/recalculation; biogenic emissions; all relevant source types; methods/factors/GWP; exclusions; Scope 3 category
 coverage where claimed; assurance.
 
-**Current:** electricity and fuel emissions worksheet only.
+**Implemented:** migration 036 and limited ruleset `weavecarbon.corporate-ghg-inventory`
+`R13-GHGP-2004-S2-2015-ISO14064-1-2018-1` add company-scoped immutable inventory revisions and append-only named
+`corporate_ghg_inventory_reviewer` decisions. The workflow records reporting entity/period/use, consolidation approach,
+entity and facility boundaries, an explicit decision for every Scope 1/2 source category, Scope 3 coverage declaration,
+seven-gas treatment, base year/recalculation policy, Scope 2 method, factor/GWP provenance, completeness, data quality,
+improvement, uncertainty, exclusions, limitations and assurance claim. Reviewed electricity/fuel invoice rows are selected
+within the reporting period, mapped to declared facilities and frozen with locked evidence bytes. Every source total must
+reproduce as AD × EF. Location- and market-based Scope 2 are separated when contractual instruments make dual reporting
+applicable; gross Scope 1/location Scope 2 never nets biogenic carbon, removals or offsets. Approval is restricted to the
+newest passing revision, named role and checksum-identical controlled evidence. The GHG-tab workspace and API identify the
+result as an internal limited inventory, not ISO certification or independent assurance.
+
+**Remaining:** R13 stays `INTERNAL_ONLY`. The pilot uses only synthetic electricity and stationary-fuel sources; a real
+organization must establish its controlled entities/facilities, load and review every relevant stationary/mobile/process/
+fugitive and purchased-energy source, support gas-specific factors and material Scope 3 categories where claimed, validate
+base-year recalculations and quantitative uncertainty, and resolve all exclusions/data gaps. Any verified/assured language
+requires an authentic independent provider statement stored as third-party-verified evidence. The current GHG Protocol and
+ISO 14064-1 references remain in force while their consolidated replacement is still under development.
 
 **Definition of Done:** boundary/source completeness and base-year logic exist; missing sources/exclusions are disclosed;
 all totals reproduce from evidence; report name accurately reflects its scope.
@@ -725,9 +747,9 @@ specialist reviewer approves high-risk classifications. Never claim the list is 
    artwork, product-safety, chemical-specialist and responsible-operator pilots before any external readiness claim.
 5. **Complete R07 origin only when preferential treatment is claimed**, including BOM/rules/evidence before generating
    EUR.1 or origin-declaration drafts.
-6. **Raise carbon maturity:** limited controlled R12 PCF study support now exists. Next implement R13 corporate/facility GHG,
-   then close authentic R12/R14 practitioner and assurance gates. Implement R15 from the 2025 Apparel & Footwear PEFCR only
-   when commercially required.
+6. **Raise carbon maturity:** limited controlled R12 PCF-study and R13 corporate/facility-inventory support now exist.
+   Next close their qualified real-data and authentic R14 practitioner/assurance gates. Implement R15 from the 2025 Apparel
+   & Footwear PEFCR only when commercially required.
 7. **Build versioned future foundations:** R16 generic DPP architecture without inventing delegated-act product fields;
    implement R17 EU-core EPR now and add Member-State adapters as national schemes are published.
 8. **Maintain R19 scope screening:** baseline CN 61/62/64 must remain `CBAM_NOT_APPLICABLE`; Annex-I matches require
@@ -1546,3 +1568,30 @@ Backend carbon trace core:
 - R12 remains `INTERNAL_ONLY` pending a qualified real-product/full-boundary study and authentic critical review/assurance.
   R13 corporate/facility GHG is the next baseline implementation phase; R09 remains conditional on a CN 64 footwear
   product. Nothing was pushed, merged, deployed or changed on the production host.
+
+### 2026-09-13 — R13 corporate/facility GHG inventory controls
+
+- Backend commit `4125c8c302534f5eaae111988119ed93cec8ae08` and frontend commit
+  `b62c6b821dc91d43d0d49cab2bf1f87c18fcbb9a` add migration 036, a versioned limited organization-level inventory
+  evaluator, immutable activity/result/evidence snapshots, named append-only review, OpenAPI contracts and the GHG-tab
+  inventory workspace.
+- The source manifest pins the GHG Protocol Corporate Standard, Scope 2 Guidance and ISO 14064-1:2018. Current guidance
+  remains effective while the GHG Protocol/ISO consolidated corporate standard is under development; the workflow must be
+  revalidated when that replacement is issued.
+- The controls require organizational/facility and operational boundaries; decisions for all Scope 1/2 source categories
+  and seven gases; base year/recalculation; reviewed period-scoped activity; AD × EF reproduction; factor version/GWP;
+  Scope 2 dual reporting when applicable; completeness, quality, improvement, uncertainty, exclusion and limitation
+  disclosures. Biogenic CO2, removals and offsets are disclosed separately and never reduce gross inventory totals.
+- Approval is limited to the newest passing revision, a named `corporate_ghg_inventory_reviewer` and unchanged locked
+  evidence. Verified language remains blocked unless an authentic third-party-verified assurance statement is linked.
+- Local gates pass: backend 131/131 suites and 779/779 tests plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend 58/58 files and 224/224 tests, full checks and a production build of all 62 routes. The 20 frontend lint warnings
+  pre-date R13 and there are no errors.
+- Fresh database `weavecarbon_r13_final` loaded the base schema and migrations 001–036. The guarded cumulative pilot passed
+  43/43 checks with `productionDataTouched=false`; retained artifact
+  `artifacts/corporate-ghg-inventory-pilot/result.json` has SHA-256
+  `50de8730a4112d911fe0be1a39aa481b6eddb7169cb832ce0393652a4733343f`.
+- R13 remains `INTERNAL_ONLY` pending complete real-company source/gas/facility data, qualified inventory review and
+  authentic independent assurance. The next implementable baseline phase is R17 EU-core textile/footwear EPR; R15 remains
+  commercial-use dependent, R16 product fields remain blocked by delegated acts, and R12–R14 still have external real-data/
+  assurance gates. Nothing was pushed, merged, deployed or changed on the production host.
