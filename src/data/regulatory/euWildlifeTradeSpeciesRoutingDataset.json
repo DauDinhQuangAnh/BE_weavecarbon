@@ -1,0 +1,92 @@
+{
+  "datasetId": "weavecarbon.eu-wildlife-trade-species-routing",
+  "version": "EU-WILDLIFE-TRADE-2026.09.14.1",
+  "coverageStatus": "limited",
+  "effectiveFrom": "2026-06-29",
+  "checkedAt": "2026-09-14",
+  "allowedAnimalSourceCodes": ["W", "R", "D", "C", "F", "I", "O", "U", "X"],
+  "sources": [
+    {
+      "id": "EU-2026-1383",
+      "title": "Commission Regulation (EU) 2026/1383 — current EU wildlife-trade Annexes after CITES CoP20",
+      "url": "https://eur-lex.europa.eu/eli/reg/2026/1383/oj",
+      "version": "original-2026-06-26-effective-2026-06-29"
+    },
+    {
+      "id": "EC-338-97",
+      "title": "Council Regulation (EC) No 338/97 — protection of species by regulating trade",
+      "url": "https://eur-lex.europa.eu/eli/reg/1997/338/oj",
+      "version": "current-annex-replaced-by-EU-2026-1383"
+    },
+    {
+      "id": "EU-2025-6",
+      "title": "Commission Implementing Regulation (EU) 2025/6 — current country/species import suspensions",
+      "url": "https://eur-lex.europa.eu/eli/reg_impl/2025/6/oj",
+      "version": "original-2025-01-07-checked-2026-09-14"
+    }
+  ],
+  "species": [
+    {
+      "scientificName": "Crocodylus siamensis",
+      "commonName": "Siamese crocodile",
+      "citesAppendix": "I",
+      "euAnnex": "A",
+      "euListingTaxon": "Crocodylus siamensis (I)",
+      "euListingBasis": "explicit_species",
+      "commercialPurposeReviewRequired": true,
+      "requiredEvidenceTypes": [
+        "scientific_species_identification",
+        "specimen_part_and_quantity_record",
+        "country_of_origin_and_legal_acquisition_evidence",
+        "cites_export_or_reexport_document",
+        "eu_annex_a_import_permit_assessment",
+        "source_code_and_registered_breeding_operation_evidence",
+        "current_country_species_suspension_check"
+      ]
+    },
+    {
+      "scientificName": "Python reticulatus",
+      "commonName": "Reticulated python",
+      "citesAppendix": "II",
+      "euAnnex": "B",
+      "euListingTaxon": "Pythonidae spp. (II), except species included in Annex A",
+      "euListingBasis": "higher_taxon",
+      "commercialPurposeReviewRequired": false,
+      "requiredEvidenceTypes": [
+        "scientific_species_identification",
+        "specimen_part_and_quantity_record",
+        "country_of_origin_and_legal_acquisition_evidence",
+        "cites_export_or_reexport_document",
+        "eu_annex_b_import_permit_assessment",
+        "source_code_evidence",
+        "current_country_species_suspension_check"
+      ]
+    },
+    {
+      "scientificName": "Varanus salvator",
+      "commonName": "Asian water monitor",
+      "citesAppendix": "II",
+      "euAnnex": "B",
+      "euListingTaxon": "Varanus spp. (II), except species included in Annex A",
+      "euListingBasis": "higher_taxon",
+      "commercialPurposeReviewRequired": false,
+      "requiredEvidenceTypes": [
+        "scientific_species_identification",
+        "specimen_part_and_quantity_record",
+        "country_of_origin_and_legal_acquisition_evidence",
+        "cites_export_or_reexport_document",
+        "eu_annex_b_import_permit_assessment",
+        "source_code_evidence",
+        "current_country_species_suspension_check"
+      ]
+    }
+  ],
+  "explicitExclusions": [
+    "Complete CITES Appendices or complete EU Annex A/B/C/D coverage",
+    "Taxonomic synonym, hybrid, population, annotation or look-alike resolution",
+    "Country/source/specimen-specific suspension, quota or reservation decisions",
+    "Permit issuance, validity, authenticity, acceptance or customs clearance",
+    "Legal acquisition, non-detriment, captive-breeding or commercial-purpose conclusions",
+    "Vietnam export or re-export authorisation decisions"
+  ]
+}

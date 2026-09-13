@@ -3,6 +3,7 @@ const {
   packagingDataset,
   classificationDataset,
   reachRestrictionDataset,
+  wildlifeSpeciesDataset,
   buildInputSnapshot,
   evaluateComplianceApplicability
 } = require('../../src/services/complianceApplicabilityControls');
@@ -50,8 +51,12 @@ const context = {
     producerRoleAssessed: false
   },
   materialFacts: [{
-    reference: 'TRIM-1', description: 'Leather trim', hsCode: '4205', originCountry: 'IN',
-    percentageByWeight: 2, animalOrigin: true, substancesScreened: false
+    reference: 'TRIM-1', description: 'Python leather trim', hsCode: '4205', originCountry: 'ID',
+    percentageByWeight: 2, animalOrigin: true, substancesScreened: false,
+    speciesScientificName: 'Python reticulatus', specimenDescription: 'Tanned leather trim',
+    wildlifeSourceCode: 'C', countryOfExport: 'VN',
+    citesDocumentReference: 'VN-REEXPORT-SYNTHETIC', euImportPermitReference: 'NL-IMPORT-SYNTHETIC',
+    wildlifeDocumentsVerified: true
   }]
 };
 
@@ -65,6 +70,10 @@ describe('R20 compliance applicability controls', () => {
       hsCode: '62052000', hsConfirmed: true, taricCode: '6205200010', taricConfirmed: true
     });
     expect(input.materials.map((item) => item.source)).toEqual(['origin_bom', 'operator_context']);
+    expect(input.materials[1]).toMatchObject({
+      speciesScientificName: 'Python reticulatus', wildlifeSourceCode: 'C',
+      countryOfExport: 'VN', wildlifeDocumentsVerified: true
+    });
     expect(input.marketContext.packaging).toMatchObject({
       present: true, types: ['sales', 'ecommerce'], materials: ['paper', 'plastic'], reusable: false
     });
@@ -137,6 +146,7 @@ describe('R20 compliance applicability controls', () => {
     });
     expect(evaluation.result.matches[0].reason).toMatch(/no global non-applicability conclusion/i);
     expect(evaluation.result.restrictionScreenings).toEqual([]);
+    expect(evaluation.result.speciesScreenings).toEqual([]);
   });
 
   test('routes missing composition facts to specialist review instead of guessing scope', () => {
@@ -299,6 +309,90 @@ describe('R20 compliance applicability controls', () => {
     expect(evaluation.result.missingInputs).toContain('marketContext.textileFibrePercent');
   });
 
+  test('routes an exact Annex B species but does not infer permit validity or import eligibility', () => {
+    const evaluation = evaluateComplianceApplicability(snapshot(), context);
+    const route = evaluation.result.matches.find((item) =>
+      item.code === 'EU_WILDLIFE_TRADE_SPECIES_ROUTING'
+    );
+    const species = evaluation.result.speciesScreenings[0];
+
+    expect(wildlifeSpeciesDataset.species).toHaveLength(3);
+    expect(Object.isFrozen(wildlifeSpeciesDataset)).toBe(true);
+    expect(evaluation.result.datasets[3]).toMatchObject({
+      id: wildlifeSpeciesDataset.datasetId, version: wildlifeSpeciesDataset.version,
+      sha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+    });
+    expect(species).toMatchObject({
+      matchedScientificName: 'Python reticulatus', citesAppendix: 'II', euAnnex: 'B',
+      euListingBasis: 'higher_taxon', matchStatus: 'exact_species_match_documents_recorded',
+      currentSuspensionCheckRequired: true
+    });
+    expect(route).toMatchObject({
+      decision: 'specialist_review_required',
+      matchPrecision: 'exact_species_plus_operator_document_references', sourceId: 'EC-338-97'
+    });
+    expect(route.reason).toMatch(/document authenticity still require specialist and authority verification/i);
+  });
+
+  test('fails closed when animal origin is recorded without an exact scientific name', () => {
+    const evaluation = evaluateComplianceApplicability(snapshot(), {
+      ...context,
+      materialFacts: [{ ...context.materialFacts[0], speciesScientificName: '' }]
+    });
+    const gap = evaluation.result.matches.find((item) =>
+      item.code === 'EU_WILDLIFE_TRADE_SPECIES_DATASET_GAP'
+    );
+
+    expect(evaluation.result.speciesScreenings[0]).toMatchObject({
+      matchStatus: 'species_required', missingFacts: ['speciesScientificName']
+    });
+    expect(evaluation.result.missingInputs).toContain('materials[1].speciesScientificName');
+    expect(gap.reason).toMatch(/No CITES Appendix, EU Annex, permit or import-eligibility conclusion/i);
+  });
+
+  test('does not classify a CITES species outside the deliberately limited dataset', () => {
+    const evaluation = evaluateComplianceApplicability(snapshot(), {
+      ...context,
+      materialFacts: [{ ...context.materialFacts[0], speciesScientificName: 'Panthera tigris' }]
+    });
+
+    expect(evaluation.result.speciesScreenings[0].matchStatus).toBe('species_not_in_limited_dataset');
+    expect(evaluation.result.matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'EU_WILDLIFE_TRADE_SPECIES_DATASET_GAP' })
+    ]));
+  });
+
+  test('surfaces Annex A commercial-purpose review for Siamese crocodile', () => {
+    const evaluation = evaluateComplianceApplicability(snapshot(), {
+      ...context,
+      materialFacts: [{
+        ...context.materialFacts[0], speciesScientificName: 'Crocodylus siamensis',
+        specimenDescription: 'Crocodile leather trim', wildlifeSourceCode: 'D'
+      }]
+    });
+
+    expect(evaluation.result.speciesScreenings[0]).toMatchObject({
+      matchedScientificName: 'Crocodylus siamensis', citesAppendix: 'I', euAnnex: 'A',
+      euListingBasis: 'explicit_species', commercialPurposeReviewRequired: true
+    });
+  });
+
+  test('rejects invalid source codes and out-of-window wildlife snapshots', () => {
+    const invalidSource = evaluateComplianceApplicability(snapshot(), {
+      ...context,
+      materialFacts: [{ ...context.materialFacts[0], wildlifeSourceCode: 'Z' }]
+    });
+    const stale = evaluateComplianceApplicability(snapshot(), {
+      ...context, assessmentDate: '2026-09-15'
+    });
+
+    expect(invalidSource.result.speciesScreenings[0]).toMatchObject({
+      matchStatus: 'exact_species_match_documents_incomplete',
+      validationIssues: ['wildlifeSourceCode_not_in_limited_code_list']
+    });
+    expect(stale.result.speciesScreenings[0].matchStatus).toBe('dataset_date_mismatch');
+  });
+
   test('does not fall back to CN routing when a confirmed TARIC conflicts with the dataset', () => {
     const value = snapshot();
     value.euImportLineDetails[0].taricCode = '6205200099';
@@ -333,6 +427,6 @@ describe('R20 compliance applicability controls', () => {
     expect(second.inputSha256).toBe(first.inputSha256);
     expect(second.result.resultSha256).toBe(first.result.resultSha256);
     expect(classificationDataset.entries).toHaveLength(3);
-    expect(first.result.datasets).toHaveLength(3);
+    expect(first.result.datasets).toHaveLength(4);
   });
 });

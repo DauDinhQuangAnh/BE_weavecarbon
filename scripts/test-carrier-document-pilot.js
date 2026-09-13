@@ -18,7 +18,7 @@ const { PublicEnvironmentalClaimService } = require('../src/services/publicEnvir
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pcf-corporate-ghg-epr-pilot-v16',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pcf-corporate-ghg-epr-pilot-v17',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -840,8 +840,13 @@ async function run() {
         producerRoleAssessed: false
       },
       materialFacts: [{
-        reference: `TRIM-${runId}`, description: 'Synthetic animal-origin trim', hsCode: '4205',
-        originCountry: 'IN', percentageByWeight: 1, animalOrigin: true, substancesScreened: false
+        reference: `TRIM-${runId}`, description: 'Synthetic python leather trim', hsCode: '4205',
+        originCountry: 'ID', percentageByWeight: 1, animalOrigin: true, substancesScreened: false,
+        speciesScientificName: 'Python reticulatus', specimenDescription: 'Tanned leather trim',
+        wildlifeSourceCode: 'C', countryOfExport: 'VN',
+        citesDocumentReference: `VN-REEXPORT-${runId}`,
+        euImportPermitReference: `NL-IMPORT-${runId}`,
+        wildlifeDocumentsVerified: true
       }],
       notes: 'Synthetic R20 applicability input; not a legal determination.'
     }
@@ -867,6 +872,8 @@ async function run() {
   assert.match(applicability.result.datasets[1].sha256, /^[a-f0-9]{64}$/);
   assert.equal(applicability.result.datasets[2].id, 'weavecarbon.eu-reach-textile-leather-restriction-routing');
   assert.match(applicability.result.datasets[2].sha256, /^[a-f0-9]{64}$/);
+  assert.equal(applicability.result.datasets[3].id, 'weavecarbon.eu-wildlife-trade-species-routing');
+  assert.match(applicability.result.datasets[3].sha256, /^[a-f0-9]{64}$/);
   assert.equal(applicability.result.classifications[0].matchStatus, 'exact_taric_match');
   assert.equal(applicability.result.classifications[0].datasetDescription, 'Hand-printed by the batik method');
   assert.ok(applicability.result.matches.some((item) =>
@@ -877,6 +884,17 @@ async function run() {
     item.ruleId === 'ANNEX_XVII_43_AZO_AMINES'
       && item.threshold.value === 30
       && item.scopeStatus === 'screen_required'
+  ));
+  assert.ok(applicability.result.matches.some((item) =>
+    item.code === 'EU_WILDLIFE_TRADE_SPECIES_ROUTING'
+      && item.matchPrecision === 'exact_species_plus_operator_document_references'
+  ));
+  assert.ok(applicability.result.speciesScreenings.some((item) =>
+    item.matchedScientificName === 'Python reticulatus'
+      && item.citesAppendix === 'II'
+      && item.euAnnex === 'B'
+      && item.matchStatus === 'exact_species_match_documents_recorded'
+      && item.currentSuspensionCheckRequired === true
   ));
   assert.ok(applicability.result.restrictionScreenings.some((item) =>
     item.ruleId === 'ANNEX_XVII_46A_NPE'

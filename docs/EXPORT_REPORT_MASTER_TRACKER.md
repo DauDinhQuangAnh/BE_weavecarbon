@@ -29,7 +29,7 @@ This tracker separates four facts that must never be conflated:
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
 | Active R18 marketing-claim-containment branch in both repositories | `feat/r18-marketing-claim-containment` (local, stacked on the R18 public-passport increment while R04/R05 PRs remain open) |
-| Active R20 REACH-threshold routing branch in both repositories | `feat/r20-reach-threshold-routing` (local, stacked on the R20 exact CN/TARIC increment) |
+| Active R20 CITES/species-routing branch in both repositories | `feat/r20-cites-species-routing` (local, stacked on the R20 REACH-threshold increment) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -229,7 +229,7 @@ Known overall checks at the latest feature commits:
 | 17 | Textile/footwear EPR reporting | EU framework plus Member-State implementation | `PARTIAL` | Immutable EU-core producer/PRO/register dossier, Annex-IVc scope, shipment quantity/weight reconciliation, named review and typed authority/PRO evidence events | Add reviewed Member-State adapters and complete real registration/reporting/fee pilots before the 17 April 2028 scheme deadline |
 | 18 | Green-claim substantiation dossier | Whenever environmental claims are made | `PARTIAL` | Immutable shipment claim revisions bind exact copy/channel/market/language/scope/period/method/hash/limits/evidence; current passport/QR/landing surfaces are contained and public product claims fail closed | Enforce registration for future label/marketplace/report/advertising surfaces; validate Member-State implementation, add real legal reviewer separation and complete a protected real-claim pilot |
 | 19 | CBAM declaration/operator report | Annex-I CBAM goods only | `NOT_APPLICABLE_BASELINE` | Scope screening; old styled templates remain demo-only | Maintain versioned CN list; implement official fields only for Annex-I goods |
-| 20 | Specialist permits/certificates | Conditional by exact product and lane | `PARTIAL` | Limited, source-versioned EU triage uses shipment HS/TARIC, origin/material, market and effective-date facts; immutable explainable evaluations, limited PPWR routing, a 3-CN/5-TARIC routing slice, three bounded Annex-XVII textile/leather threshold routes and evidence-backed specialist review | Expand exact CN/TARIC and REACH coverage, add a maintained species dataset and specialist domains, then complete a named real-shipment specialist pilot and exact-head CI/staging |
+| 20 | Specialist permits/certificates | Conditional by exact product and lane | `PARTIAL` | Limited, source-versioned EU triage uses shipment HS/TARIC, origin/material, market and effective-date facts; immutable explainable evaluations, limited PPWR routing, a 3-CN/5-TARIC routing slice, three bounded Annex-XVII textile/leather threshold routes, three exact CITES/EU wildlife-trade species routes and evidence-backed specialist review | Expand exact CN/TARIC, REACH and species coverage plus other specialist domains, then complete a named real-shipment specialist pilot and exact-head CI/staging |
 
 No item in this matrix is currently confirmed `READY_TO_ISSUE` on production.
 
@@ -755,7 +755,7 @@ consumer group, importer role, channel, shipment value and mode. Possible trigge
 children's products, biocidal treatment, chemical controls, packaging/waste, sanctions or safety standards.
 
 **Implemented:** migration 030 and ruleset `weavecarbon.eu-product-compliance-triage`
-`R20-EU-APPLICABILITY-2026.09.4` create immutable, checksum-bound shipment evaluations from confirmed HS/TARIC, origin,
+`R20-EU-APPLICABILITY-2026.09.5` create immutable, checksum-bound shipment evaluations from confirmed HS/TARIC, origin,
 R07 BOM-derived and supplemental material facts, EU market/use/consumer/importer/channel context and assessment date.
 The deliberately limited first coverage identifies textile labelling, footwear labelling, GPSR baseline, REACH specialist
 review and animal-origin disclosure candidates with an explainable reason, match precision, required evidence, source URL
@@ -777,12 +777,20 @@ Maintained dataset `weavecarbon.eu-reach-textile-leather-restriction-routing` ve
 `3 mg/kg` dry leather. Exact product routing is combined with explicit skin-contact, washability, second-hand, recycled-
 textile/NPE and leather-contact facts. Missing facts, claimed exclusions or a different assessment date fail closed to
 specialist review. The displayed thresholds only open R11 evidence work; they never assert a laboratory or conformity result.
+Maintained dataset `weavecarbon.eu-wildlife-trade-species-routing` version
+`EU-WILDLIFE-TRADE-2026.09.14.1` adds exact scientific-name routes for `Crocodylus siamensis` (CITES Appendix I/EU Annex
+A), `Python reticulatus` and `Varanus salvator` (CITES Appendix II/EU Annex B). It is pinned to Regulation (EU) 2026/1383,
+Regulation (EC) No 338/97 and the current import-suspension regulation. Missing or unlisted species, animal-origin conflicts,
+invalid source codes, missing document facts and a different assessment date fail closed to specialist review. A recorded
+permit reference never proves authenticity, validity, legal acquisition, non-detriment, quota or import eligibility; every
+exact match still requires country/source/specimen suspension and document checks.
 
 **Remaining:** expand the limited 3-CN/5-TARIC routing slice to all supported products using a controlled TARIC update
-lifecycle; expand the three-entry REACH slice to the complete applicable current restrictions/Candidate List and add a
-maintained species dataset; encode Member-State and date-versioned rules;
+lifecycle; expand the three-entry REACH slice to the complete applicable current restrictions/Candidate List; expand the
+three-species wildlife slice for controlled synonyms, populations, annotations, suspensions, quotas and permit lifecycle;
+encode Member-State and date-versioned rules;
 deepen packaging/waste beyond the limited PPWR routing; cover
-CITES, PPE, children's products, biocidal treatment, sanctions and relevant product-safety standards; validate source-change lifecycle and amendment handling;
+PPE, children's products, biocidal treatment, sanctions and relevant product-safety standards; validate source-change lifecycle and amendment handling;
 then run exact-head CI/staging and a named specialist pilot using real product/BOM/lab evidence. No global
 `not applicable` decision is permitted outside the declared coverage.
 
@@ -899,6 +907,9 @@ Recheck these official sources at the start of the related report work and store
 - EU footwear labelling, Directive 94/11/EC: https://eur-lex.europa.eu/eli/dir/1994/11/oj
 - GPSR, Regulation (EU) 2023/988: https://eur-lex.europa.eu/eli/reg/2023/988/oj
 - REACH consolidated regulation: https://eur-lex.europa.eu/eli/reg/2006/1907
+- EU wildlife-trade Annexes after CITES CoP20, Regulation (EU) 2026/1383: https://eur-lex.europa.eu/eli/reg/2026/1383/oj
+- EU wildlife-trade framework, Regulation (EC) No 338/97: https://eur-lex.europa.eu/eli/reg/1997/338/oj
+- EU wildlife-trade import suspensions, Implementing Regulation (EU) 2025/6: https://eur-lex.europa.eu/eli/reg_impl/2025/6/oj
 - ESPR/DPP framework, Regulation (EU) 2024/1781: https://eur-lex.europa.eu/eli/reg/2024/1781/oj
 - Textile/footwear EPR framework, Directive (EU) 2025/1892: https://eur-lex.europa.eu/eli/dir/2025/1892/oj
 - Environmental-claim consumer rules, Directive (EU) 2024/825: https://eur-lex.europa.eu/eli/dir/2024/825/oj
@@ -1799,4 +1810,30 @@ Backend carbon trace core:
 - R20 remains `PARTIAL`: expand exact CN/TARIC and applicable REACH coverage with a controlled source-change lifecycle,
   add a maintained species dataset and other specialist domains, then run exact-head CI/staging and a qualified real-product
   specialist pilot using authentic BOM/laboratory evidence. Nothing was pushed, merged, deployed or changed on the
+  production host.
+
+### 2026-09-14 — R20 limited CITES/EU wildlife-trade species-routing slice
+
+- Ruleset `R20-EU-APPLICABILITY-2026.09.5` adds maintained limited dataset
+  `EU-WILDLIFE-TRADE-2026.09.14.1`, pinned to Regulation (EU) 2026/1383, Regulation (EC) No 338/97 and Commission
+  Implementing Regulation (EU) 2025/6. It routes exact scientific names for `Crocodylus siamensis` to CITES Appendix I/EU
+  Annex A, and `Python reticulatus` and `Varanus salvator` to CITES Appendix II/EU Annex B.
+- The immutable input records scientific name, specimen description, source code, country of export, CITES and EU import-
+  permit references and whether the supporting documents were verified. Exact matches expose listing basis, missing facts,
+  document gaps, evidence requirements and the mandatory country/source/specimen suspension review.
+- Missing or unlisted species, an animal-origin conflict, invalid source code or snapshot-date mismatch becomes a dataset gap
+  requiring specialist review. The evaluator does not infer synonym, hybrid or population coverage and never treats a
+  reference as proof of permit authenticity/validity, legal acquisition, non-detriment, quota availability or import/export
+  eligibility. Every exact species match remains `specialist_review_required`.
+- No migration was added: migration 030 already stores additive immutable JSONB snapshots and the existing indexes cover the
+  unchanged query paths. Backend OpenAPI, frontend snapshot/generated types and the UI are synchronized.
+- Full local gates pass: backend 140/140 suites and 823/823 tests plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend 61/61 files and 240/240 tests, TypeScript/contract/network/policy checks and the 62-route production build. The
+  same 20 pre-existing frontend lint warnings remain; there are no errors.
+- The cumulative guarded pilot passed 47/47 checks on isolated PostgreSQL 18 database `weavecarbon_r20_ppwr`, with
+  `productionDataTouched=false`. Retained artifact `artifacts/compliance-applicability-pilot/result.json` has SHA-256
+  `fc93b45fb56ae4c621b894bff24626fbcf194f79eb15831d0fe1f58888f6cb37`.
+- R20 remains `PARTIAL`: expand exact CN/TARIC, applicable REACH and wildlife coverage with controlled source-change
+  lifecycles; add remaining specialist domains; then run exact-head CI/staging and a qualified real-product specialist pilot
+  with authentic permits and product/BOM/laboratory evidence. Nothing was pushed, merged, deployed or changed on the
   production host.

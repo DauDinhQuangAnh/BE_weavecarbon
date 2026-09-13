@@ -682,7 +682,14 @@ const REQUEST_BODY_OVERRIDES = {
             originCountry: { type: 'string', pattern: '^[A-Za-z]{0,2}$' },
             percentageByWeight: { type: 'number', minimum: 0, maximum: 100, nullable: true },
             animalOrigin: { type: 'boolean', nullable: true },
-            substancesScreened: { type: 'boolean', nullable: true }
+            substancesScreened: { type: 'boolean', nullable: true },
+            speciesScientificName: { type: 'string', maxLength: 300 },
+            specimenDescription: { type: 'string', maxLength: 1000 },
+            wildlifeSourceCode: { type: 'string', enum: ['', 'W', 'R', 'D', 'C', 'F', 'I', 'O', 'U', 'X'] },
+            countryOfExport: { type: 'string', pattern: '^[A-Za-z]{0,2}$' },
+            citesDocumentReference: { type: 'string', maxLength: 500 },
+            euImportPermitReference: { type: 'string', maxLength: 500 },
+            wildlifeDocumentsVerified: { type: 'boolean', nullable: true }
           },
           additionalProperties: false
         }

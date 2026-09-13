@@ -8,6 +8,7 @@ function deepFreeze(value) {
 const packagingDataset = deepFreeze(require('../data/regulatory/euPackagingApplicabilityDataset.json'));
 const classificationDataset = deepFreeze(require('../data/regulatory/euCnTaricProductRoutingDataset.json'));
 const reachRestrictionDataset = deepFreeze(require('../data/regulatory/euReachTextileLeatherRestrictionDataset.json'));
+const wildlifeSpeciesDataset = deepFreeze(require('../data/regulatory/euWildlifeTradeSpeciesRoutingDataset.json'));
 
 const EU_COUNTRY_CODES = new Set([
   'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR',
@@ -16,7 +17,7 @@ const EU_COUNTRY_CODES = new Set([
 
 const RULESET = Object.freeze({
   id: 'weavecarbon.eu-product-compliance-triage',
-  version: 'R20-EU-APPLICABILITY-2026.09.4',
+  version: 'R20-EU-APPLICABILITY-2026.09.5',
   coverageStatus: 'limited',
   effectiveFrom: '2024-12-13',
   sources: Object.freeze([
@@ -46,7 +47,8 @@ const RULESET = Object.freeze({
     }),
     ...packagingDataset.sources.map((source) => Object.freeze({ ...source })),
     ...classificationDataset.sources.map((source) => Object.freeze({ ...source })),
-    ...reachRestrictionDataset.sources.map((source) => Object.freeze({ ...source }))
+    ...reachRestrictionDataset.sources.map((source) => Object.freeze({ ...source })),
+    ...wildlifeSpeciesDataset.sources.map((source) => Object.freeze({ ...source }))
   ])
 });
 
@@ -155,6 +157,15 @@ function normalizeMaterial(value = {}, source = 'operator_context') {
     percentageByWeight: numberOrNull(value.percentageByWeight ?? value.percentage_by_weight),
     animalOrigin: boolOrNull(value.animalOrigin ?? value.animal_origin),
     substancesScreened: boolOrNull(value.substancesScreened ?? value.substances_screened),
+    speciesScientificName: text(value.speciesScientificName || value.species_scientific_name),
+    specimenDescription: text(value.specimenDescription || value.specimen_description),
+    wildlifeSourceCode: code(value.wildlifeSourceCode || value.wildlife_source_code),
+    countryOfExport: code(value.countryOfExport || value.country_of_export),
+    citesDocumentReference: text(value.citesDocumentReference || value.cites_document_reference),
+    euImportPermitReference: text(value.euImportPermitReference || value.eu_import_permit_reference),
+    wildlifeDocumentsVerified: boolOrNull(
+      value.wildlifeDocumentsVerified ?? value.wildlife_documents_verified
+    ),
     source
   };
 }
@@ -314,6 +325,107 @@ function buildReachRestrictionScreenings(classifications, marketContext, assessm
   });
 }
 
+function buildWildlifeTradeScreenings(materials, assessmentDate) {
+  return materials.filter((material) =>
+    material.animalOrigin === true || material.speciesScientificName
+  ).map((material) => {
+    const base = {
+      materialReference: material.reference,
+      materialDescription: material.description,
+      materialSource: material.source,
+      operatorScientificName: material.speciesScientificName,
+      specimenDescription: material.specimenDescription,
+      countryOfOrigin: material.originCountry,
+      countryOfExport: material.countryOfExport,
+      wildlifeSourceCode: material.wildlifeSourceCode,
+      citesDocumentReference: material.citesDocumentReference,
+      euImportPermitReference: material.euImportPermitReference,
+      wildlifeDocumentsVerified: material.wildlifeDocumentsVerified,
+      datasetId: wildlifeSpeciesDataset.datasetId,
+      datasetVersion: wildlifeSpeciesDataset.version,
+      matchedScientificName: null,
+      commonName: null,
+      citesAppendix: null,
+      euAnnex: null,
+      euListingTaxon: null,
+      euListingBasis: null,
+      commercialPurposeReviewRequired: null,
+      sourceId: 'EU-2026-1383',
+      matchStatus: 'species_required',
+      missingFacts: [],
+      validationIssues: [],
+      documentGaps: [],
+      requiredEvidenceTypes: ['scientific_species_identification', 'species_and_source_evidence'],
+      currentSuspensionCheckRequired: true
+    };
+
+    if (material.speciesScientificName && material.animalOrigin === false) {
+      return {
+        ...base, matchStatus: 'animal_origin_conflict',
+        validationIssues: ['animalOrigin_conflicts_with_speciesScientificName']
+      };
+    }
+    if (material.speciesScientificName && material.animalOrigin === null) {
+      return { ...base, matchStatus: 'animal_origin_fact_required', missingFacts: ['animalOrigin'] };
+    }
+    if (!material.speciesScientificName) {
+      return { ...base, missingFacts: ['speciesScientificName'] };
+    }
+
+    const species = wildlifeSpeciesDataset.species.find((item) =>
+      item.scientificName.toLowerCase() === material.speciesScientificName.toLowerCase()
+    );
+    if (!species) return { ...base, matchStatus: 'species_not_in_limited_dataset' };
+
+    const matched = {
+      ...base,
+      matchedScientificName: species.scientificName,
+      commonName: species.commonName,
+      citesAppendix: species.citesAppendix,
+      euAnnex: species.euAnnex,
+      euListingTaxon: species.euListingTaxon,
+      euListingBasis: species.euListingBasis,
+      commercialPurposeReviewRequired: species.commercialPurposeReviewRequired,
+      requiredEvidenceTypes: [...species.requiredEvidenceTypes]
+    };
+    if (!assessmentDate
+      || assessmentDate < wildlifeSpeciesDataset.effectiveFrom
+      || assessmentDate > wildlifeSpeciesDataset.checkedAt) {
+      return { ...matched, matchStatus: 'dataset_date_mismatch' };
+    }
+
+    const requiredFacts = [
+      'specimenDescription', 'originCountry', 'countryOfExport',
+      'wildlifeSourceCode', 'citesDocumentReference', 'euImportPermitReference'
+    ];
+    const missingFacts = requiredFacts.filter((field) => !material[field]);
+    const validationIssues = [];
+    if (material.wildlifeSourceCode
+      && !wildlifeSpeciesDataset.allowedAnimalSourceCodes.includes(material.wildlifeSourceCode)) {
+      validationIssues.push('wildlifeSourceCode_not_in_limited_code_list');
+    }
+    if (material.originCountry && !/^[A-Z]{2}$/.test(material.originCountry)) {
+      validationIssues.push('countryOfOrigin_invalid');
+    }
+    if (material.countryOfExport && !/^[A-Z]{2}$/.test(material.countryOfExport)) {
+      validationIssues.push('countryOfExport_invalid');
+    }
+    const documentGaps = [
+      !material.citesDocumentReference && 'citesDocumentReference',
+      !material.euImportPermitReference && 'euImportPermitReference',
+      material.wildlifeDocumentsVerified !== true && 'wildlifeDocumentsVerified'
+    ].filter(Boolean);
+    return {
+      ...matched,
+      matchStatus: missingFacts.length || validationIssues.length || documentGaps.length
+        ? 'exact_species_match_documents_incomplete' : 'exact_species_match_documents_recorded',
+      missingFacts,
+      validationIssues,
+      documentGaps
+    };
+  });
+}
+
 function result(codeValue, decision, reason, {
   sourceId, matchedProductCodes = [], requiredEvidenceTypes = [], risk = 'high', matchPrecision = 'context'
 } = {}) {
@@ -385,12 +497,21 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
   const restrictionScreenings = normalized.shipment.destinationIsEu
     ? buildReachRestrictionScreenings(classifications, normalized.marketContext, normalized.assessmentDate)
     : [];
+  const speciesScreenings = normalized.shipment.destinationIsEu
+    ? buildWildlifeTradeScreenings(normalized.materials, normalized.assessmentDate)
+    : [];
   if (restrictionScreenings.length) {
     restrictionScreenings.flatMap((item) => item.missingScopeFacts).forEach((field) => {
       missingInputs.push(field === 'textileFibrePercent'
         ? 'marketContext.textileFibrePercent' : `marketContext.reach.${field}`);
     });
   }
+  speciesScreenings.forEach((item) => item.missingFacts.forEach((field) => {
+    const materialIndex = normalized.materials.findIndex((material) =>
+      material.reference === item.materialReference && material.source === item.materialSource
+    );
+    missingInputs.push(`materials[${materialIndex >= 0 ? materialIndex : 0}].${field}`);
+  }));
 
   if (!normalized.shipment.destinationIsEu) {
     matches.push(result(
@@ -558,6 +679,37 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
         }
       ));
     }
+
+    const exactSpecies = speciesScreenings.filter((item) =>
+      item.matchStatus.startsWith('exact_species_match_')
+    );
+    if (exactSpecies.length) {
+      matches.push(result(
+        'EU_WILDLIFE_TRADE_SPECIES_ROUTING', 'specialist_review_required',
+        `${exactSpecies.length} material species record(s) exactly match the limited EU wildlife-trade dataset. Current country/source/specimen suspensions, permit conditions and document authenticity still require specialist and authority verification.`,
+        {
+          sourceId: 'EC-338-97', matchedProductCodes: productCodes,
+          requiredEvidenceTypes: unique(exactSpecies.flatMap((item) => item.requiredEvidenceTypes)),
+          matchPrecision: exactSpecies.every((item) =>
+            item.matchStatus === 'exact_species_match_documents_recorded'
+          ) ? 'exact_species_plus_operator_document_references' : 'exact_species_documents_incomplete'
+        }
+      ));
+    }
+    const speciesGaps = speciesScreenings.filter((item) =>
+      !item.matchStatus.startsWith('exact_species_match_')
+    );
+    if (speciesGaps.length) {
+      matches.push(result(
+        'EU_WILDLIFE_TRADE_SPECIES_DATASET_GAP', 'specialist_review_required',
+        'At least one animal-origin material has a missing, conflicting, unlisted or out-of-window species record. No CITES Appendix, EU Annex, permit or import-eligibility conclusion is made for that material.',
+        {
+          sourceId: 'EU-2026-1383', matchedProductCodes: productCodes,
+          requiredEvidenceTypes: ['scientific_species_identification', 'species_and_source_evidence', 'current_eu_annex_and_suspension_check'],
+          matchPrecision: 'species_dataset_gap'
+        }
+      ));
+    }
   }
 
   if (!matches.length) {
@@ -576,7 +728,9 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
     : matches.some((item) => item.decision === 'requirements_identified')
       ? 'requirements_identified' : 'not_applicable';
   const sources = sourceManifest();
-  const datasets = [packagingDataset, classificationDataset, reachRestrictionDataset].map((dataset) => ({
+  const datasets = [
+    packagingDataset, classificationDataset, reachRestrictionDataset, wildlifeSpeciesDataset
+  ].map((dataset) => ({
     id: dataset.datasetId,
     version: dataset.version,
     coverageStatus: dataset.coverageStatus,
@@ -598,6 +752,7 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
     missingInputs: unique(missingInputs),
     classifications,
     restrictionScreenings,
+    speciesScreenings,
     matches,
     requiredEvidenceTypes: unique(matches.flatMap((item) => item.requiredEvidenceTypes)),
     sources,
@@ -616,8 +771,10 @@ module.exports = {
   packagingDataset,
   classificationDataset,
   reachRestrictionDataset,
+  wildlifeSpeciesDataset,
   classifyProduct,
   buildReachRestrictionScreenings,
+  buildWildlifeTradeScreenings,
   buildInputSnapshot,
   evaluateComplianceApplicability,
   sha256

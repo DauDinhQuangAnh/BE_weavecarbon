@@ -10418,8 +10418,20 @@
                           "nullable": true,
                           "type": "boolean"
                         },
+                        "citesDocumentReference": {
+                          "maxLength": 500,
+                          "type": "string"
+                        },
+                        "countryOfExport": {
+                          "pattern": "^[A-Za-z]{0,2}$",
+                          "type": "string"
+                        },
                         "description": {
                           "maxLength": 1000,
+                          "type": "string"
+                        },
+                        "euImportPermitReference": {
+                          "maxLength": 500,
                           "type": "string"
                         },
                         "hsCode": {
@@ -10440,9 +10452,36 @@
                           "maxLength": 200,
                           "type": "string"
                         },
+                        "speciesScientificName": {
+                          "maxLength": 300,
+                          "type": "string"
+                        },
+                        "specimenDescription": {
+                          "maxLength": 1000,
+                          "type": "string"
+                        },
                         "substancesScreened": {
                           "nullable": true,
                           "type": "boolean"
+                        },
+                        "wildlifeDocumentsVerified": {
+                          "nullable": true,
+                          "type": "boolean"
+                        },
+                        "wildlifeSourceCode": {
+                          "enum": [
+                            "",
+                            "W",
+                            "R",
+                            "D",
+                            "C",
+                            "F",
+                            "I",
+                            "O",
+                            "U",
+                            "X"
+                          ],
+                          "type": "string"
                         }
                       },
                       "type": "object"
