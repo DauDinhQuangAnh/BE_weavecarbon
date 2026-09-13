@@ -15,7 +15,7 @@ const { createExportShipmentService } = require('../src/services/exportShipmentS
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-pilot-v8',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-pilot-v9',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -26,7 +26,9 @@ const result = {
   euImportEvents: [],
   ics2Events: [],
   environmentalClaims: [],
-  textileFibreLabels: []
+  textileFibreLabels: [],
+  gpsrTechnicalFiles: [],
+  gpsrPostMarketEvents: []
 };
 
 function check(name, details = {}) {
@@ -42,7 +44,7 @@ async function writeResult() {
   for (const name of [
     'carrier-document-pilot', 'vn-customs-handoff-pilot', 'eu-import-handoff-pilot',
     'ics2-handoff-pilot', 'origin-handoff-pilot', 'compliance-applicability-pilot',
-    'environmental-claim-pilot', 'textile-fibre-label-pilot'
+    'environmental-claim-pilot', 'textile-fibre-label-pilot', 'gpsr-technical-file-pilot'
   ]) {
     const directory = path.resolve(__dirname, '..', 'artifacts', name);
     await fs.promises.mkdir(directory, { recursive: true });
@@ -1003,6 +1005,141 @@ async function run() {
     inputSha256: controlledTextileLabel.inputSha256, resultSha256: controlledTextileLabel.resultSha256
   });
   check('r08_label_revision_is_tenant_isolated_hash_bound_evidence_backed_and_immutable');
+
+  const incompleteGpsrFile = await service.createGpsrTechnicalFileRevision(
+    ids.companyId, ids.shipmentId, ids.userId, {
+      fileReference: `GPSR-BLOCKED-${runId}`, assessmentDate: '2026-09-13', firstPlacedOnMarketDate: '2026-09-13',
+      consumerProduct: true, placedOnEuMarket: true, marketCodes: ['DE'], harmonisationCoverage: 'none',
+      product: { brand: 'Synthetic', name: 'Cotton shirt', model: 'WC-BLOCKED', batchNumber: `LOT-${runId}`,
+        description: 'Synthetic shirt', essentialCharacteristics: 'Textile garment',
+        productImageEvidenceId: originEvidence.evidenceId, packagingImageEvidenceId: originEvidence.evidenceId },
+      intendedUse: 'Adult garment', foreseeableMisuse: 'Use near an open flame', vulnerableGroups: ['children'],
+      operators: {
+        manufacturer: { name: 'Synthetic Maker VN', postalAddress: 'HCMC, Vietnam', electronicAddress: 'maker@invalid.example', euEstablished: false },
+        importer: { name: 'Synthetic Importer GmbH', postalAddress: 'Berlin, Germany', electronicAddress: 'importer@invalid.example', euEstablished: true },
+        responsiblePerson: { name: 'Synthetic Safety GmbH', postalAddress: 'Berlin, Germany', electronicAddress: 'gpsr@invalid.example', euEstablished: true }
+      },
+      risks: [], standards: [], warnings: [],
+      onlineOffer: { enabled: true, manufacturerDisplayed: false, responsiblePersonDisplayed: false,
+        productImageDisplayed: false, identifiersDisplayed: false, warningsDisplayed: false, offerUrl: '' },
+      seriesProductionProcedure: 'Synthetic lot control.', complaintChannel: 'safety@invalid.example',
+      postMarketPlan: 'Synthetic complaint and incident review.', retentionUntil: '2036-09-13',
+      evidenceDocumentIds: [originEvidence.evidenceId]
+    }
+  );
+  assert.equal(incompleteGpsrFile.automatedStatus, 'needs_information');
+  assert.ok(incompleteGpsrFile.result.findings.some((item) => item.code === 'RISK_ANALYSIS_REQUIRED'));
+  assert.ok(incompleteGpsrFile.result.findings.some((item) => item.code === 'DISTANCE_SALE_INFORMATION_INCOMPLETE'));
+  const incompleteGpsrApproval = await service.reviewGpsrTechnicalFile(
+    ids.companyId, ids.shipmentId, incompleteGpsrFile.id, ids.userId, {
+      reviewerRole: 'product_safety_reviewer', decision: 'approved_for_internal_release',
+      notes: 'Synthetic incomplete-file approval must fail.'
+    }
+  );
+  assert.equal(incompleteGpsrApproval.code, 'GPSR_FILE_NOT_READY');
+  check('r10_incomplete_risk_and_distance_sale_file_is_blocked');
+
+  const controlledGpsrFile = await service.createGpsrTechnicalFileRevision(
+    ids.companyId, ids.shipmentId, ids.userId, {
+      fileReference: `GPSR-SHIRT-${runId}`, assessmentDate: '2026-09-13', firstPlacedOnMarketDate: '2026-09-13',
+      consumerProduct: true, placedOnEuMarket: true, marketCodes: ['DE'], harmonisationCoverage: 'none',
+      applicableSectorRules: ['Regulation (EU) No 1007/2011'],
+      product: { brand: 'Synthetic WeaveCarbon', name: 'Cotton shirt', model: `WC-${runId}`, type: 'woven shirt',
+        batchNumber: `LOT-${runId}`, serialNumber: '', otherIdentifier: `R03-SKU-${runId}`,
+        description: 'Synthetic adult woven shirt', essentialCharacteristics: 'Cotton/polyester shell, polyester lining and buttons',
+        composition: 'Shell 80% cotton/20% polyester; lining 100% polyester', packagingDescription: 'Recyclable paper sleeve',
+        productImageEvidenceId: originEvidence.evidenceId, packagingImageEvidenceId: originEvidence.evidenceId },
+      intendedUse: 'Adult upper-body garment for everyday wear',
+      foreseeableMisuse: 'Use near an open flame; detached button accessible to a child', vulnerableGroups: ['children'],
+      operators: {
+        manufacturer: { name: 'Synthetic Maker VN', postalAddress: 'HCMC, Vietnam', electronicAddress: 'maker@invalid.example', euEstablished: false },
+        importer: { name: 'Synthetic Importer GmbH', postalAddress: 'Berlin, Germany', electronicAddress: 'importer@invalid.example', euEstablished: true },
+        responsiblePerson: { name: 'Synthetic Safety GmbH', postalAddress: 'Berlin, Germany', electronicAddress: 'gpsr@invalid.example', euEstablished: true }
+      },
+      risks: [{ hazardId: 'H-BUTTON', hazardCategory: 'mechanical', hazardDescription: 'Loose button may be swallowed',
+        affectedGroups: ['children'], foreseeableScenario: 'A button detaches during use and reaches a child', likelihood: 2,
+        severity: 3, mitigation: 'Lot-based button pull testing and seam inspection', residualLikelihood: 1,
+        residualSeverity: 3, verificationEvidenceIds: [originEvidence.evidenceId] }],
+      standards: [{ reference: 'SYNTHETIC-BUTTON-PULL', title: 'Synthetic button pull protocol', version: '1.0', applicationExtent: 'full' }],
+      warnings: [{ marketCode: 'DE', languageCode: 'de-DE', text: 'Von offenem Feuer fernhalten.', location: 'packaging', operatorApproved: true }],
+      onlineOffer: { enabled: true, manufacturerDisplayed: true, responsiblePersonDisplayed: true,
+        productImageDisplayed: true, identifiersDisplayed: true, warningsDisplayed: true,
+        offerUrl: `https://invalid.example/products/WC-${runId}` },
+      seriesProductionProcedure: 'Pull-test each lot, quarantine failures and revise this file after material or supplier changes.',
+      complaintChannel: 'safety@invalid.example',
+      postMarketPlan: 'Review complaints monthly; escalate serious incidents immediately; document corrective actions and recalls.',
+      retentionUntil: '2036-09-13', evidenceDocumentIds: [originEvidence.evidenceId],
+      notes: 'Synthetic R10 lifecycle pilot; not a product-safety certification.'
+    }
+  );
+  assert.equal(controlledGpsrFile.automatedStatus, 'ready_for_safety_review');
+  assert.equal(controlledGpsrFile.result.minimumRetentionUntil, '2036-09-13');
+  const wrongGpsrRole = await service.reviewGpsrTechnicalFile(
+    ids.companyId, ids.shipmentId, controlledGpsrFile.id, ids.userId, {
+      reviewerRole: 'compliance_specialist', decision: 'approved_for_internal_release', notes: 'Wrong role test.'
+    }
+  );
+  assert.equal(wrongGpsrRole.code, 'GPSR_REVIEW_ROLE_INVALID');
+  const gpsrReview = await service.reviewGpsrTechnicalFile(
+    ids.companyId, ids.shipmentId, controlledGpsrFile.id, ids.userId, {
+      reviewerRole: 'product_safety_reviewer', decision: 'approved_for_internal_release',
+      notes: 'Synthetic risk, operator, Article 19, evidence and retention review for internal release only.'
+    }
+  );
+  assert.equal(gpsrReview.inputSha256, controlledGpsrFile.inputSha256);
+  assert.equal(gpsrReview.resultSha256, controlledGpsrFile.resultSha256);
+  const gpsrRegister = await service.listGpsrTechnicalFiles(ids.companyId, ids.shipmentId);
+  const reopenedGpsrFile = gpsrRegister.find((item) => item.id === controlledGpsrFile.id);
+  assert.equal(reopenedGpsrFile.safetyFileStatus, 'approved_for_internal_release');
+  assert.equal(await service.listGpsrTechnicalFiles(ids.otherCompanyId, ids.shipmentId), null);
+  await assert.rejects(
+    pool.query('UPDATE gpsr_technical_file_revisions SET automated_status=$1 WHERE id=$2', [
+      'needs_information', controlledGpsrFile.id
+    ]), /append-only and immutable/i
+  );
+  result.gpsrTechnicalFiles.push({
+    id: controlledGpsrFile.id, fileReference: controlledGpsrFile.fileReference, revision: controlledGpsrFile.revision,
+    safetyFileStatus: reopenedGpsrFile.safetyFileStatus, inputSha256: controlledGpsrFile.inputSha256,
+    resultSha256: controlledGpsrFile.resultSha256
+  });
+  check('r10_file_is_tenant_isolated_hash_bound_evidence_backed_and_immutable');
+
+  const incident = await service.recordGpsrPostMarketEvent(
+    ids.companyId, ids.shipmentId, controlledGpsrFile.id, ids.userId, {
+      eventType: 'safety_incident', eventReference: `INC-${runId}`, occurredAt: '2026-09-13T09:00:00Z',
+      summary: 'Synthetic serious incident without consumer personal data.', severity: 'serious',
+      evidenceDocumentId: originEvidence.evidenceId, consumerPersonalDataIncluded: false
+    }
+  );
+  assert.equal(incident.safetyBusinessGatewayNotificationRequired, true);
+  const unprovenGateway = await service.recordGpsrPostMarketEvent(
+    ids.companyId, ids.shipmentId, controlledGpsrFile.id, ids.userId, {
+      eventType: 'safety_business_gateway_notification', eventReference: `SBG-MISSING-${runId}`,
+      occurredAt: '2026-09-13T10:00:00Z', summary: 'Synthetic unproven gateway claim.', severity: 'serious'
+    }
+  );
+  assert.equal(unprovenGateway.code, 'GPSR_GATEWAY_PROOF_REQUIRED');
+  const gateway = await service.recordGpsrPostMarketEvent(
+    ids.companyId, ids.shipmentId, controlledGpsrFile.id, ids.userId, {
+      eventType: 'safety_business_gateway_notification', eventReference: `SBG-${runId}`,
+      occurredAt: '2026-09-13T10:00:00Z', summary: 'Synthetic external filing receipt recorded.', severity: 'serious',
+      externalReference: `SYNTHETIC-SBG-RECEIPT-${runId}`, evidenceDocumentId: originEvidence.evidenceId,
+      consumerPersonalDataIncluded: false
+    }
+  );
+  assert.equal(gateway.externalReference, `SYNTHETIC-SBG-RECEIPT-${runId}`);
+  const postMarketEvents = await service.listGpsrPostMarketEvents(ids.companyId, ids.shipmentId, controlledGpsrFile.id);
+  assert.equal(postMarketEvents.length, 2);
+  assert.equal(await service.listGpsrPostMarketEvents(ids.otherCompanyId, ids.shipmentId), null);
+  await assert.rejects(
+    pool.query('UPDATE gpsr_post_market_events SET summary=$1 WHERE id=$2', ['tampered', incident.id]),
+    /append-only and immutable/i
+  );
+  result.gpsrPostMarketEvents.push(...postMarketEvents.map((item) => ({
+    id: item.id, eventReference: item.eventReference, eventType: item.eventType, severity: item.severity,
+    externalReference: item.externalReference, safetyBusinessGatewayNotificationRequired: item.safetyBusinessGatewayNotificationRequired
+  })));
+  check('r10_serious_incident_requires_gateway_follow_up_and_gateway_claim_requires_external_proof');
 
   const firstReadiness = await service.getReadiness(ids.companyId, ids.shipmentId);
   assert.equal(firstReadiness.documents.find((item) => item.type === 'carbon_annex').status, 'ready');

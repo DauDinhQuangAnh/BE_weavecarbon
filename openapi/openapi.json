@@ -472,6 +472,44 @@
         ],
         "type": "object"
       },
+      "GpsrEconomicOperator": {
+        "additionalProperties": false,
+        "properties": {
+          "contactPoint": {
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "electronicAddress": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "euEstablished": {
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "postalAddress": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "tradeName": {
+            "maxLength": 500,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "postalAddress",
+          "electronicAddress",
+          "euEstablished"
+        ],
+        "type": "object"
+      },
       "PaginationMeta": {
         "additionalProperties": true,
         "properties": {
@@ -9460,6 +9498,814 @@
           }
         ],
         "summary": "GET /export/shipments/{shipmentId}/eu-import/reconciliation",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/gpsr/post-market-events": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdGpsrPostMarketEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/gpsr/post-market-events",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/gpsr/technical-files": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdGpsrTechnicalFiles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/gpsr/technical-files",
+        "tags": [
+          "Export"
+        ]
+      },
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdGpsrTechnicalFiles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "applicableSectorRules": {
+                    "items": {
+                      "maxLength": 500,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "assessmentDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "complaintChannel": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "consumerProduct": {
+                    "type": "boolean"
+                  },
+                  "evidenceDocumentIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "fileReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "firstPlacedOnMarketDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "foreseeableMisuse": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "harmonisationCoverage": {
+                    "enum": [
+                      "none",
+                      "partial",
+                      "full",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  "intendedUse": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "marketCodes": {
+                    "items": {
+                      "pattern": "^[A-Za-z]{2}$",
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "onlineOffer": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "identifiersDisplayed": {
+                        "type": "boolean"
+                      },
+                      "manufacturerDisplayed": {
+                        "type": "boolean"
+                      },
+                      "offerUrl": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      "productImageDisplayed": {
+                        "type": "boolean"
+                      },
+                      "responsiblePersonDisplayed": {
+                        "type": "boolean"
+                      },
+                      "warningsDisplayed": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "enabled",
+                      "manufacturerDisplayed",
+                      "responsiblePersonDisplayed",
+                      "productImageDisplayed",
+                      "identifiersDisplayed",
+                      "warningsDisplayed"
+                    ],
+                    "type": "object"
+                  },
+                  "operators": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "importer": {
+                        "$ref": "#/components/schemas/GpsrEconomicOperator"
+                      },
+                      "manufacturer": {
+                        "$ref": "#/components/schemas/GpsrEconomicOperator"
+                      },
+                      "responsiblePerson": {
+                        "$ref": "#/components/schemas/GpsrEconomicOperator"
+                      }
+                    },
+                    "required": [
+                      "manufacturer",
+                      "importer",
+                      "responsiblePerson"
+                    ],
+                    "type": "object"
+                  },
+                  "placedOnEuMarket": {
+                    "type": "boolean"
+                  },
+                  "postMarketPlan": {
+                    "maxLength": 10000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "product": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "batchNumber": {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      "brand": {
+                        "maxLength": 500,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "composition": {
+                        "maxLength": 10000,
+                        "type": "string"
+                      },
+                      "description": {
+                        "maxLength": 5000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "essentialCharacteristics": {
+                        "maxLength": 10000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "model": {
+                        "maxLength": 500,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "name": {
+                        "maxLength": 500,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "otherIdentifier": {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      "packagingDescription": {
+                        "maxLength": 5000,
+                        "type": "string"
+                      },
+                      "packagingImageEvidenceId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "productImageEvidenceId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "serialNumber": {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      "type": {
+                        "maxLength": 500,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "brand",
+                      "name",
+                      "model",
+                      "description",
+                      "essentialCharacteristics",
+                      "productImageEvidenceId",
+                      "packagingImageEvidenceId"
+                    ],
+                    "type": "object"
+                  },
+                  "retentionUntil": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "risks": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "affectedGroups": {
+                          "items": {
+                            "maxLength": 500,
+                            "type": "string"
+                          },
+                          "maxItems": 100,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "foreseeableScenario": {
+                          "maxLength": 5000,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "hazardCategory": {
+                          "maxLength": 500,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "hazardDescription": {
+                          "maxLength": 5000,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "hazardId": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "likelihood": {
+                          "maximum": 5,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "mitigation": {
+                          "maxLength": 10000,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "residualLikelihood": {
+                          "maximum": 5,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "residualSeverity": {
+                          "maximum": 5,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "severity": {
+                          "maximum": 5,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "verificationEvidenceIds": {
+                          "items": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "maxItems": 100,
+                          "minItems": 1,
+                          "type": "array",
+                          "uniqueItems": true
+                        }
+                      },
+                      "required": [
+                        "hazardId",
+                        "hazardCategory",
+                        "hazardDescription",
+                        "affectedGroups",
+                        "foreseeableScenario",
+                        "likelihood",
+                        "severity",
+                        "mitigation",
+                        "residualLikelihood",
+                        "residualSeverity",
+                        "verificationEvidenceIds"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "seriesProductionProcedure": {
+                    "maxLength": 10000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "standards": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "applicationExtent": {
+                          "enum": [
+                            "full",
+                            "partial"
+                          ],
+                          "type": "string"
+                        },
+                        "appliedParts": {
+                          "maxLength": 5000,
+                          "type": "string"
+                        },
+                        "reference": {
+                          "maxLength": 500,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "title": {
+                          "maxLength": 1000,
+                          "type": "string"
+                        },
+                        "version": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "reference",
+                        "version",
+                        "applicationExtent"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "vulnerableGroups": {
+                    "items": {
+                      "maxLength": 500,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "warnings": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "languageCode": {
+                          "maxLength": 35,
+                          "minLength": 2,
+                          "type": "string"
+                        },
+                        "location": {
+                          "enum": [
+                            "product",
+                            "packaging",
+                            "accompanying_document",
+                            "online_offer"
+                          ],
+                          "type": "string"
+                        },
+                        "marketCode": {
+                          "pattern": "^[A-Za-z]{2}$",
+                          "type": "string"
+                        },
+                        "operatorApproved": {
+                          "type": "boolean"
+                        },
+                        "text": {
+                          "maxLength": 10000,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "marketCode",
+                        "languageCode",
+                        "text",
+                        "location",
+                        "operatorApproved"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "fileReference",
+                  "assessmentDate",
+                  "firstPlacedOnMarketDate",
+                  "consumerProduct",
+                  "placedOnEuMarket",
+                  "marketCodes",
+                  "harmonisationCoverage",
+                  "product",
+                  "intendedUse",
+                  "foreseeableMisuse",
+                  "operators",
+                  "risks",
+                  "standards",
+                  "warnings",
+                  "onlineOffer",
+                  "seriesProductionProcedure",
+                  "complaintChannel",
+                  "postMarketPlan",
+                  "retentionUntil",
+                  "evidenceDocumentIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/gpsr/technical-files",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/gpsr/technical-files/{technicalFileId}/post-market-events": {
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdGpsrTechnicalFilesByTechnicalFileIdPostMarketEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "technicalFileId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "consumerPersonalDataIncluded": {
+                    "enum": [
+                      false
+                    ],
+                    "type": "boolean"
+                  },
+                  "eventReference": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "eventType": {
+                    "enum": [
+                      "complaint",
+                      "safety_incident",
+                      "corrective_action",
+                      "recall",
+                      "safety_business_gateway_notification",
+                      "authority_request",
+                      "consumer_notice"
+                    ],
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "externalReference": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "type": "object"
+                  },
+                  "occurredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "severity": {
+                    "enum": [
+                      "information",
+                      "minor",
+                      "serious",
+                      "death",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  "summary": {
+                    "maxLength": 10000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "eventType",
+                  "eventReference",
+                  "occurredAt",
+                  "summary",
+                  "severity"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/gpsr/technical-files/{technicalFileId}/post-market-events",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/gpsr/technical-files/{technicalFileId}/reviews": {
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdGpsrTechnicalFilesByTechnicalFileIdReviews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "technicalFileId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approved_for_internal_release",
+                      "needs_information",
+                      "rejected"
+                    ],
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reviewerRole": {
+                    "enum": [
+                      "product_safety_reviewer"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reviewerRole",
+                  "decision",
+                  "notes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/gpsr/technical-files/{technicalFileId}/reviews",
         "tags": [
           "Export"
         ]

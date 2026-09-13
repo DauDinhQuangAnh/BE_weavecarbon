@@ -747,6 +747,89 @@ const REQUEST_BODY_OVERRIDES = {
       notes: { type: 'string', minLength: 1, maxLength: 5000 }
     }, additionalProperties: false
   },
+  'POST /export/shipments/{shipmentId}/gpsr/technical-files': {
+    type: 'object',
+    required: ['fileReference', 'assessmentDate', 'firstPlacedOnMarketDate', 'consumerProduct',
+      'placedOnEuMarket', 'marketCodes', 'harmonisationCoverage', 'product', 'intendedUse',
+      'foreseeableMisuse', 'operators', 'risks', 'standards', 'warnings', 'onlineOffer',
+      'seriesProductionProcedure', 'complaintChannel', 'postMarketPlan', 'retentionUntil', 'evidenceDocumentIds'],
+    properties: {
+      fileReference: { type: 'string', minLength: 1, maxLength: 120 },
+      assessmentDate: { type: 'string', format: 'date' },
+      firstPlacedOnMarketDate: { type: 'string', format: 'date' },
+      consumerProduct: { type: 'boolean' }, placedOnEuMarket: { type: 'boolean' },
+      marketCodes: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string', pattern: '^[A-Za-z]{2}$' } },
+      harmonisationCoverage: { type: 'string', enum: ['none', 'partial', 'full', 'unknown'] },
+      applicableSectorRules: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', maxLength: 500 } },
+      product: {
+        type: 'object', required: ['brand', 'name', 'model', 'description', 'essentialCharacteristics', 'productImageEvidenceId', 'packagingImageEvidenceId'],
+        properties: {
+          brand: { type: 'string', minLength: 1, maxLength: 500 }, name: { type: 'string', minLength: 1, maxLength: 500 },
+          model: { type: 'string', minLength: 1, maxLength: 500 }, type: { type: 'string', maxLength: 500 },
+          batchNumber: { type: 'string', maxLength: 500 }, serialNumber: { type: 'string', maxLength: 500 },
+          otherIdentifier: { type: 'string', maxLength: 500 }, description: { type: 'string', minLength: 1, maxLength: 5000 },
+          essentialCharacteristics: { type: 'string', minLength: 1, maxLength: 10000 }, composition: { type: 'string', maxLength: 10000 },
+          packagingDescription: { type: 'string', maxLength: 5000 },
+          productImageEvidenceId: { type: 'string', format: 'uuid' }, packagingImageEvidenceId: { type: 'string', format: 'uuid' }
+        }, additionalProperties: false
+      },
+      intendedUse: { type: 'string', minLength: 1, maxLength: 5000 }, foreseeableMisuse: { type: 'string', minLength: 1, maxLength: 5000 },
+      vulnerableGroups: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', maxLength: 500 } },
+      operators: {
+        type: 'object', required: ['manufacturer', 'importer', 'responsiblePerson'],
+        properties: {
+          manufacturer: { $ref: '#/components/schemas/GpsrEconomicOperator' },
+          importer: { $ref: '#/components/schemas/GpsrEconomicOperator' },
+          responsiblePerson: { $ref: '#/components/schemas/GpsrEconomicOperator' }
+        }, additionalProperties: false
+      },
+      risks: {
+        type: 'array', minItems: 1, maxItems: 200,
+        items: { type: 'object', required: ['hazardId', 'hazardCategory', 'hazardDescription', 'affectedGroups', 'foreseeableScenario', 'likelihood', 'severity', 'mitigation', 'residualLikelihood', 'residualSeverity', 'verificationEvidenceIds'],
+          properties: {
+            hazardId: { type: 'string', minLength: 1, maxLength: 200 }, hazardCategory: { type: 'string', minLength: 1, maxLength: 500 },
+            hazardDescription: { type: 'string', minLength: 1, maxLength: 5000 }, affectedGroups: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', maxLength: 500 } },
+            foreseeableScenario: { type: 'string', minLength: 1, maxLength: 5000 }, likelihood: { type: 'integer', minimum: 1, maximum: 5 },
+            severity: { type: 'integer', minimum: 1, maximum: 5 }, mitigation: { type: 'string', minLength: 1, maxLength: 10000 },
+            residualLikelihood: { type: 'integer', minimum: 1, maximum: 5 }, residualSeverity: { type: 'integer', minimum: 1, maximum: 5 },
+            verificationEvidenceIds: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } }
+          }, additionalProperties: false }
+      },
+      standards: { type: 'array', maxItems: 100, items: { type: 'object', required: ['reference', 'version', 'applicationExtent'], properties: {
+        reference: { type: 'string', minLength: 1, maxLength: 500 }, title: { type: 'string', maxLength: 1000 }, version: { type: 'string', minLength: 1, maxLength: 200 },
+        applicationExtent: { type: 'string', enum: ['full', 'partial'] }, appliedParts: { type: 'string', maxLength: 5000 }
+      }, additionalProperties: false } },
+      warnings: { type: 'array', minItems: 1, maxItems: 200, items: { type: 'object', required: ['marketCode', 'languageCode', 'text', 'location', 'operatorApproved'], properties: {
+        marketCode: { type: 'string', pattern: '^[A-Za-z]{2}$' }, languageCode: { type: 'string', minLength: 2, maxLength: 35 },
+        text: { type: 'string', minLength: 1, maxLength: 10000 }, location: { type: 'string', enum: ['product', 'packaging', 'accompanying_document', 'online_offer'] }, operatorApproved: { type: 'boolean' }
+      }, additionalProperties: false } },
+      onlineOffer: { type: 'object', required: ['enabled', 'manufacturerDisplayed', 'responsiblePersonDisplayed', 'productImageDisplayed', 'identifiersDisplayed', 'warningsDisplayed'], properties: {
+        enabled: { type: 'boolean' }, manufacturerDisplayed: { type: 'boolean' }, responsiblePersonDisplayed: { type: 'boolean' },
+        productImageDisplayed: { type: 'boolean' }, identifiersDisplayed: { type: 'boolean' }, warningsDisplayed: { type: 'boolean' },
+        offerUrl: { type: 'string', maxLength: 2000 }
+      }, additionalProperties: false },
+      seriesProductionProcedure: { type: 'string', minLength: 1, maxLength: 10000 }, complaintChannel: { type: 'string', minLength: 1, maxLength: 5000 },
+      postMarketPlan: { type: 'string', minLength: 1, maxLength: 10000 }, retentionUntil: { type: 'string', format: 'date' },
+      evidenceDocumentIds: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
+      notes: { type: 'string', maxLength: 5000 }
+    }, additionalProperties: false
+  },
+  'POST /export/shipments/{shipmentId}/gpsr/technical-files/{technicalFileId}/reviews': {
+    type: 'object', required: ['reviewerRole', 'decision', 'notes'], properties: {
+      reviewerRole: { type: 'string', enum: ['product_safety_reviewer'] },
+      decision: { type: 'string', enum: ['approved_for_internal_release', 'needs_information', 'rejected'] },
+      notes: { type: 'string', minLength: 1, maxLength: 5000 }
+    }, additionalProperties: false
+  },
+  'POST /export/shipments/{shipmentId}/gpsr/technical-files/{technicalFileId}/post-market-events': {
+    type: 'object', required: ['eventType', 'eventReference', 'occurredAt', 'summary', 'severity'], properties: {
+      eventType: { type: 'string', enum: ['complaint', 'safety_incident', 'corrective_action', 'recall', 'safety_business_gateway_notification', 'authority_request', 'consumer_notice'] },
+      eventReference: { type: 'string', minLength: 1, maxLength: 200 }, occurredAt: { type: 'string', format: 'date-time' },
+      summary: { type: 'string', minLength: 1, maxLength: 10000 }, severity: { type: 'string', enum: ['information', 'minor', 'serious', 'death', 'unknown'] },
+      externalReference: { type: 'string', maxLength: 1000 }, evidenceDocumentId: { type: 'string', format: 'uuid' },
+      consumerPersonalDataIncluded: { type: 'boolean', enum: [false] }, metadata: { type: 'object' }
+    }, additionalProperties: false
+  },
   'POST /export/shipments/{shipmentId}/environmental-claims': {
     type: 'object',
     required: [
@@ -1161,6 +1244,19 @@ function contractComponents() {
         },
         additionalProperties: false,
         example: { success: true, data: {} }
+      },
+      GpsrEconomicOperator: {
+        type: 'object',
+        required: ['name', 'postalAddress', 'electronicAddress', 'euEstablished'],
+        properties: {
+          name: { type: 'string', minLength: 1, maxLength: 500 },
+          tradeName: { type: 'string', maxLength: 500 },
+          postalAddress: { type: 'string', minLength: 1, maxLength: 2000 },
+          electronicAddress: { type: 'string', minLength: 1, maxLength: 1000 },
+          contactPoint: { type: 'string', maxLength: 1000 },
+          euEstablished: { type: 'boolean' }
+        },
+        additionalProperties: false
       },
       Product: {
         type: 'object',

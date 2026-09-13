@@ -21,6 +21,7 @@
     "test:compliance-applicability-pilot": "node scripts/test-carrier-document-pilot.js",
     "test:environmental-claim-pilot": "node scripts/test-carrier-document-pilot.js",
     "test:textile-fibre-label-pilot": "node scripts/test-carrier-document-pilot.js",
+    "test:gpsr-technical-file-pilot": "node scripts/test-carrier-document-pilot.js",
     "db:audit-hot-queries": "node scripts/audit-hot-queries.js",
     "analytics:flush": "node scripts/flush-analytics-outbox.js",
     "build:release": "node scripts/build-release.js",

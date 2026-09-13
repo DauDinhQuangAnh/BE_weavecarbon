@@ -499,6 +499,77 @@ router.post('/shipments/:shipmentId/textile-fibre-labels/:specificationId/review
   return sendSuccess(res, { status: 201, data: result });
 }));
 
+router.get('/shipments/:shipmentId/gpsr/technical-files', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.listGpsrTechnicalFiles(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/gpsr/technical-files', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.createGpsrTechnicalFileRevision(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (!result) return sendNotFound(res);
+  if (result.blocked) return sendError(res, { status: 400, code: result.code, message: result.message });
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.gpsr_technical_file', newValue: result.id,
+    reason: 'export.gpsr.technical_file.create',
+    notes: `${result.fileReference}:revision-${result.revision}:${result.automatedStatus}`
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
+router.post('/shipments/:shipmentId/gpsr/technical-files/:technicalFileId/reviews', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.reviewGpsrTechnicalFile(
+    companyId, req.params.shipmentId, req.params.technicalFileId, req.userId, req.body || {}
+  );
+  if (!result) {
+    return sendError(res, { status: 404, code: 'GPSR_TECHNICAL_FILE_NOT_FOUND', message: 'GPSR technical file not found for this shipment.' });
+  }
+  if (result.blocked) return sendError(res, { status: 409, code: result.code, message: result.message });
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.gpsr_technical_file_review', newValue: result.id,
+    reason: 'export.gpsr.technical_file.review', notes: result.decision
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
+router.get('/shipments/:shipmentId/gpsr/post-market-events', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.listGpsrPostMarketEvents(
+    companyId, req.params.shipmentId, req.query.technicalFileId || null
+  );
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/gpsr/technical-files/:technicalFileId/post-market-events', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.recordGpsrPostMarketEvent(
+    companyId, req.params.shipmentId, req.params.technicalFileId, req.userId, req.body || {}
+  );
+  if (!result) {
+    return sendError(res, { status: 404, code: 'GPSR_TECHNICAL_FILE_NOT_FOUND', message: 'GPSR technical file not found for this shipment.' });
+  }
+  if (result.blocked) return sendError(res, { status: 400, code: result.code, message: result.message });
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.gpsr_post_market_event', newValue: result.id,
+    reason: 'export.gpsr.post_market_event.create', notes: `${result.eventType}:${result.severity}`
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
 router.get('/shipments/:shipmentId/environmental-claims', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;

@@ -63,6 +63,12 @@ const {
   evaluateTextileFibreLabel,
   deriveArtworkStatus
 } = require('./textileFibreLabelControls');
+const {
+  RULESET: GPSR_TECHNICAL_FILE_RULESET,
+  normalizeGpsrTechnicalFileInput,
+  evaluateGpsrTechnicalFile,
+  deriveSafetyFileStatus
+} = require('./gpsrTechnicalFileControls');
 
 const RULESET_VERSION = 'VN-EU-TEXTILE-2026.09.4';
 const CARRIER_RULESET_VERSION = 'R03-CARRIER-RECONCILIATION-2026.09.1';
@@ -962,6 +968,230 @@ class ExportShipmentService {
         specification.input_sha256, specification.result_sha256, JSON.stringify(evidenceSnapshot)]
     );
     return this._formatTextileFibreLabelReview(inserted.rows[0]);
+  }
+
+  async createGpsrTechnicalFileRevision(companyId, shipmentId, userId, input = {}) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const normalized = normalizeGpsrTechnicalFileInput(input);
+    if (!normalized.fileReference || !normalized.assessmentDate || !normalized.firstPlacedOnMarketDate) {
+      return {
+        blocked: true, code: 'GPSR_TECHNICAL_FILE_IDENTITY_REQUIRED',
+        message: 'fileReference, assessmentDate and firstPlacedOnMarketDate are required.'
+      };
+    }
+    const evidenceIds = [...new Set(normalized.evidenceDocumentIds
+      .concat([normalized.product.productImageEvidenceId, normalized.product.packagingImageEvidenceId])
+      .concat(normalized.risks.flatMap((risk) => risk.verificationEvidenceIds)).filter(Boolean))].sort();
+    if (evidenceIds.length > 100 || evidenceIds.some((id) => !UUID_REGEX.test(id))) {
+      return {
+        blocked: true, code: 'GPSR_EVIDENCE_INVALID',
+        message: 'GPSR evidence must contain at most 100 valid evidence UUIDs.'
+      };
+    }
+    const evidenceSnapshot = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId, evidenceIds);
+    if (evidenceSnapshot.length !== evidenceIds.length) {
+      return {
+        blocked: true, code: 'GPSR_EVIDENCE_INVALID',
+        message: 'Every GPSR evidence id must belong to this company and shipment.'
+      };
+    }
+    const evaluation = evaluateGpsrTechnicalFile(input, evidenceSnapshot);
+    const client = await this.database.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`${companyId}:${shipmentId}:gpsr:${evaluation.input.fileReference}`]);
+      const versionResult = await client.query(
+        `SELECT COALESCE(MAX(revision), 0) + 1 AS revision
+         FROM gpsr_technical_file_revisions
+         WHERE company_id=$1 AND shipment_id=$2 AND file_reference=$3`,
+        [companyId, shipmentId, evaluation.input.fileReference]
+      );
+      const revision = Number(versionResult.rows[0].revision);
+      const inserted = await client.query(
+        `INSERT INTO gpsr_technical_file_revisions (
+           company_id, shipment_id, file_reference, revision, ruleset_id, ruleset_version,
+           ruleset_coverage, source_manifest_sha256, assessment_date, first_placed_on_market_date,
+           retention_until, input_snapshot, input_sha256, result_snapshot, result_sha256,
+           evidence_snapshot, automated_status, created_by
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14::jsonb,$15,$16::jsonb,$17,$18)
+         RETURNING *`,
+        [companyId, shipmentId, evaluation.input.fileReference, revision,
+          evaluation.result.rulesetId, evaluation.result.rulesetVersion,
+          evaluation.result.rulesetCoverage, evaluation.result.sourceManifestSha256,
+          evaluation.input.assessmentDate, evaluation.input.firstPlacedOnMarketDate,
+          evaluation.input.retentionUntil, JSON.stringify(evaluation.input), evaluation.inputSha256,
+          JSON.stringify(evaluation.result), evaluation.result.resultSha256,
+          JSON.stringify(evidenceSnapshot), evaluation.result.automatedStatus, userId]
+      );
+      await client.query('COMMIT');
+      return this._formatGpsrTechnicalFile(inserted.rows[0], evidenceSnapshot);
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally { client.release(); }
+  }
+
+  async listGpsrTechnicalFiles(companyId, shipmentId) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const result = await this.database.query(
+      `SELECT technical_file.*, to_jsonb(latest_review) AS latest_review,
+              MAX(technical_file.revision) OVER (PARTITION BY technical_file.file_reference) AS latest_revision
+       FROM gpsr_technical_file_revisions technical_file
+       LEFT JOIN LATERAL (
+         SELECT review.* FROM gpsr_technical_file_reviews review
+         WHERE review.technical_file_id=technical_file.id AND review.company_id=technical_file.company_id
+           AND review.shipment_id=technical_file.shipment_id
+         ORDER BY review.created_at DESC, review.id DESC LIMIT 1
+       ) latest_review ON true
+       WHERE technical_file.company_id=$1 AND technical_file.shipment_id=$2
+       ORDER BY technical_file.created_at DESC, technical_file.id DESC`,
+      [companyId, shipmentId]
+    );
+    const evidenceIds = [...new Set(result.rows.flatMap((row) =>
+      array(row.evidence_snapshot).map((item) => item.id).filter(Boolean)
+    ))];
+    const currentEvidence = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId, evidenceIds);
+    return result.rows.map((row) => this._formatGpsrTechnicalFile(row, currentEvidence));
+  }
+
+  async reviewGpsrTechnicalFile(companyId, shipmentId, technicalFileId, userId, input = {}) {
+    if (!UUID_REGEX.test(String(technicalFileId || ''))) return null;
+    const reviewerRole = text(input.reviewerRole || input.reviewer_role);
+    const decision = text(input.decision).toLowerCase();
+    const notes = text(input.notes);
+    if (reviewerRole !== 'product_safety_reviewer') {
+      return { blocked: true, code: 'GPSR_REVIEW_ROLE_INVALID', message: 'GPSR files require the product_safety_reviewer role.' };
+    }
+    if (!new Set(['approved_for_internal_release', 'needs_information', 'rejected']).has(decision)) {
+      return { blocked: true, code: 'GPSR_REVIEW_DECISION_INVALID', message: 'Unsupported GPSR review decision.' };
+    }
+    if (!notes) return { blocked: true, code: 'GPSR_REVIEW_NOTES_REQUIRED', message: 'Review notes are required.' };
+    const fileResult = await this.database.query(
+      `SELECT technical_file.*,
+              (SELECT MAX(candidate.revision) FROM gpsr_technical_file_revisions candidate
+               WHERE candidate.company_id=technical_file.company_id AND candidate.shipment_id=technical_file.shipment_id
+                 AND candidate.file_reference=technical_file.file_reference) AS latest_revision
+       FROM gpsr_technical_file_revisions technical_file
+       WHERE technical_file.id=$1 AND technical_file.company_id=$2 AND technical_file.shipment_id=$3`,
+      [technicalFileId, companyId, shipmentId]
+    );
+    const technicalFile = fileResult.rows[0];
+    if (!technicalFile) return null;
+    if (decision === 'approved_for_internal_release') {
+      if (Number(technicalFile.latest_revision) !== Number(technicalFile.revision)) {
+        return { blocked: true, code: 'GPSR_REVISION_STALE', message: 'Only the latest GPSR technical-file revision can be approved.' };
+      }
+      if (technicalFile.automated_status !== 'ready_for_safety_review') {
+        return { blocked: true, code: 'GPSR_FILE_NOT_READY', message: 'Only a technical file that passed automated controls can be approved.' };
+      }
+    }
+    const evidenceSnapshot = await this._loadEnvironmentalClaimEvidence(
+      companyId, shipmentId, array(technicalFile.evidence_snapshot).map((item) => item.id)
+    );
+    if (decision === 'approved_for_internal_release') {
+      const derived = deriveSafetyFileStatus({
+        result_snapshot: technicalFile.result_snapshot,
+        latest_review: { decision, evidence_snapshot: technicalFile.evidence_snapshot }
+      }, evidenceSnapshot);
+      if (derived.status !== 'approved_for_internal_release' || evidenceSnapshot.length === 0) {
+        return {
+          blocked: true, code: 'GPSR_EVIDENCE_STALE',
+          message: 'Approval requires every bound evidence document to remain locked and checksum-identical.'
+        };
+      }
+    }
+    const reviewerResult = await this.database.query('SELECT id, email, full_name FROM users WHERE id=$1', [userId]);
+    const reviewer = reviewerResult.rows[0];
+    if (!reviewer || !text(reviewer.full_name || reviewer.email)) {
+      return { blocked: true, code: 'GPSR_REVIEWER_NOT_FOUND', message: 'Named reviewer identity is required.' };
+    }
+    const inserted = await this.database.query(
+      `INSERT INTO gpsr_technical_file_reviews (
+         company_id, shipment_id, technical_file_id, reviewer_id, reviewer_name_snapshot,
+         reviewer_email_snapshot, reviewer_role, decision, notes, input_sha256,
+         result_sha256, evidence_snapshot
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) RETURNING *`,
+      [companyId, shipmentId, technicalFileId, userId, reviewer.full_name || reviewer.email,
+        reviewer.email || null, reviewerRole, decision, notes,
+        technicalFile.input_sha256, technicalFile.result_sha256, JSON.stringify(evidenceSnapshot)]
+    );
+    return this._formatGpsrTechnicalFileReview(inserted.rows[0]);
+  }
+
+  async recordGpsrPostMarketEvent(companyId, shipmentId, technicalFileId, userId, input = {}) {
+    if (!UUID_REGEX.test(String(technicalFileId || ''))) return null;
+    const eventType = text(input.eventType || input.event_type).toLowerCase();
+    const eventReference = text(input.eventReference || input.event_reference);
+    const summary = text(input.summary);
+    const severity = text(input.severity).toLowerCase();
+    const externalReference = text(input.externalReference || input.external_reference) || null;
+    const evidenceDocumentId = text(input.evidenceDocumentId || input.evidence_document_id) || null;
+    const occurredAtValue = text(input.occurredAt || input.occurred_at);
+    const occurredAt = occurredAtValue && !Number.isNaN(Date.parse(occurredAtValue)) ? new Date(occurredAtValue).toISOString() : null;
+    const eventTypes = new Set(['complaint', 'safety_incident', 'corrective_action', 'recall',
+      'safety_business_gateway_notification', 'authority_request', 'consumer_notice']);
+    if (!eventTypes.has(eventType) || !eventReference || !occurredAt || !summary
+      || !new Set(['information', 'minor', 'serious', 'death', 'unknown']).has(severity)) {
+      return { blocked: true, code: 'GPSR_POST_MARKET_EVENT_INVALID', message: 'A valid event type, reference, timestamp, summary and severity are required.' };
+    }
+    if (input.consumerPersonalDataIncluded === true || input.consumer_personal_data_included === true) {
+      return { blocked: true, code: 'GPSR_CONSUMER_DATA_PROHIBITED', message: 'Do not store consumer personal data in the post-market ledger.' };
+    }
+    const fileResult = await this.database.query(
+      `SELECT id FROM gpsr_technical_file_revisions
+       WHERE id=$1 AND company_id=$2 AND shipment_id=$3`, [technicalFileId, companyId, shipmentId]
+    );
+    if (!fileResult.rows[0]) return null;
+    let evidence = null;
+    if (evidenceDocumentId) {
+      if (!UUID_REGEX.test(evidenceDocumentId)) {
+        return { blocked: true, code: 'GPSR_POST_MARKET_EVIDENCE_INVALID', message: 'A valid evidence UUID is required.' };
+      }
+      const loaded = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId, [evidenceDocumentId]);
+      evidence = loaded[0] || null;
+      if (!evidence || !['locked', 'third_party_verified'].includes(evidence.status)
+        || !/^[a-f0-9]{64}$/i.test(text(evidence.checksumSha256)) || Number(evidence.fileSizeBytes || 0) <= 0) {
+        return { blocked: true, code: 'GPSR_POST_MARKET_EVIDENCE_INVALID', message: 'Evidence must belong to the shipment and remain locked, checksum identified and non-empty.' };
+      }
+    }
+    if (eventType === 'safety_business_gateway_notification' && (!externalReference || !evidence)) {
+      return {
+        blocked: true, code: 'GPSR_GATEWAY_PROOF_REQUIRED',
+        message: 'A Safety Business Gateway event requires an external reference and locked filing evidence.'
+      };
+    }
+    const recorderResult = await this.database.query('SELECT id, email, full_name FROM users WHERE id=$1', [userId]);
+    const recorder = recorderResult.rows[0];
+    if (!recorder || !text(recorder.full_name || recorder.email)) {
+      return { blocked: true, code: 'GPSR_RECORDER_NOT_FOUND', message: 'Named recorder identity is required.' };
+    }
+    const metadata = object(input.metadata);
+    const inserted = await this.database.query(
+      `INSERT INTO gpsr_post_market_events (
+         company_id, shipment_id, technical_file_id, event_type, event_reference, occurred_at,
+         summary, severity, external_reference, evidence_document_id, evidence_sha256,
+         evidence_file_size_bytes, consumer_personal_data_included, recorded_by,
+         recorder_name_snapshot, recorder_email_snapshot, metadata
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,false,$13,$14,$15,$16::jsonb) RETURNING *`,
+      [companyId, shipmentId, technicalFileId, eventType, eventReference, occurredAt,
+        summary, severity, externalReference, evidence?.id || null, evidence?.checksumSha256 || null,
+        evidence?.fileSizeBytes || null, userId, recorder.full_name || recorder.email,
+        recorder.email || null, JSON.stringify(metadata)]
+    );
+    return this._formatGpsrPostMarketEvent(inserted.rows[0]);
+  }
+
+  async listGpsrPostMarketEvents(companyId, shipmentId, technicalFileId = null) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    if (technicalFileId && !UUID_REGEX.test(String(technicalFileId))) return null;
+    const result = await this.database.query(
+      `SELECT * FROM gpsr_post_market_events
+       WHERE company_id=$1 AND shipment_id=$2 AND ($3::uuid IS NULL OR technical_file_id=$3)
+       ORDER BY occurred_at DESC, created_at DESC, id DESC`,
+      [companyId, shipmentId, technicalFileId]
+    );
+    return result.rows.map((row) => this._formatGpsrPostMarketEvent(row));
   }
 
   async createEnvironmentalClaimDossier(companyId, shipmentId, userId, input = {}) {
@@ -3851,6 +4081,54 @@ class ExportShipmentService {
       evidenceSnapshot: row.evidence_snapshot || [], createdAt: row.created_at
     };
   }
+
+  _formatGpsrTechnicalFile(row, currentEvidence = []) {
+    if (!row) return null;
+    const latestReview = row.latest_review ? this._formatGpsrTechnicalFileReview(row.latest_review) : null;
+    const formatted = {
+      id: row.id, shipmentId: row.shipment_id, fileReference: row.file_reference,
+      revision: Number(row.revision), rulesetId: row.ruleset_id, rulesetVersion: row.ruleset_version,
+      rulesetCoverage: row.ruleset_coverage, sourceManifestSha256: row.source_manifest_sha256,
+      assessmentDate: dateOnly(row.assessment_date),
+      firstPlacedOnMarketDate: dateOnly(row.first_placed_on_market_date),
+      retentionUntil: dateOnly(row.retention_until), input: row.input_snapshot,
+      inputSha256: row.input_sha256, result: row.result_snapshot, resultSha256: row.result_sha256,
+      evidenceSnapshot: row.evidence_snapshot || [], automatedStatus: row.automated_status,
+      createdBy: row.created_by, createdAt: row.created_at, latestReview
+    };
+    const derived = Number(row.latest_revision || row.revision) > Number(row.revision)
+      ? { status: 'superseded', staleEvidenceIds: [] }
+      : deriveSafetyFileStatus(formatted, currentEvidence);
+    return { ...formatted, safetyFileStatus: derived.status, staleEvidenceIds: derived.staleEvidenceIds };
+  }
+
+  _formatGpsrTechnicalFileReview(row) {
+    if (!row) return null;
+    return {
+      id: row.id, technicalFileId: row.technical_file_id, reviewerId: row.reviewer_id,
+      reviewerName: row.reviewer_name_snapshot, reviewerEmail: row.reviewer_email_snapshot || null,
+      reviewerRole: row.reviewer_role, decision: row.decision, notes: row.notes,
+      inputSha256: row.input_sha256, resultSha256: row.result_sha256,
+      evidenceSnapshot: row.evidence_snapshot || [], createdAt: row.created_at
+    };
+  }
+
+  _formatGpsrPostMarketEvent(row) {
+    if (!row) return null;
+    return {
+      id: row.id, shipmentId: row.shipment_id, technicalFileId: row.technical_file_id,
+      eventType: row.event_type, eventReference: row.event_reference, occurredAt: row.occurred_at,
+      summary: row.summary, severity: row.severity, externalReference: row.external_reference || null,
+      evidenceDocumentId: row.evidence_document_id || null, evidenceSha256: row.evidence_sha256 || null,
+      evidenceFileSizeBytes: row.evidence_file_size_bytes === null || row.evidence_file_size_bytes === undefined
+        ? null : Number(row.evidence_file_size_bytes),
+      recorderId: row.recorded_by, recorderName: row.recorder_name_snapshot,
+      recorderEmail: row.recorder_email_snapshot || null, metadata: row.metadata || {},
+      createdAt: row.created_at,
+      safetyBusinessGatewayNotificationRequired: row.event_type === 'safety_incident'
+        && ['serious', 'death'].includes(row.severity)
+    };
+  }
 }
 
 const service = new ExportShipmentService();
@@ -3865,6 +4143,7 @@ module.exports.carrierReconciliationSha256 = carrierReconciliationSha256;
 module.exports.CARRIER_RULESET_VERSION = CARRIER_RULESET_VERSION;
 module.exports.ENVIRONMENTAL_CLAIM_RULESET = ENVIRONMENTAL_CLAIM_RULESET;
 module.exports.TEXTILE_FIBRE_LABEL_RULESET = TEXTILE_FIBRE_LABEL_RULESET;
+module.exports.GPSR_TECHNICAL_FILE_RULESET = GPSR_TECHNICAL_FILE_RULESET;
 module.exports.VN_CUSTOMS_HANDOFF_SCHEMA = VN_CUSTOMS_HANDOFF_SCHEMA;
 module.exports.EU_IMPORT_HANDOFF_SCHEMA = EU_IMPORT_HANDOFF_SCHEMA;
 module.exports.ICS2_HANDOFF_SCHEMA = ICS2_HANDOFF_SCHEMA;
