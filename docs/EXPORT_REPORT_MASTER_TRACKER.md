@@ -28,7 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
-| Active R20 implementation branch in both repositories | `feat/r20-applicability-core` (local, stacked on the R07 checkpoint while R04/R05 PRs remain open) |
+| Active R18 implementation branch in both repositories | `feat/r18-environmental-claim-register` (local, stacked on the R20 checkpoint while R04/R05 PRs remain open) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -51,6 +51,8 @@ This tracker separates four facts that must never be conflated:
 | Frontend production-claim/CBAM scope-guard commit | `9323d96f7d20f62ba51b07cfaaf41233a5047ad2` |
 | Backend R20 applicability-core commit | `8010dc11af56596e381dccc2e60f8aac4a859c44` |
 | Frontend R20 applicability-workspace commit | `9fc53da684664d41be6bf428e3bdbcee78f22c84` |
+| Backend R18 environmental-claim-register commit | `805f2d9c3d67cb2181b7afe984a7a2996c2f1490` |
+| Frontend R18 claim-register-workspace commit | `f931785d17617fb950e71ae5af8f9e7132ac13ff` |
 | R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
@@ -64,7 +66,8 @@ This tracker separates four facts that must never be conflated:
 | Backend latest application-bearing production commit | `51d568c2c765c59977b11066febe7ed4de27eef3` |
 | Frontend latest application-bearing production commit | `9bd4c58f58cfff8b32a2bea580675b170931c751` |
 | Production site | `https://weavecarbon.com` |
-| Production state verified at 2026-09-10 | R01/R02 review controls, R14 signed sharing/assurance controls and R03 carrier-document/Carbon Annex controls are deployed from `main`; all production containers are healthy, migrations 001-024 are current, and `/health`, `/`, `/audit` and `/export` return HTTP 200. An unauthenticated structured-carrier API request returns 401. R03 remains `EXTERNAL_DOCUMENT` and R14 remains `PARTIAL` until their real-human/evidence gates pass. Later documentation-only commits may advance a checkout without changing application code. |
+| Production state verified at 2026-09-13 | Host `obk-vm-ext-1` responds on SSH/HTTPS; production DB/BE/RAG/FE containers are healthy with zero restarts, proxy is running, and `/health`, `/`, `/audit` and `/export` return HTTP 200. Backend application checkout is `51d568c2c765c59977b11066febe7ed4de27eef3`; remote `main` is one later documentation-only `[skip ci]` commit. Frontend checkout and remote `main` are `9bd4c58f58cfff8b32a2bea580675b170931c751`. No R04-R07/R20/R18 feature work is deployed. |
+| Host maintenance observation at 2026-09-13 | Root filesystem 31% used; 3.7 GiB memory available; no failed systemd unit and no WeaveCarbon error/fatal log in the sampled 30-minute window. The OS reports a required kernel/libc reboot, 27 available updates and two defunct child processes under the separate Airweave Node service. Schedule a controlled backup/maintenance window; do not reboot or kill processes as part of report implementation. |
 | Isolated staging verified at 2026-09-11 | `/opt/weavecarbon-staging`; backend source `0d8cc4ecb68d63bc52d86406e0659b971a0f8038`; frontend `dbeb7f181f6248834fd89d076cde779bff4c135e`; dedicated DB/uploads volumes; HTTP only on `127.0.0.1:18080`; migrations through 026 applied; DB/BE/FE healthy; guarded combined R03/R04 pilot passed all 14 checks. This is a synthetic technical gate, not broker or customs acceptance. |
 | Production deploy behavior | A successful `main` pipeline deploys; backend startup runs migrations |
 
@@ -80,10 +83,11 @@ git -C weavecarbon switch main
 ```
 
 R06 is preserved locally at `feat/r06-ics2-filing-handoff`; R07 is stacked on it at
-`feat/r07-evfta-origin-handoff`; R20 is stacked on R07 at `feat/r20-applicability-core`. All contain R05, which contains
-R04. Preserve that dependency order until the existing R04/R05 pull requests merge, and do not merge or deploy R06/R07/R20
-as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06, then R20 onto R07, and verify
-the recorded implementation commits and migrations remain ordered.
+`feat/r07-evfta-origin-handoff`; R20 is stacked on R07 at `feat/r20-applicability-core`; R18 is stacked on R20 at
+`feat/r18-environmental-claim-register`. All contain R05, which contains R04. Preserve that dependency order until the
+existing R04/R05 pull requests merge, and do not merge or deploy R06/R07/R20/R18 as a substitute for those reviews. After
+merge, rebase R06 onto `main`, then R07 onto R06, R20 onto R07 and R18 onto R20; verify migrations and recorded commits stay
+ordered.
 
 Then give the next AI this instruction:
 
@@ -143,6 +147,10 @@ Known overall checks at the latest feature commits:
   lint gates passed. The fresh guarded PostgreSQL 18 pilot passed all 27 cumulative R01-R07/R20 checks.
 - Frontend R20 local gate: 46/46 files and 200/200 tests passed; `npm run check` and the 62-route production build passed.
   Lint retained 20 pre-existing warnings and reported no error.
+- Backend R18 local gate: 116/116 suites and 718/718 tests passed; syntax, OpenAPI, generated-artifact, architecture and
+  lint gates passed. A fresh guarded PostgreSQL 18 pilot passed all 29 cumulative R01-R07/R20/R18 checks.
+- Frontend R18 local gate: 48/48 files and 204/204 tests passed; final TypeScript/lint checks and the 62-route production
+  build passed. Lint retained the same 20 pre-existing warnings and no error.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
@@ -173,7 +181,7 @@ Known overall checks at the latest feature commits:
 | 15 | Apparel & Footwear PEF/PEFCR | Voluntary or buyer-specific | `NOT_STARTED` | Climate-only partial PCF is not PEF | Full life cycle, EF datasets/impact categories and validation statement |
 | 16 | ESPR Digital Product Passport | When product delegated act applies | `BLOCKED_BY_LAW` | Guarded prototype only | Registry/service/access/version architecture; wait for final product schema |
 | 17 | Textile/footwear EPR reporting | EU framework plus Member-State implementation | `PARTIAL` | EU framework is final; only static requirement labels exist in the application | Build EU-core producer/register/market-volume model, then country adapters before the 17 April 2028 scheme deadline |
-| 18 | Green-claim substantiation dossier | Whenever environmental claims are made | `PARTIAL` | P0 production-copy containment and CBAM/ISO/audit-readiness guards; no claim register yet | Claim register, evidence binding, legal approval and expiry/withdrawal triggers before external claims |
+| 18 | Green-claim substantiation dossier | Whenever environmental claims are made | `PARTIAL` | Immutable shipment claim revisions bind exact copy/channel/market/language/scope/period/method/hash/limits/evidence; source-versioned prohibitions, named legal review and derived expiry/withdrawal/supersession controls exist | Validate Member-State implementation, connect every production claim surface, add real legal reviewer separation and complete a protected real-claim pilot |
 | 19 | CBAM declaration/operator report | Annex-I CBAM goods only | `NOT_APPLICABLE_BASELINE` | Scope screening; old styled templates remain demo-only | Maintain versioned CN list; implement official fields only for Annex-I goods |
 | 20 | Specialist permits/certificates | Conditional by exact product and lane | `PARTIAL` | Limited, source-versioned EU triage uses shipment HS/TARIC, origin/material, market and effective-date facts; immutable explainable evaluations and evidence-backed specialist review | Add exact CN/TARIC/substance/species datasets, expand specialist domains, then complete a named real-shipment specialist pilot and exact-head CI/staging |
 
@@ -558,10 +566,24 @@ external registration/payment/submission status is backed by authority/PRO evide
 method/PCR/standard; datasets/factor/calculation hash; evidence/assurance; limitations/exclusions/uncertainty/qualifiers;
 legal approval; update/withdrawal trigger.
 
-**Current:** P0 containment removes unsupported `AUDIT-READY`, automatic verification and CBAM-liability wording from
-production report/data-gap/logistics surfaces. Baseline CN 61/62/64 reports emit `CBAM_NOT_APPLICABLE`; an Annex-I prefix
-only opens customs review and never creates a monetary liability estimate. Source-level tests guard these statements.
-There is still no claim register or claim-to-evidence legal approval workflow.
+**Implemented:** P0 containment removes unsupported `AUDIT-READY`, automatic verification and CBAM-liability wording from
+production surfaces. Migration 031 and ruleset `weavecarbon.eu-environmental-claim-register`
+`R18-EU-CLAIMS-2026.09.1` now add an immutable, revisioned shipment claim register. Each revision binds the exact claim
+text, public/internal flag, channel, EU markets, language, communication period, subject and scope, claim kind, visible
+qualification, methodology/PCR/version, dataset/factor references, calculation SHA-256, comparison/future/label details,
+limitations, exclusions, uncertainty, qualifiers, assurance reference, update/withdrawal triggers and locked evidence.
+The ruleset applies the 27 September 2026 amendments by communication date and blocks recorded generic claims without
+recognised excellent performance, whole-subject claims backed only by one aspect, offset-based product climate claims,
+non-qualifying sustainability labels and legal requirements presented as distinctive features. Comparative and future
+claims have additional method/plan controls. Only the latest revision may receive a named append-only
+`legal_claim_reviewer` approval. Publication status is derived, not self-declared: changed/unlocked/expired evidence,
+claim expiry, later revision or withdrawal removes `approved_current`.
+
+**Remaining:** this is limited EU-level control, not legal advice or automatic permission to publish. Verify each relevant
+Member State's transposition and enforcement interpretation; connect all actual website/label/marketplace/report copy to a
+current dossier ID; add segregation of duties and reviewer authority; bind a real approved carbon calculation instead of
+accepting an operator-entered hash alone; test evidence revocation and notification jobs; and conduct a protected real-claim
+pilot with legal/compliance review. No public claim has been approved or deployed by this increment.
 
 **Definition of Done:** every public claim resolves to an approved, current dossier; prohibited/unqualified claims are blocked;
 expired or changed evidence automatically returns the claim to review.
@@ -609,8 +631,9 @@ specialist reviewer approves high-risk classifications. Never claim the list is 
 
 ## 7. Remaining implementation order from 2026-09-12
 
-1. **The R18 production-copy containment and minimum R20 applicability core now exist locally.** Next, build the R18 claim
-   register and expand R20's maintained datasets/domain coverage before allowing external compliance claims.
+1. **The R18 production-copy containment, R18 claim register and minimum R20 applicability core now exist locally.** Next,
+   connect production claim surfaces to the register and expand R20's maintained datasets/domain coverage before allowing
+   external compliance claims.
 2. **Close the existing real-world gates:** R01/R02 operator and warehouse pilots; R03 authentic carrier pilot; R05/R06
    isolated staging/CI. Keep R04 waiting for an exact broker schema instead of expanding a guessed mapping.
 3. **Build shared product-compliance primitives** for components/materials/substances, EU economic operators, languages,
@@ -677,6 +700,7 @@ npm run test:eu-import-handoff-pilot # same guarded R01-R05 fixture; see docs/EU
 npm run test:ics2-handoff-pilot # same guarded R01-R06 fixture; see docs/ICS2_HANDOFF_PILOT_RUNBOOK.md
 npm run test:origin-handoff-pilot # same guarded R01-R07 fixture; see docs/ORIGIN_HANDOFF_PILOT_RUNBOOK.md
 npm run test:compliance-applicability-pilot # same guarded cumulative fixture; see docs/COMPLIANCE_APPLICABILITY_PILOT_RUNBOOK.md
+npm run test:environmental-claim-pilot # same guarded cumulative fixture; see docs/ENVIRONMENTAL_CLAIM_PILOT_RUNBOOK.md
 git diff --check
 ```
 
@@ -1319,3 +1343,28 @@ Backend carbon trace core:
 - R20 remains `PARTIAL` pending exact maintained regulatory datasets, broader domain coverage, exact-head CI/staging and a
   qualified specialist pilot on real product/BOM/lab evidence. The work is local only; nothing was pushed, merged or
   deployed.
+
+### 2026-09-13 — R18 environmental-claim register and host audit
+
+- Backend commit `805f2d9c3d67cb2181b7afe984a7a2996c2f1490` and frontend commit
+  `f931785d17617fb950e71ae5af8f9e7132ac13ff` add immutable claim revisions, source-versioned automated findings, locked
+  evidence binding, named legal-review events and a shipment workspace for exact claim copy/scope/method/lifecycle data.
+- The first ruleset records Directive (EU) 2024/825 and the 27 September 2026 consolidated Directive 2005/29/EC. It applies
+  the amended blacklist only when the recorded EU consumer communication starts on or after 27 September 2026; earlier
+  dates remain a warning requiring review under current national law rather than a false future-law determination.
+- Publication status is derived from the newest claim revision and current evidence bytes/status/validity. Automated
+  readiness is never permission to publish; a newer revision supersedes an older approval, and expiry, evidence drift or an
+  append-only withdrawal prevents `approved_current`.
+- Local gates pass: backend 116/116 suites and 718/718 tests plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend 48/48 files and 204/204 tests, TypeScript/lint checks and a 62-route production build. The 20 frontend lint
+  warnings are pre-existing and there are no errors.
+- A fresh PostgreSQL 18 database (`weavecarbon_r18_final`) loaded the base schema and migrations 001-031. The cumulative
+  guarded pilot passed 29/29 checks with `productionDataTouched=false`; retained artifact
+  `artifacts/environmental-claim-pilot/result.json` has SHA-256
+  `d27abf1888ad999425a8fbf5f6b3e311949422af7745e2fd97f2aae02bbb19dd`.
+- Read-only host inspection found `obk-vm-ext-1` reachable and production healthy: all WeaveCarbon application containers
+  have zero restarts, public health/pages return 200, and the latest production backend/frontend CI and deploy runs are
+  successful. A controlled OS maintenance window is still required for pending kernel/libc updates and reboot; two zombie
+  children belong to the separate Airweave Node process. No host mutation, pull, restart, push, merge or deploy occurred.
+- R18 remains `PARTIAL` until all real public claim surfaces enforce dossier references and a qualified reviewer validates
+  Member-State law, authentic calculation/evidence and an actual claim lifecycle.
