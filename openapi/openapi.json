@@ -8290,6 +8290,498 @@
         ]
       }
     },
+    "/export/shipments/{shipmentId}/environmental-claims": {
+      "get": {
+        "operationId": "getExportShipmentsByShipmentIdEnvironmentalClaims",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /export/shipments/{shipmentId}/environmental-claims",
+        "tags": [
+          "Export"
+        ]
+      },
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdEnvironmentalClaims",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "actualCoverage": {
+                    "enum": [
+                      "entire_subject",
+                      "aspect_only"
+                    ],
+                    "type": "string"
+                  },
+                  "assuranceReference": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "channel": {
+                    "enum": [
+                      "website",
+                      "product_label",
+                      "marketplace",
+                      "advertising",
+                      "sales_material",
+                      "report",
+                      "other"
+                    ],
+                    "type": "string"
+                  },
+                  "claimKind": {
+                    "enum": [
+                      "generic_environmental",
+                      "specific_environmental",
+                      "comparative",
+                      "future_performance",
+                      "sustainability_label",
+                      "offset_based_product_climate",
+                      "legal_requirement_feature",
+                      "other"
+                    ],
+                    "type": "string"
+                  },
+                  "claimReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "claimScopeMode": {
+                    "enum": [
+                      "entire_subject",
+                      "specific_aspect"
+                    ],
+                    "type": "string"
+                  },
+                  "communicationEnd": {
+                    "format": "date",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "communicationStart": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "comparison": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "baseline": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      "comparator": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      "sameMethodAndScope": {
+                        "type": "boolean"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "evidenceDocumentIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "exactClaimText": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "exclusions": {
+                    "items": {
+                      "maxLength": 1000,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "futureCommitment": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "implementationPlanUrl": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      "independentMonitoring": {
+                        "type": "boolean"
+                      },
+                      "milestones": {
+                        "items": {
+                          "maxLength": 1000,
+                          "type": "string"
+                        },
+                        "maxItems": 100,
+                        "type": "array"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "labelScheme": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "publicCriteriaUrl": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      "schemeName": {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      "schemeType": {
+                        "enum": [
+                          "certification_scheme",
+                          "public_authority",
+                          "self_declared",
+                          "other"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "languageCode": {
+                    "maxLength": 35,
+                    "minLength": 2,
+                    "type": "string"
+                  },
+                  "limitations": {
+                    "items": {
+                      "maxLength": 1000,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "marketCodes": {
+                    "items": {
+                      "pattern": "^[A-Za-z]{2}$",
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "methodology": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "calculationSha256": {
+                        "pattern": "^[a-fA-F0-9]{64}$",
+                        "type": "string"
+                      },
+                      "datasetReferences": {
+                        "items": {
+                          "maxLength": 1000,
+                          "type": "string"
+                        },
+                        "maxItems": 100,
+                        "type": "array"
+                      },
+                      "factorReferences": {
+                        "items": {
+                          "maxLength": 1000,
+                          "type": "string"
+                        },
+                        "maxItems": 100,
+                        "type": "array"
+                      },
+                      "pcr": {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      "standard": {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      "version": {
+                        "maxLength": 200,
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "publicCommunication": {
+                    "type": "boolean"
+                  },
+                  "qualifiers": {
+                    "items": {
+                      "maxLength": 1000,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "recognizedExcellentPerformance": {
+                    "type": "boolean"
+                  },
+                  "scopeStatement": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "specificationText": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "subjectReference": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "subjectType": {
+                    "enum": [
+                      "product",
+                      "sku",
+                      "batch",
+                      "shipment",
+                      "brand",
+                      "company"
+                    ],
+                    "type": "string"
+                  },
+                  "uncertaintyStatement": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  },
+                  "updateTriggers": {
+                    "items": {
+                      "maxLength": 1000,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "withdrawalTriggers": {
+                    "items": {
+                      "maxLength": 1000,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "claimReference",
+                  "exactClaimText",
+                  "publicCommunication",
+                  "channel",
+                  "marketCodes",
+                  "languageCode",
+                  "communicationStart",
+                  "subjectType",
+                  "subjectReference",
+                  "scopeStatement",
+                  "claimKind",
+                  "specificationText",
+                  "methodology",
+                  "uncertaintyStatement",
+                  "updateTriggers",
+                  "withdrawalTriggers",
+                  "evidenceDocumentIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/environmental-claims",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/export/shipments/{shipmentId}/environmental-claims/{dossierId}/reviews": {
+      "post": {
+        "operationId": "postExportShipmentsByShipmentIdEnvironmentalClaimsByDossierIdReviews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dossierId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approved_for_publication",
+                      "needs_information",
+                      "rejected",
+                      "withdrawn"
+                    ],
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reviewerRole": {
+                    "enum": [
+                      "legal_claim_reviewer"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reviewerRole",
+                  "decision",
+                  "notes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /export/shipments/{shipmentId}/environmental-claims/{dossierId}/reviews",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
     "/export/shipments/{shipmentId}/eu-import/events": {
       "get": {
         "operationId": "getExportShipmentsByShipmentIdEuImportEvents",

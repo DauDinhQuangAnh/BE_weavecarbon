@@ -26,9 +26,12 @@ describe('R07 isolated pilot contract', () => {
     expect(pilot).toContain("'origin-handoff-pilot'");
   });
 
-  test('uploads R06, R07 and R20 artifacts in CI', () => {
+  test('uploads R06, R07, R20 and R18 artifacts in CI', () => {
     expect(workflow).toContain('path: artifacts/ics2-handoff-pilot/result.json');
     expect(workflow).toContain('path: artifacts/origin-handoff-pilot/result.json');
     expect(workflow).toContain('path: artifacts/compliance-applicability-pilot/result.json');
+    expect(workflow).toContain('path: artifacts/environmental-claim-pilot/result.json');
+    expect(pilot).toContain("'legal_claim_reviewer'");
+    expect(pilot).toContain('GENERIC_CLAIM_RECOGNISED_PERFORMANCE_REQUIRED');
   });
 });

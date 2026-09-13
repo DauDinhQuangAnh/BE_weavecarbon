@@ -15,7 +15,7 @@ const { createExportShipmentService } = require('../src/services/exportShipmentS
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-pilot-v6',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-pilot-v7',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -24,7 +24,8 @@ const result = {
   documents: [],
   customsEvents: [],
   euImportEvents: [],
-  ics2Events: []
+  ics2Events: [],
+  environmentalClaims: []
 };
 
 function check(name, details = {}) {
@@ -39,7 +40,8 @@ async function writeResult() {
   const contents = `${JSON.stringify(result, null, 2)}\n`;
   for (const name of [
     'carrier-document-pilot', 'vn-customs-handoff-pilot', 'eu-import-handoff-pilot',
-    'ics2-handoff-pilot', 'origin-handoff-pilot', 'compliance-applicability-pilot'
+    'ics2-handoff-pilot', 'origin-handoff-pilot', 'compliance-applicability-pilot',
+    'environmental-claim-pilot'
   ]) {
     const directory = path.resolve(__dirname, '..', 'artifacts', name);
     await fs.promises.mkdir(directory, { recursive: true });
@@ -840,6 +842,84 @@ async function run() {
     /append-only and immutable/i
   );
   check('r20_specialist_review_is_hash_bound_evidence_backed_and_immutable');
+
+  const prohibitedClaim = await service.createEnvironmentalClaimDossier(
+    ids.companyId, ids.shipmentId, ids.userId, {
+      claimReference: `GREEN-${runId}`, exactClaimText: 'Green product', publicCommunication: true,
+      channel: 'website', marketCodes: ['DE'], languageCode: 'de-DE', communicationStart: '2026-09-27',
+      subjectType: 'sku', subjectReference: `SKU-${runId}`, scopeStatement: 'Whole product.',
+      claimKind: 'generic_environmental', specificationText: 'Generic whole-product claim.',
+      claimScopeMode: 'entire_subject', actualCoverage: 'aspect_only', recognizedExcellentPerformance: false,
+      methodology: { standard: 'Synthetic pilot method', version: '1.0', calculationSha256: 'a'.repeat(64), datasetReferences: ['synthetic-dataset'] },
+      uncertaintyStatement: 'Synthetic uncertainty.', updateTriggers: ['method changes'],
+      withdrawalTriggers: ['evidence expires'], evidenceDocumentIds: [originEvidence.evidenceId]
+    }
+  );
+  assert.equal(prohibitedClaim.automatedStatus, 'blocked_prohibited');
+  assert.ok(prohibitedClaim.result.findings.some((item) =>
+    item.code === 'GENERIC_CLAIM_RECOGNISED_PERFORMANCE_REQUIRED'
+  ));
+  const prohibitedApproval = await service.reviewEnvironmentalClaimDossier(
+    ids.companyId, ids.shipmentId, prohibitedClaim.id, ids.userId, {
+      reviewerRole: 'legal_claim_reviewer', decision: 'approved_for_publication',
+      notes: 'Synthetic prohibited-claim approval must fail.'
+    }
+  );
+  assert.equal(prohibitedApproval.code, 'ENVIRONMENTAL_CLAIM_NOT_READY');
+  check('r18_prohibited_generic_and_overbroad_claims_are_blocked');
+
+  const controlledClaim = await service.createEnvironmentalClaimDossier(
+    ids.companyId, ids.shipmentId, ids.userId, {
+      claimReference: `PCF-${runId}`,
+      exactClaimText: 'This SKU records 20% lower cradle-to-gate CO2e than the named synthetic baseline.',
+      publicCommunication: true, channel: 'website', marketCodes: ['DE'], languageCode: 'de-DE',
+      communicationStart: '2026-09-27', communicationEnd: '2027-06-30',
+      subjectType: 'sku', subjectReference: `SKU-${runId}`,
+      scopeStatement: 'One synthetic SKU; cradle-to-gate boundary only.', claimKind: 'specific_environmental',
+      specificationText: '20% against synthetic 2025 baseline using the recorded method and dataset.',
+      claimScopeMode: 'specific_aspect', actualCoverage: 'aspect_only',
+      methodology: {
+        standard: 'Synthetic internal PCF method', version: '1.0', pcr: '',
+        calculationSha256: 'c'.repeat(64),
+        datasetReferences: ['synthetic-carbon-snapshot'], factorReferences: ['synthetic-factor-registry']
+      },
+      limitations: ['Synthetic data only'], exclusions: ['Use phase'], uncertaintyStatement: 'Synthetic uncertainty ±15%.',
+      qualifiers: ['Cradle-to-gate only'], updateTriggers: ['method, dataset or factor changes'],
+      withdrawalTriggers: ['evidence expires, is revoked or calculation changes'],
+      evidenceDocumentIds: [originEvidence.evidenceId], notes: 'Synthetic legal-control pilot; not a real public claim.'
+    }
+  );
+  assert.equal(controlledClaim.automatedStatus, 'ready_for_legal_review');
+  const wrongClaimRole = await service.reviewEnvironmentalClaimDossier(
+    ids.companyId, ids.shipmentId, controlledClaim.id, ids.userId, {
+      reviewerRole: 'compliance_specialist', decision: 'approved_for_publication', notes: 'Wrong role test.'
+    }
+  );
+  assert.equal(wrongClaimRole.code, 'ENVIRONMENTAL_CLAIM_REVIEW_ROLE_INVALID');
+  const claimReview = await service.reviewEnvironmentalClaimDossier(
+    ids.companyId, ids.shipmentId, controlledClaim.id, ids.userId, {
+      reviewerRole: 'legal_claim_reviewer', decision: 'approved_for_publication',
+      notes: 'Synthetic exact-text/scope approval for lifecycle testing only.'
+    }
+  );
+  assert.equal(claimReview.inputSha256, controlledClaim.inputSha256);
+  assert.equal(claimReview.resultSha256, controlledClaim.resultSha256);
+  const claimRegister = await service.listEnvironmentalClaimDossiers(ids.companyId, ids.shipmentId);
+  const reopenedClaim = claimRegister.find((item) => item.id === controlledClaim.id);
+  assert.equal(reopenedClaim.publicationStatus, 'approved_scheduled');
+  assert.equal(await service.listEnvironmentalClaimDossiers(ids.otherCompanyId, ids.shipmentId), null);
+  await assert.rejects(
+    pool.query('UPDATE environmental_claim_dossiers SET automated_status=$1 WHERE id=$2', [
+      'internal_draft', controlledClaim.id
+    ]),
+    /append-only and immutable/i
+  );
+  result.environmentalClaims.push({
+    id: controlledClaim.id, claimReference: controlledClaim.claimReference, revision: controlledClaim.revision,
+    publicationStatus: reopenedClaim.publicationStatus, inputSha256: controlledClaim.inputSha256,
+    resultSha256: controlledClaim.resultSha256
+  });
+  check('r18_claim_revision_is_tenant_isolated_hash_bound_evidence_backed_and_immutable');
 
   const firstReadiness = await service.getReadiness(ids.companyId, ids.shipmentId);
   assert.equal(firstReadiness.documents.find((item) => item.type === 'carbon_annex').status, 'ready');

@@ -453,6 +453,52 @@ router.post('/shipments/:shipmentId/compliance/applicability-evaluations/:evalua
   return sendSuccess(res, { status: 201, data: result });
 }));
 
+router.get('/shipments/:shipmentId/environmental-claims', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.listEnvironmentalClaimDossiers(companyId, req.params.shipmentId);
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/environmental-claims', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.createEnvironmentalClaimDossier(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (!result) return sendNotFound(res);
+  if (result.blocked) return sendError(res, { status: 400, code: result.code, message: result.message });
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.environmental_claim_dossier', newValue: result.id,
+    reason: 'export.environmental_claim.create',
+    notes: `${result.claimReference}:revision-${result.revision}:${result.automatedStatus}`
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
+router.post('/shipments/:shipmentId/environmental-claims/:dossierId/reviews', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.reviewEnvironmentalClaimDossier(
+    companyId, req.params.shipmentId, req.params.dossierId, req.userId, req.body || {}
+  );
+  if (!result) {
+    return sendError(res, {
+      status: 404, code: 'ENVIRONMENTAL_CLAIM_DOSSIER_NOT_FOUND',
+      message: 'Environmental claim dossier not found for this shipment.'
+    });
+  }
+  if (result.blocked) return sendError(res, { status: 409, code: result.code, message: result.message });
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.environmental_claim_review', newValue: result.id,
+    reason: 'export.environmental_claim.review', notes: result.decision
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
 router.post('/shipments/:shipmentId/lines/sync', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;

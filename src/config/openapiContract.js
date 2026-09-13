@@ -667,6 +667,81 @@ const REQUEST_BODY_OVERRIDES = {
     },
     additionalProperties: false
   },
+  'POST /export/shipments/{shipmentId}/environmental-claims': {
+    type: 'object',
+    required: [
+      'claimReference', 'exactClaimText', 'publicCommunication', 'channel', 'marketCodes',
+      'languageCode', 'communicationStart', 'subjectType', 'subjectReference', 'scopeStatement',
+      'claimKind', 'specificationText', 'methodology', 'uncertaintyStatement',
+      'updateTriggers', 'withdrawalTriggers', 'evidenceDocumentIds'
+    ],
+    properties: {
+      claimReference: { type: 'string', minLength: 1, maxLength: 120 },
+      exactClaimText: { type: 'string', minLength: 1, maxLength: 5000 },
+      publicCommunication: { type: 'boolean' },
+      channel: { type: 'string', enum: ['website', 'product_label', 'marketplace', 'advertising', 'sales_material', 'report', 'other'] },
+      marketCodes: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string', pattern: '^[A-Za-z]{2}$' } },
+      languageCode: { type: 'string', minLength: 2, maxLength: 35 },
+      communicationStart: { type: 'string', format: 'date' },
+      communicationEnd: { type: 'string', format: 'date', nullable: true },
+      subjectType: { type: 'string', enum: ['product', 'sku', 'batch', 'shipment', 'brand', 'company'] },
+      subjectReference: { type: 'string', minLength: 1, maxLength: 500 },
+      scopeStatement: { type: 'string', minLength: 1, maxLength: 5000 },
+      claimKind: { type: 'string', enum: ['generic_environmental', 'specific_environmental', 'comparative', 'future_performance', 'sustainability_label', 'offset_based_product_climate', 'legal_requirement_feature', 'other'] },
+      specificationText: { type: 'string', maxLength: 5000 },
+      claimScopeMode: { type: 'string', enum: ['entire_subject', 'specific_aspect'] },
+      actualCoverage: { type: 'string', enum: ['entire_subject', 'aspect_only'] },
+      recognizedExcellentPerformance: { type: 'boolean' },
+      methodology: {
+        type: 'object',
+        properties: {
+          standard: { type: 'string', maxLength: 500 }, version: { type: 'string', maxLength: 200 },
+          pcr: { type: 'string', maxLength: 500 }, calculationSha256: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' },
+          datasetReferences: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 1000 } },
+          factorReferences: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 1000 } }
+        },
+        additionalProperties: false
+      },
+      comparison: {
+        type: 'object', properties: {
+          baseline: { type: 'string', maxLength: 2000 }, comparator: { type: 'string', maxLength: 2000 },
+          sameMethodAndScope: { type: 'boolean' }
+        }, additionalProperties: false
+      },
+      futureCommitment: {
+        type: 'object', properties: {
+          implementationPlanUrl: { type: 'string', maxLength: 2000 },
+          milestones: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 1000 } },
+          independentMonitoring: { type: 'boolean' }
+        }, additionalProperties: false
+      },
+      labelScheme: {
+        type: 'object', properties: {
+          schemeType: { type: 'string', enum: ['certification_scheme', 'public_authority', 'self_declared', 'other'] },
+          schemeName: { type: 'string', maxLength: 500 }, publicCriteriaUrl: { type: 'string', maxLength: 2000 }
+        }, additionalProperties: false
+      },
+      limitations: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 1000 } },
+      exclusions: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 1000 } },
+      uncertaintyStatement: { type: 'string', maxLength: 5000 },
+      qualifiers: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 1000 } },
+      updateTriggers: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', maxLength: 1000 } },
+      withdrawalTriggers: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', maxLength: 1000 } },
+      assuranceReference: { type: 'string', maxLength: 1000 },
+      evidenceDocumentIds: { type: 'array', maxItems: 50, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
+      notes: { type: 'string', maxLength: 5000 }
+    },
+    additionalProperties: false
+  },
+  'POST /export/shipments/{shipmentId}/environmental-claims/{dossierId}/reviews': {
+    type: 'object', required: ['reviewerRole', 'decision', 'notes'],
+    properties: {
+      reviewerRole: { type: 'string', enum: ['legal_claim_reviewer'] },
+      decision: { type: 'string', enum: ['approved_for_publication', 'needs_information', 'rejected', 'withdrawn'] },
+      notes: { type: 'string', minLength: 1, maxLength: 5000 }
+    },
+    additionalProperties: false
+  },
   'POST /carbon-calculations': {
     type: 'object',
     required: ['calculation_type', 'carbon_input'],

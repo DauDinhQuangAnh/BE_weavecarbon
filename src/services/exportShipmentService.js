@@ -51,6 +51,12 @@ const {
   RULESET: COMPLIANCE_APPLICABILITY_RULESET,
   evaluateComplianceApplicability
 } = require('./complianceApplicabilityControls');
+const {
+  RULESET: ENVIRONMENTAL_CLAIM_RULESET,
+  normalizeClaimInput,
+  evaluateEnvironmentalClaim,
+  derivePublicationStatus
+} = require('./environmentalClaimControls');
 
 const RULESET_VERSION = 'VN-EU-TEXTILE-2026.09.4';
 const CARRIER_RULESET_VERSION = 'R03-CARRIER-RECONCILIATION-2026.09.1';
@@ -799,6 +805,199 @@ class ExportShipmentService {
         evaluation.input_sha256, evaluation.result_sha256, JSON.stringify(evidenceSnapshot)]
     );
     return this._formatComplianceApplicabilityReview(inserted.rows[0]);
+  }
+
+  async createEnvironmentalClaimDossier(companyId, shipmentId, userId, input = {}) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const normalized = normalizeClaimInput(input);
+    if (!normalized.claimReference || !normalized.communicationStart) {
+      return {
+        blocked: true, code: 'ENVIRONMENTAL_CLAIM_IDENTITY_REQUIRED',
+        message: 'claimReference and a valid communicationStart date are required.'
+      };
+    }
+    const evidenceIds = normalized.evidenceDocumentIds;
+    if (evidenceIds.length > 50 || evidenceIds.some((id) => !UUID_REGEX.test(id))) {
+      return {
+        blocked: true, code: 'ENVIRONMENTAL_CLAIM_EVIDENCE_INVALID',
+        message: 'Claim evidence must contain at most 50 valid evidence UUIDs.'
+      };
+    }
+    const evidenceSnapshot = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId, evidenceIds);
+    if (evidenceSnapshot.length !== evidenceIds.length) {
+      return {
+        blocked: true, code: 'ENVIRONMENTAL_CLAIM_EVIDENCE_INVALID',
+        message: 'Every evidence id must belong to this company and shipment.'
+      };
+    }
+    const evaluation = evaluateEnvironmentalClaim(input, evidenceSnapshot);
+    const client = await this.database.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`${companyId}:${shipmentId}:${evaluation.input.claimReference}`]
+      );
+      const versionResult = await client.query(
+        `SELECT COALESCE(MAX(revision), 0) + 1 AS revision
+         FROM environmental_claim_dossiers
+         WHERE company_id=$1 AND shipment_id=$2 AND claim_reference=$3`,
+        [companyId, shipmentId, evaluation.input.claimReference]
+      );
+      const revision = Number(versionResult.rows[0].revision);
+      const inserted = await client.query(
+        `INSERT INTO environmental_claim_dossiers (
+           company_id, shipment_id, claim_reference, revision, ruleset_id, ruleset_version,
+           ruleset_coverage, source_manifest_sha256, communication_start, communication_end,
+           input_snapshot, input_sha256, result_snapshot, result_sha256, evidence_snapshot,
+           automated_status, created_by
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13::jsonb,$14,$15::jsonb,$16,$17)
+         RETURNING *`,
+        [companyId, shipmentId, evaluation.input.claimReference, revision,
+          evaluation.result.rulesetId, evaluation.result.rulesetVersion,
+          evaluation.result.rulesetCoverage, evaluation.result.sourceManifestSha256,
+          evaluation.input.communicationStart, evaluation.input.communicationEnd,
+          JSON.stringify(evaluation.input), evaluation.inputSha256,
+          JSON.stringify(evaluation.result), evaluation.result.resultSha256,
+          JSON.stringify(evidenceSnapshot), evaluation.result.automatedStatus, userId]
+      );
+      await client.query('COMMIT');
+      return this._formatEnvironmentalClaimDossier(inserted.rows[0], evidenceSnapshot);
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally { client.release(); }
+  }
+
+  async listEnvironmentalClaimDossiers(companyId, shipmentId) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const result = await this.database.query(
+      `SELECT dossier.*, to_jsonb(latest_review) AS latest_review,
+              MAX(dossier.revision) OVER (PARTITION BY dossier.claim_reference) AS latest_revision
+       FROM environmental_claim_dossiers dossier
+       LEFT JOIN LATERAL (
+         SELECT review.* FROM environmental_claim_reviews review
+         WHERE review.dossier_id=dossier.id AND review.company_id=dossier.company_id
+           AND review.shipment_id=dossier.shipment_id
+         ORDER BY review.created_at DESC, review.id DESC LIMIT 1
+       ) latest_review ON true
+       WHERE dossier.company_id=$1 AND dossier.shipment_id=$2
+       ORDER BY dossier.created_at DESC, dossier.id DESC`,
+      [companyId, shipmentId]
+    );
+    const evidenceIds = [...new Set(result.rows.flatMap((row) =>
+      array(row.evidence_snapshot).map((item) => item.id).filter(Boolean)
+    ))];
+    const currentEvidence = await this._loadEnvironmentalClaimEvidence(companyId, shipmentId, evidenceIds);
+    return result.rows.map((row) => this._formatEnvironmentalClaimDossier(row, currentEvidence));
+  }
+
+  async reviewEnvironmentalClaimDossier(companyId, shipmentId, dossierId, userId, input = {}) {
+    if (!UUID_REGEX.test(String(dossierId || ''))) return null;
+    const reviewerRole = text(input.reviewerRole || input.reviewer_role);
+    const decision = text(input.decision).toLowerCase();
+    const notes = text(input.notes);
+    if (reviewerRole !== 'legal_claim_reviewer') {
+      return {
+        blocked: true, code: 'ENVIRONMENTAL_CLAIM_REVIEW_ROLE_INVALID',
+        message: 'Environmental claims require the legal_claim_reviewer role.'
+      };
+    }
+    if (!new Set(['approved_for_publication', 'needs_information', 'rejected', 'withdrawn']).has(decision)) {
+      return {
+        blocked: true, code: 'ENVIRONMENTAL_CLAIM_REVIEW_DECISION_INVALID',
+        message: 'Unsupported environmental-claim review decision.'
+      };
+    }
+    if (!notes) {
+      return { blocked: true, code: 'ENVIRONMENTAL_CLAIM_REVIEW_NOTES_REQUIRED', message: 'Review notes are required.' };
+    }
+    const dossierResult = await this.database.query(
+      `SELECT dossier.*, to_jsonb(latest_review) AS latest_review,
+              (SELECT MAX(candidate.revision) FROM environmental_claim_dossiers candidate
+               WHERE candidate.company_id=dossier.company_id AND candidate.shipment_id=dossier.shipment_id
+                 AND candidate.claim_reference=dossier.claim_reference) AS latest_revision
+       FROM environmental_claim_dossiers dossier
+       LEFT JOIN LATERAL (
+         SELECT review.* FROM environmental_claim_reviews review
+         WHERE review.dossier_id=dossier.id AND review.company_id=dossier.company_id
+           AND review.shipment_id=dossier.shipment_id
+         ORDER BY review.created_at DESC, review.id DESC LIMIT 1
+       ) latest_review ON true
+       WHERE dossier.id=$1 AND dossier.company_id=$2 AND dossier.shipment_id=$3`,
+      [dossierId, companyId, shipmentId]
+    );
+    const dossier = dossierResult.rows[0];
+    if (!dossier) return null;
+    if (Number(dossier.latest_revision) !== Number(dossier.revision) && decision === 'approved_for_publication') {
+      return {
+        blocked: true, code: 'ENVIRONMENTAL_CLAIM_REVISION_STALE',
+        message: 'Only the latest revision of a claim reference can be approved.'
+      };
+    }
+    if (decision === 'approved_for_publication' && dossier.automated_status !== 'ready_for_legal_review') {
+      return {
+        blocked: true, code: 'ENVIRONMENTAL_CLAIM_NOT_READY',
+        message: 'Only a dossier that passed automated controls can be approved for publication.'
+      };
+    }
+    if (decision === 'withdrawn'
+      && (!dossier.latest_review || dossier.latest_review.decision !== 'approved_for_publication')) {
+      return {
+        blocked: true, code: 'ENVIRONMENTAL_CLAIM_NOT_APPROVED',
+        message: 'Only the currently approved dossier can be withdrawn.'
+      };
+    }
+    const evidenceSnapshot = await this._loadEnvironmentalClaimEvidence(
+      companyId, shipmentId, array(dossier.evidence_snapshot).map((item) => item.id)
+    );
+    if (decision === 'approved_for_publication') {
+      const derived = derivePublicationStatus({
+        input_snapshot: dossier.input_snapshot, result_snapshot: dossier.result_snapshot,
+        latest_review: { decision, evidence_snapshot: dossier.evidence_snapshot }
+      }, evidenceSnapshot);
+      if (!['approved_current', 'approved_scheduled'].includes(derived.status) || evidenceSnapshot.length === 0) {
+        return {
+          blocked: true, code: 'ENVIRONMENTAL_CLAIM_EVIDENCE_STALE',
+          message: 'Approval requires every bound evidence document to remain locked, current and checksum-identical.'
+        };
+      }
+    }
+    const reviewerResult = await this.database.query(
+      'SELECT id, email, full_name FROM users WHERE id=$1', [userId]
+    );
+    const reviewer = reviewerResult.rows[0];
+    if (!reviewer || !text(reviewer.full_name || reviewer.email)) {
+      return { blocked: true, code: 'ENVIRONMENTAL_CLAIM_REVIEWER_NOT_FOUND', message: 'Named reviewer identity is required.' };
+    }
+    const inserted = await this.database.query(
+      `INSERT INTO environmental_claim_reviews (
+         company_id, shipment_id, dossier_id, reviewer_id, reviewer_name_snapshot,
+         reviewer_email_snapshot, reviewer_role, decision, notes, input_sha256,
+         result_sha256, evidence_snapshot
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) RETURNING *`,
+      [companyId, shipmentId, dossierId, userId, reviewer.full_name || reviewer.email,
+        reviewer.email || null, reviewerRole, decision, notes,
+        dossier.input_sha256, dossier.result_sha256, JSON.stringify(evidenceSnapshot)]
+    );
+    return this._formatEnvironmentalClaimReview(inserted.rows[0]);
+  }
+
+  async _loadEnvironmentalClaimEvidence(companyId, shipmentId, evidenceIds) {
+    if (!evidenceIds.length) return [];
+    const result = await this.database.query(
+      `SELECT id, evidence_type, document_name, checksum_sha256, file_size_bytes, status,
+              valid_from, valid_to
+       FROM evidence_documents
+       WHERE company_id=$1 AND shipment_id=$2 AND id=ANY($3::uuid[])
+       ORDER BY id`,
+      [companyId, shipmentId, evidenceIds]
+    );
+    return result.rows.map((row) => ({
+      id: row.id, type: row.evidence_type, name: row.document_name,
+      checksumSha256: row.checksum_sha256, fileSizeBytes: Number(row.file_size_bytes || 0),
+      status: row.status, validFrom: dateOnly(row.valid_from), validTo: dateOnly(row.valid_to)
+    }));
   }
 
   async upsertProfile(companyId, shipmentId, userId, input = {}) {
@@ -3436,6 +3635,36 @@ class ExportShipmentService {
       evidenceSnapshot: row.evidence_snapshot || [], createdAt: row.created_at
     };
   }
+
+  _formatEnvironmentalClaimDossier(row, currentEvidence = []) {
+    if (!row) return null;
+    const latestReview = row.latest_review ? this._formatEnvironmentalClaimReview(row.latest_review) : null;
+    const formatted = {
+      id: row.id, shipmentId: row.shipment_id, claimReference: row.claim_reference,
+      revision: Number(row.revision), rulesetId: row.ruleset_id, rulesetVersion: row.ruleset_version,
+      rulesetCoverage: row.ruleset_coverage, sourceManifestSha256: row.source_manifest_sha256,
+      communicationStart: dateOnly(row.communication_start), communicationEnd: dateOnly(row.communication_end),
+      input: row.input_snapshot, inputSha256: row.input_sha256,
+      result: row.result_snapshot, resultSha256: row.result_sha256,
+      evidenceSnapshot: row.evidence_snapshot || [], automatedStatus: row.automated_status,
+      createdBy: row.created_by, createdAt: row.created_at, latestReview
+    };
+    const derived = Number(row.latest_revision || row.revision) > Number(row.revision)
+      ? { status: 'superseded', staleEvidenceIds: [] }
+      : derivePublicationStatus(formatted, currentEvidence);
+    return { ...formatted, publicationStatus: derived.status, staleEvidenceIds: derived.staleEvidenceIds };
+  }
+
+  _formatEnvironmentalClaimReview(row) {
+    if (!row) return null;
+    return {
+      id: row.id, dossierId: row.dossier_id, reviewerId: row.reviewer_id,
+      reviewerName: row.reviewer_name_snapshot, reviewerEmail: row.reviewer_email_snapshot || null,
+      reviewerRole: row.reviewer_role, decision: row.decision, notes: row.notes,
+      inputSha256: row.input_sha256, resultSha256: row.result_sha256,
+      evidenceSnapshot: row.evidence_snapshot || [], createdAt: row.created_at
+    };
+  }
 }
 
 const service = new ExportShipmentService();
@@ -3448,6 +3677,7 @@ module.exports.sourceSnapshotSha256 = sourceSnapshotSha256;
 module.exports.documentSourceSnapshotSha256 = documentSourceSnapshotSha256;
 module.exports.carrierReconciliationSha256 = carrierReconciliationSha256;
 module.exports.CARRIER_RULESET_VERSION = CARRIER_RULESET_VERSION;
+module.exports.ENVIRONMENTAL_CLAIM_RULESET = ENVIRONMENTAL_CLAIM_RULESET;
 module.exports.VN_CUSTOMS_HANDOFF_SCHEMA = VN_CUSTOMS_HANDOFF_SCHEMA;
 module.exports.EU_IMPORT_HANDOFF_SCHEMA = EU_IMPORT_HANDOFF_SCHEMA;
 module.exports.ICS2_HANDOFF_SCHEMA = ICS2_HANDOFF_SCHEMA;

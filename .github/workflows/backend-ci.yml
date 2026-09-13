@@ -253,7 +253,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Run isolated R01-R07 and R20 export compliance pilot
+      - name: Run isolated R01-R07, R20 and R18 export compliance pilot
         env:
           ALLOW_CARRIER_DOCUMENT_PILOT: "1"
           CARRIER_PILOT_CONFIRM_ISOLATED: I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA
@@ -311,6 +311,15 @@ jobs:
         with:
           name: compliance-applicability-pilot-${{ github.run_id }}
           path: artifacts/compliance-applicability-pilot/result.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload environmental claim pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: environmental-claim-pilot-${{ github.run_id }}
+          path: artifacts/environmental-claim-pilot/result.json
           if-no-files-found: error
           retention-days: 14
 
