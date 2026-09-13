@@ -20,6 +20,7 @@ const TENANT_RESOURCE_PREFIXES = [
   '/api/electricity-invoices',
   '/api/fuel-invoices',
   '/api/corporate-ghg-inventories',
+  '/api/eu-textile-epr',
   '/api/suppliers',
   '/api/data-gaps',
   '/api/audit-trail',

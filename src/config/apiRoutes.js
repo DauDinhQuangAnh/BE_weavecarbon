@@ -25,6 +25,7 @@ const carbonCalculationsRoutes = require('../routes/carbonCalculations');
 const carbonFactorsRoutes = require('../routes/carbonFactors');
 const operationsRoutes = require('../routes/operations');
 const corporateGhgInventoriesRoutes = require('../routes/corporateGhgInventories');
+const euTextileEprRoutes = require('../routes/euTextileEpr');
 
 const apiRoutes = [
   { basePath: '/api/auth', tag: 'Auth', router: authRoutes },
@@ -53,6 +54,7 @@ const apiRoutes = [
   { basePath: '/api/carbon-calculations', tag: 'Carbon calculations', router: carbonCalculationsRoutes },
   { basePath: '/api/carbon-factors', tag: 'Carbon factors', router: carbonFactorsRoutes },
   { basePath: '/api/corporate-ghg-inventories', tag: 'Corporate GHG inventories', router: corporateGhgInventoriesRoutes },
+  { basePath: '/api/eu-textile-epr', tag: 'EU textile EPR', router: euTextileEprRoutes },
   { basePath: '/api/operations', tag: 'Operations', router: operationsRoutes }
 ];
 

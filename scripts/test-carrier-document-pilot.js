@@ -13,10 +13,11 @@ const { calculateCarbonFootprint } = require('../src/modules/carbon/core');
 const { insertFinalizedProductSnapshot } = require('../src/modules/carbon/calculationSnapshot');
 const { createExportShipmentService } = require('../src/services/exportShipmentService');
 const { CorporateGhgInventoryService } = require('../src/services/corporateGhgInventoryService');
+const { EuTextileEprService } = require('../src/services/euTextileEprService');
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pcf-corporate-ghg-pilot-v12',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pcf-corporate-ghg-epr-pilot-v13',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -33,7 +34,8 @@ const result = {
   reachSvhcDossiers: [],
   reachObligationEvents: [],
   pcfStudies: [],
-  corporateGhgInventories: []
+  corporateGhgInventories: [],
+  euTextileEprAssessments: []
 };
 
 function check(name, details = {}) {
@@ -50,7 +52,7 @@ async function writeResult() {
     'carrier-document-pilot', 'vn-customs-handoff-pilot', 'eu-import-handoff-pilot',
     'ics2-handoff-pilot', 'origin-handoff-pilot', 'compliance-applicability-pilot',
     'environmental-claim-pilot', 'textile-fibre-label-pilot', 'gpsr-technical-file-pilot', 'reach-svhc-dossier-pilot',
-    'pcf-study-pilot', 'corporate-ghg-inventory-pilot'
+    'pcf-study-pilot', 'corporate-ghg-inventory-pilot', 'eu-textile-epr-pilot'
   ]) {
     const directory = path.resolve(__dirname, '..', 'artifacts', name);
     await fs.promises.mkdir(directory, { recursive: true });
@@ -208,6 +210,28 @@ async function insertOriginEvidence(ids, runId) {
        'local',$5,$4,'application/json',$6,$7,$8::jsonb,'locked',$9,$9,now())`,
     [evidenceId, ids.companyId, ids.shipmentId, 'origin-support.json', storageKey,
       original.length, sha256(original), JSON.stringify({ synthetic: true, runId }), ids.userId]
+  );
+  return { evidenceId, original, filePath };
+}
+
+async function insertEprAuthorityEvidence(ids, runId) {
+  const evidenceId = crypto.randomUUID();
+  const original = Buffer.from(JSON.stringify({ synthetic: true, runId, type: 'epr_authority_response',
+    registrationNumber: `SYNTHETIC-NL-EPR-${runId}`,
+    warning: 'Synthetic isolated receipt; not a real authority registration.' }, null, 2));
+  const storageKey = `evidence/${ids.companyId}/${ids.shipmentId}/epr-authority-response.json`;
+  const filePath = path.resolve(UPLOADS_ROOT, storageKey);
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises.writeFile(filePath, original);
+  await pool.query(
+    `INSERT INTO evidence_documents (
+       id, company_id, shipment_id, evidence_type, document_name, source_vendor,
+       storage_provider, storage_key, original_filename, mime_type, file_size_bytes,
+       checksum_sha256, extracted_json, status, uploaded_by, approved_by, locked_at
+     ) VALUES ($1,$2,$3,'epr_authority_response','epr-authority-response.json','Synthetic EPR Authority',
+       'local',$4,'epr-authority-response.json','application/json',$5,$6,$7::jsonb,'locked',$8,$8,now())`,
+    [evidenceId, ids.companyId, ids.shipmentId, storageKey, original.length, sha256(original),
+      JSON.stringify({ synthetic: true, runId }), ids.userId]
   );
   return { evidenceId, original, filePath };
 }
@@ -1449,6 +1473,95 @@ async function run() {
     activitySnapshotSha256: controlledGhg.activitySnapshotSha256, resultSha256: controlledGhg.resultSha256,
     totals: controlledGhg.result.totals });
   check('r13_inventory_is_tenant_isolated_hash_bound_named_reviewed_and_immutable');
+
+  const eprService = new EuTextileEprService(pool);
+  const eprActor = { name: 'Synthetic Circular Textiles PRO',
+    address: { street: '1 Circular Road', postalCode: '1000AA', city: 'Amsterdam', country: 'NL' },
+    email: 'pro@invalid.example', phone: '', website: 'https://invalid.example/pro',
+    nationalIdentificationCode: `PRO-NL-${runId}`, tradeRegisterNumber: `PRO-TRADE-${runId}`,
+    taxIdentificationNumber: `PRO-TAX-${runId}`, mandateEvidenceIds: [originEvidence.evidenceId] };
+  const eprBase = {
+    assessmentDate: '2026-09-13', memberState: 'NL', reportingPeriodStart: '2026-01-01', reportingPeriodEnd: '2026-12-31',
+    intendedUse: 'Synthetic internal EU textile EPR planning and shipment reconciliation.',
+    producer: { legalName: `Carrier pilot ${runId}`, trademarks: ['Synthetic Weave'], brandNames: ['Synthetic Weave'],
+      address: { street: '1 Factory Road', postalCode: '700000', city: 'Ho Chi Minh City', country: 'VN' },
+      email: 'epr@invalid.example', phone: '', website: 'https://invalid.example', contactPoint: 'Synthetic compliance team',
+      nationalIdentificationCode: `VN-ID-${runId}`, tradeRegisterNumber: `VN-TRADE-${runId}`,
+      taxIdentificationNumber: `VN-TAX-${runId}`, establishedCountry: 'VN', role: 'distance_seller', employeeCount: 20,
+      annualTurnoverEur: 3000000, annualBalanceSheetEur: 2500000, suppliesUsedGoodsOnly: false,
+      selfEmployedTailorCustomizedOnly: false, derivedFromUsedWasteOnly: false },
+    authorizedRepresentative: { ...eprActor, applicable: false,
+      nationalRuleBasis: 'Synthetic NL adapter records that the national authorised-representative rule remains unconfirmed.',
+      mandateEvidenceIds: [] },
+    producerResponsibilityOrganisation: eprActor, cnCodes: ['62052000'],
+    memberStateRule: { adapterId: 'NL-EPR-SYNTHETIC-PLANNING', version: '2026-09-pilot',
+      sourceUrl: 'https://eur-lex.europa.eu/eli/dir/2025/1892/oj', effectiveFrom: null, schemeStatus: 'unknown',
+      competentAuthorityName: '', registerUrl: '', reportingSchedule: '', feeMethodStatus: 'pending',
+      reviewEvidenceIds: [originEvidence.evidenceId] },
+    declaredMarketRows: [{ cnCode: '62052000', quantity: 100, unit: 'PCE', weightKg: 50,
+      productDescription: 'Synthetic cotton shirts' }], truthStatementConfirmed: true,
+    evidenceDocumentIds: [originEvidence.evidenceId],
+    limitations: 'Synthetic EU-core planning record. National registration, fee, reporting and submission rules are not encoded.',
+    notes: 'R17 synthetic pilot; not a real registration, submission or payment.'
+  };
+  const blockedEpr = await eprService.createRevision(ids.companyId, ids.userId, {
+    ...eprBase, assessmentReference: `EPR-BLOCKED-${runId}`, cnCodes: ['95030000'], truthStatementConfirmed: false,
+    declaredMarketRows: [{ ...eprBase.declaredMarketRows[0], cnCode: '95030000', weightKg: 5 }]
+  });
+  assert.equal(blockedEpr.automatedStatus, 'needs_information');
+  assert.ok(blockedEpr.result.findings.some((item) => item.code === 'EPR_CN_OUTSIDE_ANNEX_IVC'));
+  assert.ok(blockedEpr.result.findings.some((item) => item.code === 'EPR_MARKET_VOLUME_MISMATCH'));
+  assert.ok(blockedEpr.result.findings.some((item) => item.code === 'EPR_TRUTH_STATEMENT_REQUIRED'));
+  check('r17_out_of_scope_unreconciled_and_unconfirmed_dossiers_are_blocked');
+
+  const controlledEpr = await eprService.createRevision(ids.companyId, ids.userId, {
+    ...eprBase, assessmentReference: `EPR-NL-${runId}`
+  });
+  assert.equal(controlledEpr.automatedStatus, 'specialist_review_required');
+  assert.deepEqual(controlledEpr.result.totals, { declaredQuantity: 100, declaredWeightKg: 50,
+    systemQuantity: 100, systemWeightKg: 50 });
+  assert.equal(controlledEpr.result.reconciliation[0].status, 'matched');
+  assert.equal(controlledEpr.result.registrationStatus, 'not_externally_confirmed');
+  const wrongEprRole = await eprService.review(ids.companyId, controlledEpr.id, ids.userId, {
+    reviewerRole: 'sustainability_manager', decision: 'approved_for_internal_planning', notes: 'Wrong role.'
+  });
+  assert.equal(wrongEprRole.code, 'EPR_REVIEW_ROLE_INVALID');
+  const eprReview = await eprService.review(ids.companyId, controlledEpr.id, ids.userId, {
+    reviewerRole: 'eu_epr_specialist', decision: 'approved_for_internal_planning',
+    notes: 'Synthetic producer role, Annex IVc scope, PRO mandate, national-adapter limitation and market-volume reconciliation reviewed.'
+  });
+  assert.equal(eprReview.reviewerName, 'Carrier Metadata Reviewer');
+  assert.equal(eprReview.inputSha256, controlledEpr.inputSha256);
+  assert.equal(eprReview.shipmentSnapshotSha256, controlledEpr.shipmentSnapshotSha256);
+  check('r17_annex_ivc_market_quantity_and_weight_reconcile_to_shipment_ledger');
+
+  const wrongEprEvidence = await eprService.recordExternalEvent(ids.companyId, controlledEpr.id, ids.userId, {
+    eventType: 'authority_registration_confirmed', externalReference: `NL-EPR-WRONG-${runId}`,
+    actorName: 'Synthetic EPR Authority', occurredAt: '2026-09-13T08:00:00Z', evidenceDocumentId: originEvidence.evidenceId
+  });
+  assert.equal(wrongEprEvidence.code, 'EPR_EXTERNAL_EVENT_EVIDENCE_TYPE_MISMATCH');
+  const eprAuthorityEvidence = await insertEprAuthorityEvidence(ids, runId);
+  const eprEvent = await eprService.recordExternalEvent(ids.companyId, controlledEpr.id, ids.userId, {
+    eventType: 'authority_registration_confirmed', externalReference: `SYNTHETIC-NL-EPR-${runId}`,
+    actorName: 'Synthetic EPR Authority', occurredAt: '2026-09-13T08:00:00Z',
+    evidenceDocumentId: eprAuthorityEvidence.evidenceId
+  });
+  assert.equal(eprEvent.inputSha256, controlledEpr.inputSha256);
+  assert.equal(eprEvent.shipmentSnapshotSha256, controlledEpr.shipmentSnapshotSha256);
+  const eprRegister = await eprService.list(ids.companyId);
+  const reopenedEpr = eprRegister.find((item) => item.id === controlledEpr.id);
+  assert.equal(reopenedEpr.assessmentStatus, 'external_evidence_recorded');
+  assert.deepEqual(reopenedEpr.externalMilestones, ['authority_registration_confirmed']);
+  assert.deepEqual(await eprService.list(ids.otherCompanyId), []);
+  await assert.rejects(pool.query('UPDATE eu_textile_epr_external_events SET actor_name=$1 WHERE id=$2', [
+    'tampered', eprEvent.id
+  ]), /append-only and immutable/i);
+  result.euTextileEprAssessments.push({ id: controlledEpr.id, assessmentReference: controlledEpr.assessmentReference,
+    revision: controlledEpr.revision, assessmentStatus: reopenedEpr.assessmentStatus,
+    inputSha256: controlledEpr.inputSha256, shipmentSnapshotSha256: controlledEpr.shipmentSnapshotSha256,
+    resultSha256: controlledEpr.resultSha256, totals: controlledEpr.result.totals,
+    externalReference: eprEvent.externalReference, externalEvidenceSha256: eprEvent.evidenceSnapshot[0].checksumSha256 });
+  check('r17_external_status_is_typed_evidence_backed_tenant_isolated_and_immutable');
 
   const firstReadiness = await service.getReadiness(ids.companyId, ids.shipmentId);
   assert.equal(firstReadiness.documents.find((item) => item.type === 'carbon_annex').status, 'ready');

@@ -863,6 +863,24 @@ const REQUEST_BODY_OVERRIDES = {
       notes: { type: 'string', minLength: 1, maxLength: 5000 }
     }, additionalProperties: false
   },
+  'POST /eu-textile-epr/assessments': { $ref: '#/components/schemas/EuTextileEprAssessmentInput' },
+  'POST /eu-textile-epr/assessments/{assessmentId}/reviews': {
+    type: 'object', required: ['reviewerRole', 'decision', 'notes'], properties: {
+      reviewerRole: { type: 'string', enum: ['eu_epr_specialist'] },
+      decision: { type: 'string', enum: ['approved_for_internal_planning', 'needs_information', 'rejected'] },
+      notes: { type: 'string', minLength: 1, maxLength: 5000 }
+    }, additionalProperties: false
+  },
+  'POST /eu-textile-epr/assessments/{assessmentId}/external-events': {
+    type: 'object', required: ['eventType', 'externalReference', 'actorName', 'occurredAt', 'evidenceDocumentId'], properties: {
+      eventType: { type: 'string', enum: ['authority_registration_confirmed', 'pro_membership_confirmed',
+        'report_submission_confirmed', 'fee_payment_confirmed', 'authority_rejected', 'registration_withdrawn'] },
+      externalReference: { type: 'string', minLength: 1, maxLength: 1000 }, actorName: { type: 'string', minLength: 1, maxLength: 500 },
+      occurredAt: { type: 'string', format: 'date-time' }, evidenceDocumentId: { type: 'string', format: 'uuid' },
+      amount: { type: 'number', minimum: 0, nullable: true }, currency: { type: 'string', pattern: '^[A-Z]{3}$', nullable: true },
+      reportingPeriodStart: { type: 'string', format: 'date', nullable: true }, reportingPeriodEnd: { type: 'string', format: 'date', nullable: true }
+    }, additionalProperties: false
+  },
   'POST /export/shipments/{shipmentId}/environmental-claims': {
     type: 'object',
     required: [
@@ -1497,6 +1515,67 @@ function contractComponents() {
         factorSource: { type: 'string', minLength: 1, maxLength: 1000 }, factorVersion: { type: 'string', minLength: 1, maxLength: 500 },
         gwpBasis: { type: 'string', minLength: 1, maxLength: 500 }, evidenceDocumentIds: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } }
       }, additionalProperties: false },
+      EprCorporateActor: { type: 'object', required: ['name', 'address', 'email', 'nationalIdentificationCode',
+        'tradeRegisterNumber', 'taxIdentificationNumber', 'mandateEvidenceIds'], properties: {
+        name: { type: 'string', minLength: 1, maxLength: 500 }, email: { type: 'string', minLength: 1, maxLength: 500 },
+        phone: { type: 'string', maxLength: 100 }, website: { type: 'string', maxLength: 2000 },
+        nationalIdentificationCode: { type: 'string', minLength: 1, maxLength: 200 },
+        tradeRegisterNumber: { type: 'string', minLength: 1, maxLength: 200 },
+        taxIdentificationNumber: { type: 'string', minLength: 1, maxLength: 200 },
+        mandateEvidenceIds: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
+        address: { type: 'object', required: ['street', 'postalCode', 'city', 'country'], properties: {
+          street: { type: 'string', minLength: 1, maxLength: 1000 }, postalCode: { type: 'string', minLength: 1, maxLength: 100 },
+          city: { type: 'string', minLength: 1, maxLength: 200 }, country: { type: 'string', pattern: '^[A-Za-z]{2}$' }
+        }, additionalProperties: false }
+      }, additionalProperties: true },
+      EuTextileEprAssessmentInput: {
+        type: 'object', required: ['assessmentReference', 'assessmentDate', 'memberState', 'reportingPeriodStart',
+          'reportingPeriodEnd', 'intendedUse', 'producer', 'authorizedRepresentative', 'producerResponsibilityOrganisation',
+          'cnCodes', 'memberStateRule', 'declaredMarketRows', 'truthStatementConfirmed', 'evidenceDocumentIds', 'limitations'],
+        properties: {
+          assessmentReference: { type: 'string', minLength: 1, maxLength: 120 }, assessmentDate: { type: 'string', format: 'date' },
+          memberState: { type: 'string', pattern: '^[A-Za-z]{2}$' }, reportingPeriodStart: { type: 'string', format: 'date' },
+          reportingPeriodEnd: { type: 'string', format: 'date' }, intendedUse: { type: 'string', minLength: 1, maxLength: 5000 },
+          producer: { type: 'object', required: ['legalName', 'trademarks', 'brandNames', 'address', 'email', 'phone', 'website',
+            'contactPoint', 'nationalIdentificationCode', 'tradeRegisterNumber', 'taxIdentificationNumber', 'establishedCountry',
+            'role', 'employeeCount', 'annualTurnoverEur', 'annualBalanceSheetEur', 'suppliesUsedGoodsOnly',
+            'selfEmployedTailorCustomizedOnly', 'derivedFromUsedWasteOnly'], properties: {
+            legalName: { type: 'string', minLength: 1, maxLength: 500 }, trademarks: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 500 } },
+            brandNames: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 500 } }, email: { type: 'string', minLength: 1, maxLength: 500 },
+            phone: { type: 'string', maxLength: 100 }, website: { type: 'string', maxLength: 2000 }, contactPoint: { type: 'string', minLength: 1, maxLength: 500 },
+            nationalIdentificationCode: { type: 'string', minLength: 1, maxLength: 200 }, tradeRegisterNumber: { type: 'string', minLength: 1, maxLength: 200 },
+            taxIdentificationNumber: { type: 'string', minLength: 1, maxLength: 200 }, establishedCountry: { type: 'string', pattern: '^[A-Za-z]{2}$' },
+            role: { type: 'string', enum: ['manufacturer_own_brand', 'reseller_own_brand', 'first_supplier_import', 'distance_seller'] },
+            employeeCount: { type: 'integer', minimum: 0 }, annualTurnoverEur: { type: 'number', minimum: 0 }, annualBalanceSheetEur: { type: 'number', minimum: 0 },
+            suppliesUsedGoodsOnly: { type: 'boolean' }, selfEmployedTailorCustomizedOnly: { type: 'boolean' }, derivedFromUsedWasteOnly: { type: 'boolean' },
+            address: { type: 'object', required: ['street', 'postalCode', 'city', 'country'], properties: {
+              street: { type: 'string', minLength: 1, maxLength: 1000 }, postalCode: { type: 'string', minLength: 1, maxLength: 100 },
+              city: { type: 'string', minLength: 1, maxLength: 200 }, country: { type: 'string', pattern: '^[A-Za-z]{2}$' }
+            }, additionalProperties: false }
+          }, additionalProperties: false },
+          authorizedRepresentative: { allOf: [{ $ref: '#/components/schemas/EprCorporateActor' }, { type: 'object', required: ['applicable', 'nationalRuleBasis'], properties: {
+            applicable: { type: 'boolean' }, nationalRuleBasis: { type: 'string', maxLength: 5000 }
+          } }] },
+          producerResponsibilityOrganisation: { $ref: '#/components/schemas/EprCorporateActor' },
+          cnCodes: { type: 'array', minItems: 1, maxItems: 500, uniqueItems: true, items: { type: 'string', pattern: '^[0-9 .-]{2,20}$' } },
+          memberStateRule: { type: 'object', required: ['adapterId', 'version', 'sourceUrl', 'effectiveFrom', 'schemeStatus',
+            'competentAuthorityName', 'registerUrl', 'reportingSchedule', 'feeMethodStatus', 'reviewEvidenceIds'], properties: {
+            adapterId: { type: 'string', minLength: 1, maxLength: 200 }, version: { type: 'string', minLength: 1, maxLength: 200 },
+            sourceUrl: { type: 'string', minLength: 1, maxLength: 2000 }, effectiveFrom: { type: 'string', format: 'date', nullable: true },
+            schemeStatus: { type: 'string', enum: ['not_transposed', 'transposed', 'existing_scheme', 'unknown'] },
+            competentAuthorityName: { type: 'string', maxLength: 500 }, registerUrl: { type: 'string', maxLength: 2000 },
+            reportingSchedule: { type: 'string', maxLength: 5000 }, feeMethodStatus: { type: 'string', enum: ['unknown', 'pending', 'published'] },
+            reviewEvidenceIds: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } }
+          }, additionalProperties: false },
+          declaredMarketRows: { type: 'array', minItems: 1, maxItems: 5000, items: { type: 'object', required: ['cnCode', 'quantity', 'unit', 'weightKg', 'productDescription'], properties: {
+            cnCode: { type: 'string', pattern: '^[0-9 .-]{2,20}$' }, quantity: { type: 'number', minimum: 0 },
+            unit: { type: 'string', minLength: 1, maxLength: 50 }, weightKg: { type: 'number', minimum: 0 },
+            productDescription: { type: 'string', minLength: 1, maxLength: 2000 }
+          }, additionalProperties: false } }, truthStatementConfirmed: { type: 'boolean' },
+          evidenceDocumentIds: { type: 'array', minItems: 1, maxItems: 500, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
+          limitations: { type: 'string', minLength: 1, maxLength: 10000 }, notes: { type: 'string', maxLength: 5000 }
+        }, additionalProperties: false
+      },
       Product: {
         type: 'object',
         required: ['id', 'productCode', 'productName', 'status'],

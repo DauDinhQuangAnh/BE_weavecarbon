@@ -901,6 +901,94 @@
         ],
         "type": "object"
       },
+      "EprCorporateActor": {
+        "additionalProperties": true,
+        "properties": {
+          "address": {
+            "additionalProperties": false,
+            "properties": {
+              "city": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "country": {
+                "pattern": "^[A-Za-z]{2}$",
+                "type": "string"
+              },
+              "postalCode": {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              "street": {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "street",
+              "postalCode",
+              "city",
+              "country"
+            ],
+            "type": "object"
+          },
+          "email": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "mandateEvidenceIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "name": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "nationalIdentificationCode": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "phone": {
+            "maxLength": 100,
+            "type": "string"
+          },
+          "taxIdentificationNumber": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "tradeRegisterNumber": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "website": {
+            "maxLength": 2000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "address",
+          "email",
+          "nationalIdentificationCode",
+          "tradeRegisterNumber",
+          "taxIdentificationNumber",
+          "mandateEvidenceIds"
+        ],
+        "type": "object"
+      },
       "ErrorDetail": {
         "additionalProperties": false,
         "properties": {
@@ -938,6 +1026,375 @@
         "required": [
           "success",
           "error"
+        ],
+        "type": "object"
+      },
+      "EuTextileEprAssessmentInput": {
+        "additionalProperties": false,
+        "properties": {
+          "assessmentDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "assessmentReference": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "authorizedRepresentative": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EprCorporateActor"
+              },
+              {
+                "properties": {
+                  "applicable": {
+                    "type": "boolean"
+                  },
+                  "nationalRuleBasis": {
+                    "maxLength": 5000,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "applicable",
+                  "nationalRuleBasis"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "cnCodes": {
+            "items": {
+              "pattern": "^[0-9 .-]{2,20}$",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "declaredMarketRows": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "cnCode": {
+                  "pattern": "^[0-9 .-]{2,20}$",
+                  "type": "string"
+                },
+                "productDescription": {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "quantity": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "unit": {
+                  "maxLength": 50,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "weightKg": {
+                  "minimum": 0,
+                  "type": "number"
+                }
+              },
+              "required": [
+                "cnCode",
+                "quantity",
+                "unit",
+                "weightKg",
+                "productDescription"
+              ],
+              "type": "object"
+            },
+            "maxItems": 5000,
+            "minItems": 1,
+            "type": "array"
+          },
+          "evidenceDocumentIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "intendedUse": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limitations": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "memberState": {
+            "pattern": "^[A-Za-z]{2}$",
+            "type": "string"
+          },
+          "memberStateRule": {
+            "additionalProperties": false,
+            "properties": {
+              "adapterId": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "competentAuthorityName": {
+                "maxLength": 500,
+                "type": "string"
+              },
+              "effectiveFrom": {
+                "format": "date",
+                "nullable": true,
+                "type": "string"
+              },
+              "feeMethodStatus": {
+                "enum": [
+                  "unknown",
+                  "pending",
+                  "published"
+                ],
+                "type": "string"
+              },
+              "registerUrl": {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              "reportingSchedule": {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              "reviewEvidenceIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "schemeStatus": {
+                "enum": [
+                  "not_transposed",
+                  "transposed",
+                  "existing_scheme",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              "sourceUrl": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "version": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "adapterId",
+              "version",
+              "sourceUrl",
+              "effectiveFrom",
+              "schemeStatus",
+              "competentAuthorityName",
+              "registerUrl",
+              "reportingSchedule",
+              "feeMethodStatus",
+              "reviewEvidenceIds"
+            ],
+            "type": "object"
+          },
+          "notes": {
+            "maxLength": 5000,
+            "type": "string"
+          },
+          "producer": {
+            "additionalProperties": false,
+            "properties": {
+              "address": {
+                "additionalProperties": false,
+                "properties": {
+                  "city": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "country": {
+                    "pattern": "^[A-Za-z]{2}$",
+                    "type": "string"
+                  },
+                  "postalCode": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "street": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "street",
+                  "postalCode",
+                  "city",
+                  "country"
+                ],
+                "type": "object"
+              },
+              "annualBalanceSheetEur": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "annualTurnoverEur": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "brandNames": {
+                "items": {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              "contactPoint": {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              "derivedFromUsedWasteOnly": {
+                "type": "boolean"
+              },
+              "email": {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              "employeeCount": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "establishedCountry": {
+                "pattern": "^[A-Za-z]{2}$",
+                "type": "string"
+              },
+              "legalName": {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              "nationalIdentificationCode": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "phone": {
+                "maxLength": 100,
+                "type": "string"
+              },
+              "role": {
+                "enum": [
+                  "manufacturer_own_brand",
+                  "reseller_own_brand",
+                  "first_supplier_import",
+                  "distance_seller"
+                ],
+                "type": "string"
+              },
+              "selfEmployedTailorCustomizedOnly": {
+                "type": "boolean"
+              },
+              "suppliesUsedGoodsOnly": {
+                "type": "boolean"
+              },
+              "taxIdentificationNumber": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "tradeRegisterNumber": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "trademarks": {
+                "items": {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              "website": {
+                "maxLength": 2000,
+                "type": "string"
+              }
+            },
+            "required": [
+              "legalName",
+              "trademarks",
+              "brandNames",
+              "address",
+              "email",
+              "phone",
+              "website",
+              "contactPoint",
+              "nationalIdentificationCode",
+              "tradeRegisterNumber",
+              "taxIdentificationNumber",
+              "establishedCountry",
+              "role",
+              "employeeCount",
+              "annualTurnoverEur",
+              "annualBalanceSheetEur",
+              "suppliesUsedGoodsOnly",
+              "selfEmployedTailorCustomizedOnly",
+              "derivedFromUsedWasteOnly"
+            ],
+            "type": "object"
+          },
+          "producerResponsibilityOrganisation": {
+            "$ref": "#/components/schemas/EprCorporateActor"
+          },
+          "reportingPeriodEnd": {
+            "format": "date",
+            "type": "string"
+          },
+          "reportingPeriodStart": {
+            "format": "date",
+            "type": "string"
+          },
+          "truthStatementConfirmed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "assessmentReference",
+          "assessmentDate",
+          "memberState",
+          "reportingPeriodStart",
+          "reportingPeriodEnd",
+          "intendedUse",
+          "producer",
+          "authorizedRepresentative",
+          "producerResponsibilityOrganisation",
+          "cnCodes",
+          "memberStateRule",
+          "declaredMarketRows",
+          "truthStatementConfirmed",
+          "evidenceDocumentIds",
+          "limitations"
         ],
         "type": "object"
       },
@@ -6624,6 +7081,302 @@
         "summary": "PUT /electricity-invoices/{id}",
         "tags": [
           "Electricity invoices"
+        ]
+      }
+    },
+    "/eu-textile-epr/assessments": {
+      "get": {
+        "operationId": "getEuTextileEprAssessments",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /eu-textile-epr/assessments",
+        "tags": [
+          "EU textile EPR"
+        ]
+      },
+      "post": {
+        "operationId": "postEuTextileEprAssessments",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EuTextileEprAssessmentInput"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /eu-textile-epr/assessments",
+        "tags": [
+          "EU textile EPR"
+        ]
+      }
+    },
+    "/eu-textile-epr/assessments/{assessmentId}/external-events": {
+      "post": {
+        "operationId": "postEuTextileEprAssessmentsByAssessmentIdExternalEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assessmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "actorName": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "amount": {
+                    "minimum": 0,
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "currency": {
+                    "nullable": true,
+                    "pattern": "^[A-Z]{3}$",
+                    "type": "string"
+                  },
+                  "eventType": {
+                    "enum": [
+                      "authority_registration_confirmed",
+                      "pro_membership_confirmed",
+                      "report_submission_confirmed",
+                      "fee_payment_confirmed",
+                      "authority_rejected",
+                      "registration_withdrawn"
+                    ],
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "externalReference": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "occurredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "reportingPeriodEnd": {
+                    "format": "date",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "reportingPeriodStart": {
+                    "format": "date",
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "eventType",
+                  "externalReference",
+                  "actorName",
+                  "occurredAt",
+                  "evidenceDocumentId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /eu-textile-epr/assessments/{assessmentId}/external-events",
+        "tags": [
+          "EU textile EPR"
+        ]
+      }
+    },
+    "/eu-textile-epr/assessments/{assessmentId}/reviews": {
+      "post": {
+        "operationId": "postEuTextileEprAssessmentsByAssessmentIdReviews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assessmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approved_for_internal_planning",
+                      "needs_information",
+                      "rejected"
+                    ],
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reviewerRole": {
+                    "enum": [
+                      "eu_epr_specialist"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reviewerRole",
+                  "decision",
+                  "notes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /eu-textile-epr/assessments/{assessmentId}/reviews",
+        "tags": [
+          "EU textile EPR"
         ]
       }
     },
@@ -19350,6 +20103,9 @@
     },
     {
       "name": "Corporate GHG inventories"
+    },
+    {
+      "name": "EU textile EPR"
     },
     {
       "name": "Operations"
