@@ -358,6 +358,15 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload corporate GHG inventory pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corporate-ghg-inventory-pilot-${{ github.run_id }}
+          path: artifacts/corporate-ghg-inventory-pilot/result.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Audit representative hot-query plans
         run: npm run db:audit-hot-queries
 

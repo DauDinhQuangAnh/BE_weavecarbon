@@ -855,6 +855,14 @@ const REQUEST_BODY_OVERRIDES = {
       notes: { type: 'string', minLength: 1, maxLength: 5000 }
     }, additionalProperties: false
   },
+  'POST /corporate-ghg-inventories': { $ref: '#/components/schemas/CorporateGhgInventoryInput' },
+  'POST /corporate-ghg-inventories/{inventoryId}/reviews': {
+    type: 'object', required: ['reviewerRole', 'decision', 'notes'], properties: {
+      reviewerRole: { type: 'string', enum: ['corporate_ghg_inventory_reviewer'] },
+      decision: { type: 'string', enum: ['approved_for_internal_report', 'needs_information', 'rejected'] },
+      notes: { type: 'string', minLength: 1, maxLength: 5000 }
+    }, additionalProperties: false
+  },
   'POST /export/shipments/{shipmentId}/environmental-claims': {
     type: 'object',
     required: [
@@ -1407,6 +1415,88 @@ function contractComponents() {
           notes: { type: 'string', maxLength: 5000 }
         }, additionalProperties: false
       },
+      CorporateGhgInventoryInput: {
+        type: 'object', required: ['inventoryReference', 'inventoryDate', 'reportingEntityName', 'reportingPeriodStart',
+          'reportingPeriodEnd', 'intendedUse', 'organizationalBoundary', 'facilities', 'defaultFuelFacilityReference',
+          'operationalBoundary', 'gasCoverage', 'baseYear', 'scope2Accounting', 'fuelFactorMetadata', 'additionalSources',
+          'dataCompletenessPercent', 'dataQualityAssessment', 'dataImprovementPlan', 'uncertaintyAssessment',
+          'biogenicCo2Kg', 'removalsCo2Kg', 'offsetsRetiredKgCo2e', 'exclusions', 'evidenceDocumentIds', 'assurance', 'limitations'],
+        properties: {
+          inventoryReference: { type: 'string', minLength: 1, maxLength: 120 }, inventoryDate: { type: 'string', format: 'date' },
+          reportingEntityName: { type: 'string', minLength: 1, maxLength: 500 },
+          reportingPeriodStart: { type: 'string', format: 'date' }, reportingPeriodEnd: { type: 'string', format: 'date' },
+          intendedUse: { type: 'string', minLength: 1, maxLength: 5000 },
+          organizationalBoundary: { type: 'object', required: ['approach', 'description', 'entities'], properties: {
+            approach: { type: 'string', enum: ['equity_share', 'financial_control', 'operational_control'] },
+            description: { type: 'string', minLength: 1, maxLength: 10000 },
+            entities: { type: 'array', minItems: 1, maxItems: 200, items: { type: 'object', required: ['reference', 'name', 'ownershipPercent', 'included', 'rationale'], properties: {
+              reference: { type: 'string', minLength: 1, maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 500 },
+              ownershipPercent: { type: 'number', minimum: 0, maximum: 100 }, included: { type: 'boolean' },
+              rationale: { type: 'string', minLength: 1, maxLength: 5000 }
+            }, additionalProperties: false } }
+          }, additionalProperties: false },
+          facilities: { type: 'array', minItems: 1, maxItems: 500, items: { type: 'object', required: ['reference', 'name', 'country', 'included', 'rationale', 'evidenceDocumentIds'], properties: {
+            reference: { type: 'string', minLength: 1, maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 500 },
+            country: { type: 'string', pattern: '^[A-Za-z]{2}$' }, included: { type: 'boolean' }, rationale: { type: 'string', minLength: 1, maxLength: 5000 },
+            evidenceDocumentIds: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } }
+          }, additionalProperties: false } },
+          defaultFuelFacilityReference: { type: 'string', minLength: 1, maxLength: 200 },
+          operationalBoundary: { type: 'object', required: ['scope1', 'scope2', 'scope3Claim', 'scope3'], properties: {
+            scope1: { type: 'array', minItems: 4, maxItems: 20, items: { $ref: '#/components/schemas/GhgBoundaryDecision' } },
+            scope2: { type: 'array', minItems: 4, maxItems: 20, items: { $ref: '#/components/schemas/GhgBoundaryDecision' } },
+            scope3Claim: { type: 'string', enum: ['not_included', 'screened', 'full_inventory'] },
+            scope3: { type: 'array', maxItems: 30, items: { $ref: '#/components/schemas/GhgBoundaryDecision' } }
+          }, additionalProperties: false },
+          gasCoverage: { type: 'array', minItems: 7, maxItems: 7, items: { type: 'object', required: ['gas', 'status', 'rationale'], properties: {
+            gas: { type: 'string', enum: ['CO2', 'CH4', 'N2O', 'HFCs', 'PFCs', 'SF6', 'NF3'] },
+            status: { type: 'string', enum: ['quantified', 'not_relevant'] }, rationale: { type: 'string', minLength: 1, maxLength: 5000 }
+          }, additionalProperties: false } },
+          baseYear: { type: 'object', required: ['year', 'emissionsKgCo2e', 'recalculationPolicy', 'significanceThresholdPercent', 'structuralChanges'], properties: {
+            year: { type: 'integer', minimum: 1990, maximum: 2200 }, emissionsKgCo2e: { type: 'number', minimum: 0, nullable: true },
+            recalculationPolicy: { type: 'string', minLength: 1, maxLength: 10000 }, significanceThresholdPercent: { type: 'number', minimum: 0, maximum: 100 },
+            structuralChanges: { type: 'string', maxLength: 5000 }
+          }, additionalProperties: false },
+          scope2Accounting: { type: 'object', required: ['marketBasedApplicable', 'locationBasedFactorVersion', 'gwpBasis', 'marketBasedMethod', 'contractualInstrumentEvidenceIds'], properties: {
+            marketBasedApplicable: { type: 'boolean' }, locationBasedFactorVersion: { type: 'string', minLength: 1, maxLength: 500 },
+            gwpBasis: { type: 'string', minLength: 1, maxLength: 500 }, marketBasedMethod: { type: 'string', maxLength: 5000 },
+            contractualInstrumentEvidenceIds: { type: 'array', maxItems: 200, uniqueItems: true, items: { type: 'string', format: 'uuid' } }
+          }, additionalProperties: false },
+          fuelFactorMetadata: { type: 'array', maxItems: 100, items: { type: 'object', required: ['fuelType', 'source', 'version', 'gwpBasis'], properties: {
+            fuelType: { type: 'string', minLength: 1, maxLength: 100 }, source: { type: 'string', minLength: 1, maxLength: 1000 },
+            version: { type: 'string', minLength: 1, maxLength: 500 }, gwpBasis: { type: 'string', minLength: 1, maxLength: 500 }
+          }, additionalProperties: false } },
+          additionalSources: { type: 'array', maxItems: 1000, items: { $ref: '#/components/schemas/GhgActivitySourceInput' } },
+          dataCompletenessPercent: { type: 'number', minimum: 0, maximum: 100 },
+          dataQualityAssessment: { type: 'string', minLength: 1, maxLength: 10000 }, dataImprovementPlan: { type: 'string', minLength: 1, maxLength: 10000 },
+          uncertaintyAssessment: { type: 'string', minLength: 1, maxLength: 10000 }, biogenicCo2Kg: { type: 'number', minimum: 0 },
+          removalsCo2Kg: { type: 'number', minimum: 0 }, offsetsRetiredKgCo2e: { type: 'number', minimum: 0 },
+          exclusions: { type: 'array', maxItems: 500, items: { type: 'object', required: ['source', 'rationale', 'estimatedImpactPercent'], properties: {
+            source: { type: 'string', minLength: 1, maxLength: 500 }, rationale: { type: 'string', minLength: 1, maxLength: 5000 },
+            estimatedImpactPercent: { type: 'number', minimum: 0, maximum: 100 }
+          }, additionalProperties: false } },
+          evidenceDocumentIds: { type: 'array', minItems: 1, maxItems: 500, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
+          assurance: { type: 'object', required: ['verifiedLanguageRequested', 'providerName', 'level', 'statementDate', 'evidenceDocumentId'], properties: {
+            verifiedLanguageRequested: { type: 'boolean' }, providerName: { type: 'string', maxLength: 500 },
+            level: { type: 'string', enum: ['', 'limited_assurance', 'reasonable_assurance'] }, statementDate: { type: 'string', format: 'date', nullable: true },
+            evidenceDocumentId: { type: 'string', format: 'uuid', nullable: true }
+          }, additionalProperties: false },
+          limitations: { type: 'string', minLength: 1, maxLength: 10000 }, notes: { type: 'string', maxLength: 5000 }
+        }, additionalProperties: false
+      },
+      GhgBoundaryDecision: { type: 'object', required: ['category', 'status', 'rationale'], properties: {
+        category: { type: 'string', minLength: 1, maxLength: 200 }, status: { type: 'string', enum: ['quantified', 'not_relevant', 'excluded'] },
+        rationale: { type: 'string', minLength: 1, maxLength: 5000 }
+      }, additionalProperties: false },
+      GhgActivitySourceInput: { type: 'object', required: ['sourceReference', 'facilityReference', 'scope', 'category', 'gas',
+        'accountingMethod', 'activityValue', 'activityUnit', 'emissionFactor', 'factorUnit', 'factorSource', 'factorVersion', 'gwpBasis', 'evidenceDocumentIds'], properties: {
+        sourceReference: { type: 'string', minLength: 1, maxLength: 200 }, facilityReference: { type: 'string', minLength: 1, maxLength: 200 },
+        scope: { type: 'string', enum: ['scope1', 'scope2', 'scope3'] }, category: { type: 'string', minLength: 1, maxLength: 200 },
+        gas: { type: 'string', minLength: 1, maxLength: 100 }, accountingMethod: { type: 'string', enum: ['location_based', 'market_based'] },
+        activityValue: { type: 'number', minimum: 0 }, activityUnit: { type: 'string', minLength: 1, maxLength: 100 },
+        emissionFactor: { type: 'number', minimum: 0 }, factorUnit: { type: 'string', minLength: 1, maxLength: 200 },
+        factorSource: { type: 'string', minLength: 1, maxLength: 1000 }, factorVersion: { type: 'string', minLength: 1, maxLength: 500 },
+        gwpBasis: { type: 'string', minLength: 1, maxLength: 500 }, evidenceDocumentIds: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } }
+      }, additionalProperties: false },
       Product: {
         type: 'object',
         required: ['id', 'productCode', 'productName', 'status'],

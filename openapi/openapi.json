@@ -399,6 +399,508 @@
         ],
         "type": "object"
       },
+      "CorporateGhgInventoryInput": {
+        "additionalProperties": false,
+        "properties": {
+          "additionalSources": {
+            "items": {
+              "$ref": "#/components/schemas/GhgActivitySourceInput"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "assurance": {
+            "additionalProperties": false,
+            "properties": {
+              "evidenceDocumentId": {
+                "format": "uuid",
+                "nullable": true,
+                "type": "string"
+              },
+              "level": {
+                "enum": [
+                  "",
+                  "limited_assurance",
+                  "reasonable_assurance"
+                ],
+                "type": "string"
+              },
+              "providerName": {
+                "maxLength": 500,
+                "type": "string"
+              },
+              "statementDate": {
+                "format": "date",
+                "nullable": true,
+                "type": "string"
+              },
+              "verifiedLanguageRequested": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "verifiedLanguageRequested",
+              "providerName",
+              "level",
+              "statementDate",
+              "evidenceDocumentId"
+            ],
+            "type": "object"
+          },
+          "baseYear": {
+            "additionalProperties": false,
+            "properties": {
+              "emissionsKgCo2e": {
+                "minimum": 0,
+                "nullable": true,
+                "type": "number"
+              },
+              "recalculationPolicy": {
+                "maxLength": 10000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "significanceThresholdPercent": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              "structuralChanges": {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              "year": {
+                "maximum": 2200,
+                "minimum": 1990,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "year",
+              "emissionsKgCo2e",
+              "recalculationPolicy",
+              "significanceThresholdPercent",
+              "structuralChanges"
+            ],
+            "type": "object"
+          },
+          "biogenicCo2Kg": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "dataCompletenessPercent": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "number"
+          },
+          "dataImprovementPlan": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "dataQualityAssessment": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "defaultFuelFacilityReference": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "evidenceDocumentIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "exclusions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "estimatedImpactPercent": {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "rationale": {
+                  "maxLength": 5000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "rationale",
+                "estimatedImpactPercent"
+              ],
+              "type": "object"
+            },
+            "maxItems": 500,
+            "type": "array"
+          },
+          "facilities": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "country": {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                "evidenceDocumentIds": {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "maxItems": 100,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "included": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "rationale": {
+                  "maxLength": 5000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "reference": {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reference",
+                "name",
+                "country",
+                "included",
+                "rationale",
+                "evidenceDocumentIds"
+              ],
+              "type": "object"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "type": "array"
+          },
+          "fuelFactorMetadata": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "fuelType": {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "gwpBasis": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source": {
+                  "maxLength": 1000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "version": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "fuelType",
+                "source",
+                "version",
+                "gwpBasis"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "gasCoverage": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "gas": {
+                  "enum": [
+                    "CO2",
+                    "CH4",
+                    "N2O",
+                    "HFCs",
+                    "PFCs",
+                    "SF6",
+                    "NF3"
+                  ],
+                  "type": "string"
+                },
+                "rationale": {
+                  "maxLength": 5000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "quantified",
+                    "not_relevant"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "gas",
+                "status",
+                "rationale"
+              ],
+              "type": "object"
+            },
+            "maxItems": 7,
+            "minItems": 7,
+            "type": "array"
+          },
+          "intendedUse": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "inventoryDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "inventoryReference": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limitations": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "notes": {
+            "maxLength": 5000,
+            "type": "string"
+          },
+          "offsetsRetiredKgCo2e": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "operationalBoundary": {
+            "additionalProperties": false,
+            "properties": {
+              "scope1": {
+                "items": {
+                  "$ref": "#/components/schemas/GhgBoundaryDecision"
+                },
+                "maxItems": 20,
+                "minItems": 4,
+                "type": "array"
+              },
+              "scope2": {
+                "items": {
+                  "$ref": "#/components/schemas/GhgBoundaryDecision"
+                },
+                "maxItems": 20,
+                "minItems": 4,
+                "type": "array"
+              },
+              "scope3": {
+                "items": {
+                  "$ref": "#/components/schemas/GhgBoundaryDecision"
+                },
+                "maxItems": 30,
+                "type": "array"
+              },
+              "scope3Claim": {
+                "enum": [
+                  "not_included",
+                  "screened",
+                  "full_inventory"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "scope1",
+              "scope2",
+              "scope3Claim",
+              "scope3"
+            ],
+            "type": "object"
+          },
+          "organizationalBoundary": {
+            "additionalProperties": false,
+            "properties": {
+              "approach": {
+                "enum": [
+                  "equity_share",
+                  "financial_control",
+                  "operational_control"
+                ],
+                "type": "string"
+              },
+              "description": {
+                "maxLength": 10000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "entities": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "included": {
+                      "type": "boolean"
+                    },
+                    "name": {
+                      "maxLength": 500,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "ownershipPercent": {
+                      "maximum": 100,
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "rationale": {
+                      "maxLength": 5000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "reference": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "reference",
+                    "name",
+                    "ownershipPercent",
+                    "included",
+                    "rationale"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 200,
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "approach",
+              "description",
+              "entities"
+            ],
+            "type": "object"
+          },
+          "removalsCo2Kg": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "reportingEntityName": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reportingPeriodEnd": {
+            "format": "date",
+            "type": "string"
+          },
+          "reportingPeriodStart": {
+            "format": "date",
+            "type": "string"
+          },
+          "scope2Accounting": {
+            "additionalProperties": false,
+            "properties": {
+              "contractualInstrumentEvidenceIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 200,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "gwpBasis": {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              "locationBasedFactorVersion": {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              "marketBasedApplicable": {
+                "type": "boolean"
+              },
+              "marketBasedMethod": {
+                "maxLength": 5000,
+                "type": "string"
+              }
+            },
+            "required": [
+              "marketBasedApplicable",
+              "locationBasedFactorVersion",
+              "gwpBasis",
+              "marketBasedMethod",
+              "contractualInstrumentEvidenceIds"
+            ],
+            "type": "object"
+          },
+          "uncertaintyAssessment": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "inventoryReference",
+          "inventoryDate",
+          "reportingEntityName",
+          "reportingPeriodStart",
+          "reportingPeriodEnd",
+          "intendedUse",
+          "organizationalBoundary",
+          "facilities",
+          "defaultFuelFacilityReference",
+          "operationalBoundary",
+          "gasCoverage",
+          "baseYear",
+          "scope2Accounting",
+          "fuelFactorMetadata",
+          "additionalSources",
+          "dataCompletenessPercent",
+          "dataQualityAssessment",
+          "dataImprovementPlan",
+          "uncertaintyAssessment",
+          "biogenicCo2Kg",
+          "removalsCo2Kg",
+          "offsetsRetiredKgCo2e",
+          "exclusions",
+          "evidenceDocumentIds",
+          "assurance",
+          "limitations"
+        ],
+        "type": "object"
+      },
       "ErrorDetail": {
         "additionalProperties": false,
         "properties": {
@@ -469,6 +971,135 @@
         },
         "required": [
           "success"
+        ],
+        "type": "object"
+      },
+      "GhgActivitySourceInput": {
+        "additionalProperties": false,
+        "properties": {
+          "accountingMethod": {
+            "enum": [
+              "location_based",
+              "market_based"
+            ],
+            "type": "string"
+          },
+          "activityUnit": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "activityValue": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "category": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "emissionFactor": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "evidenceDocumentIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "facilityReference": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "factorSource": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "factorUnit": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "factorVersion": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "gas": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "gwpBasis": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "scope1",
+              "scope2",
+              "scope3"
+            ],
+            "type": "string"
+          },
+          "sourceReference": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceReference",
+          "facilityReference",
+          "scope",
+          "category",
+          "gas",
+          "accountingMethod",
+          "activityValue",
+          "activityUnit",
+          "emissionFactor",
+          "factorUnit",
+          "factorSource",
+          "factorVersion",
+          "gwpBasis",
+          "evidenceDocumentIds"
+        ],
+        "type": "object"
+      },
+      "GhgBoundaryDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "rationale": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "quantified",
+              "not_relevant",
+              "excluded"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "status",
+          "rationale"
         ],
         "type": "object"
       },
@@ -5262,6 +5893,183 @@
         "summary": "POST /contact/lead",
         "tags": [
           "Contact"
+        ]
+      }
+    },
+    "/corporate-ghg-inventories": {
+      "get": {
+        "operationId": "getCorporateGhgInventories",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /corporate-ghg-inventories",
+        "tags": [
+          "Corporate GHG inventories"
+        ]
+      },
+      "post": {
+        "operationId": "postCorporateGhgInventories",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorporateGhgInventoryInput"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /corporate-ghg-inventories",
+        "tags": [
+          "Corporate GHG inventories"
+        ]
+      }
+    },
+    "/corporate-ghg-inventories/{inventoryId}/reviews": {
+      "post": {
+        "operationId": "postCorporateGhgInventoriesByInventoryIdReviews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "inventoryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approved_for_internal_report",
+                      "needs_information",
+                      "rejected"
+                    ],
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reviewerRole": {
+                    "enum": [
+                      "corporate_ghg_inventory_reviewer"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reviewerRole",
+                  "decision",
+                  "notes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /corporate-ghg-inventories/{inventoryId}/reviews",
+        "tags": [
+          "Corporate GHG inventories"
         ]
       }
     },
@@ -18539,6 +19347,9 @@
     },
     {
       "name": "Carbon factors"
+    },
+    {
+      "name": "Corporate GHG inventories"
     },
     {
       "name": "Operations"

@@ -12,10 +12,11 @@ const { UPLOADS_ROOT } = require('../src/config/runtime');
 const { calculateCarbonFootprint } = require('../src/modules/carbon/core');
 const { insertFinalizedProductSnapshot } = require('../src/modules/carbon/calculationSnapshot');
 const { createExportShipmentService } = require('../src/services/exportShipmentService');
+const { CorporateGhgInventoryService } = require('../src/services/corporateGhgInventoryService');
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pcf-pilot-v11',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-claims-textile-gpsr-reach-pcf-corporate-ghg-pilot-v12',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -31,7 +32,8 @@ const result = {
   gpsrPostMarketEvents: [],
   reachSvhcDossiers: [],
   reachObligationEvents: [],
-  pcfStudies: []
+  pcfStudies: [],
+  corporateGhgInventories: []
 };
 
 function check(name, details = {}) {
@@ -48,7 +50,7 @@ async function writeResult() {
     'carrier-document-pilot', 'vn-customs-handoff-pilot', 'eu-import-handoff-pilot',
     'ics2-handoff-pilot', 'origin-handoff-pilot', 'compliance-applicability-pilot',
     'environmental-claim-pilot', 'textile-fibre-label-pilot', 'gpsr-technical-file-pilot', 'reach-svhc-dossier-pilot',
-    'pcf-study-pilot'
+    'pcf-study-pilot', 'corporate-ghg-inventory-pilot'
   ]) {
     const directory = path.resolve(__dirname, '..', 'artifacts', name);
     await fs.promises.mkdir(directory, { recursive: true });
@@ -1344,6 +1346,109 @@ async function run() {
     calculationCanonicalInputHash: controlledPcf.calculationCanonicalInputHash,
     inputSha256: controlledPcf.inputSha256, resultSha256: controlledPcf.resultSha256 });
   check('r12_study_is_calculation_hash_and_evidence_bound');
+
+  await pool.query(
+    `INSERT INTO electricity_invoices (company_id, facility_name, billing_period, kwh,
+       emission_factor_kg_per_kwh, emission_factor_source, status, evidence_document_id, created_by)
+     VALUES ($1,'Main Facility','2026-09',1000,0.4,'Synthetic Vietnam grid factor 2023','verified',$2,$3)`,
+    [ids.companyId, originEvidence.evidenceId, ids.userId]
+  );
+  await pool.query(
+    `INSERT INTO fuel_invoices (company_id, billing_period, fuel_type, quantity_liters,
+       emission_factor_kg_per_liter, scope1_co2e_kg, status, evidence_document_id, created_by)
+     VALUES ($1,'2026-09','diesel',100,2.5,250,'reviewed',$2,$3)`,
+    [ids.companyId, originEvidence.evidenceId, ids.userId]
+  );
+  const ghgService = new CorporateGhgInventoryService(pool);
+  const ghgDecisions = (categories, quantified) => categories.map((category) => ({
+    category,
+    status: quantified.includes(category) ? 'quantified' : 'not_relevant',
+    rationale: quantified.includes(category) ? 'Included from reviewed invoice activity.' : 'Screened and not relevant.'
+  }));
+  const ghgBase = {
+    inventoryDate: '2026-09-13', reportingEntityName: `Carrier pilot ${runId}`,
+    reportingPeriodStart: '2026-09-01', reportingPeriodEnd: '2026-09-30',
+    intendedUse: 'Synthetic internal management inventory control pilot.',
+    organizationalBoundary: { approach: 'operational_control', description: 'All synthetic operations under operational control.',
+      entities: [{ reference: 'ENTITY-1', name: `Carrier pilot ${runId}`, ownershipPercent: 100,
+        included: true, rationale: 'Synthetic parent reporting entity.' }] },
+    facilities: [{ reference: 'FAC-1', name: 'Main Facility', country: 'VN', included: true,
+      rationale: 'Synthetic facility under operational control.', evidenceDocumentIds: [originEvidence.evidenceId] }],
+    defaultFuelFacilityReference: 'FAC-1',
+    operationalBoundary: {
+      scope1: ghgDecisions(['stationary_combustion', 'mobile_combustion', 'process_emissions', 'fugitive_emissions'], ['stationary_combustion']),
+      scope2: ghgDecisions(['purchased_electricity', 'purchased_steam', 'purchased_heat', 'purchased_cooling'], ['purchased_electricity']),
+      scope3Claim: 'not_included', scope3: []
+    },
+    gasCoverage: ['CO2', 'CH4', 'N2O', 'HFCs', 'PFCs', 'SF6', 'NF3'].map((gas) => ({
+      gas, status: gas === 'CO2' ? 'quantified' : 'not_relevant',
+      rationale: gas === 'CO2' ? 'CO2e factors applied.' : 'Screened; no relevant synthetic source.'
+    })),
+    baseYear: { year: 2025, emissionsKgCo2e: null,
+      recalculationPolicy: 'Recalculate for structural or methodology changes above the significance threshold.',
+      significanceThresholdPercent: 5, structuralChanges: 'None recorded.' },
+    scope2Accounting: { marketBasedApplicable: false, locationBasedFactorVersion: 'Synthetic Vietnam grid EF 2023',
+      gwpBasis: 'IPCC AR6 100-year', marketBasedMethod: '', contractualInstrumentEvidenceIds: [] },
+    fuelFactorMetadata: [{ fuelType: 'diesel', source: 'Synthetic DEFRA-compatible conversion factor',
+      version: '2025-pilot', gwpBasis: 'IPCC AR6 100-year' }],
+    additionalSources: [], dataCompletenessPercent: 100,
+    dataQualityAssessment: 'Source, period, factor provenance and representativeness reviewed.',
+    dataImprovementPlan: 'Replace all synthetic values with primary facility records before real use.',
+    uncertaintyAssessment: 'Qualitative activity-data and emission-factor uncertainty documented.',
+    biogenicCo2Kg: 0, removalsCo2Kg: 0, offsetsRetiredKgCo2e: 20, exclusions: [],
+    evidenceDocumentIds: [originEvidence.evidenceId],
+    assurance: { verifiedLanguageRequested: false, providerName: '', level: '', statementDate: null, evidenceDocumentId: null },
+    limitations: 'Synthetic internal Scope 1 and Scope 2 inventory; Scope 3 excluded; no independent assurance.',
+    notes: 'R13 synthetic pilot; not certification or a public claim.'
+  };
+  const blockedGhg = await ghgService.createRevision(ids.companyId, ids.userId, {
+    ...ghgBase, inventoryReference: `GHG-BLOCKED-${runId}`,
+    operationalBoundary: { ...ghgBase.operationalBoundary, scope1: ghgBase.operationalBoundary.scope1.slice(0, 3) },
+    scope2Accounting: { ...ghgBase.scope2Accounting, marketBasedApplicable: true },
+    assurance: { verifiedLanguageRequested: true, providerName: 'Synthetic claimant', level: 'limited_assurance',
+      statementDate: '2026-09-13', evidenceDocumentId: originEvidence.evidenceId }
+  });
+  assert.equal(blockedGhg.automatedStatus, 'needs_information');
+  assert.ok(blockedGhg.result.findings.some((item) => item.code === 'GHG_OPERATIONAL_BOUNDARY_INCOMPLETE'));
+  assert.ok(blockedGhg.result.findings.some((item) => item.code === 'GHG_SCOPE2_DUAL_REPORTING_INCOMPLETE'));
+  assert.ok(blockedGhg.result.findings.some((item) => item.code === 'GHG_ASSURANCE_INVALID'));
+  check('r13_incomplete_boundary_dual_scope2_and_assurance_are_blocked');
+
+  const controlledGhg = await ghgService.createRevision(ids.companyId, ids.userId, {
+    ...ghgBase, inventoryReference: `GHG-${runId}`
+  });
+  assert.equal(controlledGhg.automatedStatus, 'inventory_review_required');
+  assert.deepEqual(controlledGhg.result.totals, {
+    scope1KgCo2e: 250, scope2LocationBasedKgCo2e: 400, scope2MarketBasedKgCo2e: null,
+    scope3KgCo2e: null, biogenicCo2Kg: 0, removalsCo2Kg: 0, offsetsRetiredKgCo2e: 20,
+    grossScope1AndLocationScope2KgCo2e: 650
+  });
+  assert.equal(controlledGhg.result.activitySourceCount, 2);
+  check('r13_gross_scope_totals_reproduce_without_offset_netting');
+
+  const wrongGhgRole = await ghgService.review(ids.companyId, controlledGhg.id, ids.userId, {
+    reviewerRole: 'sustainability_manager', decision: 'approved_for_internal_report', notes: 'Wrong role.'
+  });
+  assert.equal(wrongGhgRole.code, 'GHG_REVIEW_ROLE_INVALID');
+  const ghgReview = await ghgService.review(ids.companyId, controlledGhg.id, ids.userId, {
+    reviewerRole: 'corporate_ghg_inventory_reviewer', decision: 'approved_for_internal_report',
+    notes: 'Synthetic organizational boundary, operational boundary, source factors, completeness and uncertainty reviewed.'
+  });
+  assert.equal(ghgReview.reviewerName, 'Carrier Metadata Reviewer');
+  assert.equal(ghgReview.inputSha256, controlledGhg.inputSha256);
+  assert.equal(ghgReview.activitySnapshotSha256, controlledGhg.activitySnapshotSha256);
+  assert.equal(ghgReview.resultSha256, controlledGhg.resultSha256);
+  const ghgRegister = await ghgService.list(ids.companyId);
+  assert.equal(ghgRegister.find((item) => item.id === controlledGhg.id).inventoryStatus, 'approved_for_internal_report');
+  assert.deepEqual(await ghgService.list(ids.otherCompanyId), []);
+  await assert.rejects(pool.query('UPDATE corporate_ghg_inventory_revisions SET automated_status=$1 WHERE id=$2', [
+    'needs_information', controlledGhg.id
+  ]), /append-only and immutable/i);
+  result.corporateGhgInventories.push({ id: controlledGhg.id, inventoryReference: controlledGhg.inventoryReference,
+    revision: controlledGhg.revision, inventoryStatus: 'approved_for_internal_report', inputSha256: controlledGhg.inputSha256,
+    activitySnapshotSha256: controlledGhg.activitySnapshotSha256, resultSha256: controlledGhg.resultSha256,
+    totals: controlledGhg.result.totals });
+  check('r13_inventory_is_tenant_isolated_hash_bound_named_reviewed_and_immutable');
 
   const firstReadiness = await service.getReadiness(ids.companyId, ids.shipmentId);
   assert.equal(firstReadiness.documents.find((item) => item.type === 'carbon_annex').status, 'ready');

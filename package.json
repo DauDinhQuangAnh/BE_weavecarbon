@@ -24,6 +24,7 @@
     "test:gpsr-technical-file-pilot": "node scripts/test-carrier-document-pilot.js",
     "test:reach-svhc-dossier-pilot": "node scripts/test-carrier-document-pilot.js",
     "test:pcf-study-pilot": "node scripts/test-carrier-document-pilot.js",
+    "test:corporate-ghg-inventory-pilot": "node scripts/test-carrier-document-pilot.js",
     "db:audit-hot-queries": "node scripts/audit-hot-queries.js",
     "analytics:flush": "node scripts/flush-analytics-outbox.js",
     "build:release": "node scripts/build-release.js",

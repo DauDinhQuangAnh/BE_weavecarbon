@@ -19,6 +19,7 @@ const TENANT_RESOURCE_PREFIXES = [
   '/api/carbon-calculations',
   '/api/electricity-invoices',
   '/api/fuel-invoices',
+  '/api/corporate-ghg-inventories',
   '/api/suppliers',
   '/api/data-gaps',
   '/api/audit-trail',
