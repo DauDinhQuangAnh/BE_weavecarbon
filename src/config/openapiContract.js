@@ -614,6 +614,59 @@ const REQUEST_BODY_OVERRIDES = {
   'PUT /export/shipments/{shipmentId}/ics2/profile': ICS2_PROFILE_SCHEMA,
   'POST /export/shipments/{shipmentId}/ics2/events': ICS2_EVENT_SCHEMA,
   'PUT /export/shipments/{shipmentId}/origin/profile': ORIGIN_PROFILE_SCHEMA,
+  'POST /export/shipments/{shipmentId}/compliance/applicability-evaluations': {
+    type: 'object',
+    required: [
+      'assessmentDate', 'productCategory', 'intendedUse', 'consumerGroup', 'importerRole',
+      'salesChannels', 'consumerProduct', 'placedOnEuMarket'
+    ],
+    properties: {
+      assessmentDate: { type: 'string', format: 'date' },
+      productCategory: { type: 'string', minLength: 1, maxLength: 200 },
+      intendedUse: { type: 'string', minLength: 1, maxLength: 500 },
+      consumerGroup: { type: 'string', minLength: 1, maxLength: 200 },
+      importerRole: { type: 'string', minLength: 1, maxLength: 200 },
+      salesChannels: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'string', maxLength: 100 } },
+      consumerProduct: { type: 'boolean' },
+      placedOnEuMarket: { type: 'boolean' },
+      textileFibrePercent: { type: 'number', minimum: 0, maximum: 100, nullable: true },
+      materialFacts: {
+        type: 'array', maxItems: 500,
+        items: {
+          type: 'object',
+          properties: {
+            reference: { type: 'string', maxLength: 200 },
+            description: { type: 'string', maxLength: 1000 },
+            hsCode: { type: 'string', pattern: '^[0-9 .-]{0,20}$' },
+            originCountry: { type: 'string', pattern: '^[A-Za-z]{0,2}$' },
+            percentageByWeight: { type: 'number', minimum: 0, maximum: 100, nullable: true },
+            animalOrigin: { type: 'boolean', nullable: true },
+            substancesScreened: { type: 'boolean', nullable: true }
+          },
+          additionalProperties: false
+        }
+      },
+      notes: { type: 'string', maxLength: 5000 }
+    },
+    additionalProperties: false
+  },
+  'POST /export/shipments/{shipmentId}/compliance/applicability-evaluations/{evaluationId}/reviews': {
+    type: 'object',
+    required: ['reviewerRole', 'decision', 'notes'],
+    properties: {
+      reviewerRole: { type: 'string', enum: ['compliance_specialist'] },
+      decision: {
+        type: 'string',
+        enum: ['confirmed_for_internal_planning', 'needs_information', 'rejected']
+      },
+      notes: { type: 'string', minLength: 1, maxLength: 5000 },
+      evidenceDocumentIds: {
+        type: 'array', maxItems: 50, uniqueItems: true,
+        items: { type: 'string', format: 'uuid' }
+      }
+    },
+    additionalProperties: false
+  },
   'POST /carbon-calculations': {
     type: 'object',
     required: ['calculation_type', 'carbon_input'],

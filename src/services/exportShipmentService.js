@@ -47,6 +47,10 @@ const {
   profileFromRow: originProfileFromRow,
   validateOriginHandoff
 } = require('./originHandoffControls');
+const {
+  RULESET: COMPLIANCE_APPLICABILITY_RULESET,
+  evaluateComplianceApplicability
+} = require('./complianceApplicabilityControls');
 
 const RULESET_VERSION = 'VN-EU-TEXTILE-2026.09.4';
 const CARRIER_RULESET_VERSION = 'R03-CARRIER-RECONCILIATION-2026.09.1';
@@ -146,6 +150,7 @@ const CBAM_RULESET = {
 
 function text(value) { return String(value ?? '').trim(); }
 function object(value) { return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; }
+function array(value) { return Array.isArray(value) ? value : []; }
 function numberOrNull(value) {
   if (value === '' || value === null || value === undefined) return null;
   const parsed = Number(value);
@@ -666,6 +671,134 @@ class ExportShipmentService {
       };
     });
     return snapshot;
+  }
+
+  async evaluateComplianceApplicability(companyId, shipmentId, userId, input = {}) {
+    const snapshot = await this.getProfile(companyId, shipmentId);
+    if (!snapshot) return null;
+    const evaluation = evaluateComplianceApplicability(snapshot, input);
+    if (!evaluation.input.assessmentDate) {
+      return {
+        blocked: true,
+        code: 'COMPLIANCE_ASSESSMENT_DATE_REQUIRED',
+        message: 'A valid assessmentDate is required so the effective rules can be identified.'
+      };
+    }
+    const result = await this.database.query(
+      `INSERT INTO compliance_applicability_evaluations (
+         company_id, shipment_id, ruleset_id, ruleset_version, ruleset_coverage,
+         source_manifest_sha256, assessment_date, input_snapshot, input_sha256,
+         result_snapshot, result_sha256, status, created_by
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10::jsonb,$11,$12,$13)
+       RETURNING *`,
+      [companyId, shipmentId, evaluation.result.rulesetId, evaluation.result.rulesetVersion,
+        evaluation.result.rulesetCoverage, evaluation.result.sourceManifestSha256,
+        evaluation.input.assessmentDate, JSON.stringify(evaluation.input), evaluation.inputSha256,
+        JSON.stringify(evaluation.result), evaluation.result.resultSha256, evaluation.result.status, userId]
+    );
+    return this._formatComplianceApplicabilityEvaluation(result.rows[0]);
+  }
+
+  async listComplianceApplicabilityEvaluations(companyId, shipmentId) {
+    if (!(await this._assertShipment(companyId, shipmentId))) return null;
+    const result = await this.database.query(
+      `SELECT evaluation.*, to_jsonb(latest_review) AS latest_review
+       FROM compliance_applicability_evaluations evaluation
+       LEFT JOIN LATERAL (
+         SELECT review.* FROM compliance_applicability_reviews review
+         WHERE review.evaluation_id=evaluation.id AND review.company_id=evaluation.company_id
+           AND review.shipment_id=evaluation.shipment_id
+         ORDER BY review.created_at DESC, review.id DESC LIMIT 1
+       ) latest_review ON true
+       WHERE evaluation.company_id=$1 AND evaluation.shipment_id=$2
+       ORDER BY evaluation.created_at DESC, evaluation.id DESC`,
+      [companyId, shipmentId]
+    );
+    return result.rows.map((row) => this._formatComplianceApplicabilityEvaluation(row));
+  }
+
+  async reviewComplianceApplicability(companyId, shipmentId, evaluationId, userId, input = {}) {
+    if (!UUID_REGEX.test(String(evaluationId || ''))) return null;
+    const reviewerRole = text(input.reviewerRole || input.reviewer_role);
+    const decision = text(input.decision).toLowerCase();
+    const notes = text(input.notes);
+    if (reviewerRole !== 'compliance_specialist') {
+      return {
+        blocked: true, code: 'COMPLIANCE_REVIEW_ROLE_INVALID',
+        message: 'Applicability evaluations require the compliance_specialist reviewer role.'
+      };
+    }
+    if (!new Set(['confirmed_for_internal_planning', 'needs_information', 'rejected']).has(decision)) {
+      return {
+        blocked: true, code: 'COMPLIANCE_REVIEW_DECISION_INVALID',
+        message: 'Decision must be confirmed_for_internal_planning, needs_information or rejected.'
+      };
+    }
+    if (!notes) {
+      return { blocked: true, code: 'COMPLIANCE_REVIEW_NOTES_REQUIRED', message: 'Review notes are required.' };
+    }
+    const evaluationResult = await this.database.query(
+      `SELECT * FROM compliance_applicability_evaluations
+       WHERE id=$1 AND company_id=$2 AND shipment_id=$3`,
+      [evaluationId, companyId, shipmentId]
+    );
+    const evaluation = evaluationResult.rows[0];
+    if (!evaluation) return null;
+
+    const rawEvidenceIds = array(input.evidenceDocumentIds || input.evidence_document_ids)
+      .map((id) => text(id));
+    if (rawEvidenceIds.length > 50 || rawEvidenceIds.some((id) => !UUID_REGEX.test(id))) {
+      return {
+        blocked: true, code: 'COMPLIANCE_REVIEW_EVIDENCE_INVALID',
+        message: 'Review evidence must contain at most 50 valid evidence UUIDs.'
+      };
+    }
+    const evidenceIds = [...new Set(rawEvidenceIds)];
+    if (decision === 'confirmed_for_internal_planning' && !evidenceIds.length) {
+      return {
+        blocked: true, code: 'COMPLIANCE_REVIEW_EVIDENCE_REQUIRED',
+        message: 'At least one locked evidence document is required for a confirmed internal-planning disposition.'
+      };
+    }
+    let evidenceSnapshot = [];
+    if (evidenceIds.length) {
+      const evidenceResult = await this.database.query(
+        `SELECT id, evidence_type, document_name, checksum_sha256, file_size_bytes, status
+         FROM evidence_documents
+         WHERE company_id=$1 AND shipment_id=$2 AND id=ANY($3::uuid[])
+           AND status IN ('locked', 'third_party_verified')
+         ORDER BY id`,
+        [companyId, shipmentId, evidenceIds]
+      );
+      if (evidenceResult.rows.length !== evidenceIds.length) {
+        return {
+          blocked: true, code: 'COMPLIANCE_REVIEW_EVIDENCE_INVALID',
+          message: 'Every review evidence id must belong to this shipment and be locked or third-party verified.'
+        };
+      }
+      evidenceSnapshot = evidenceResult.rows.map((row) => ({
+        id: row.id, type: row.evidence_type, name: row.document_name,
+        checksumSha256: row.checksum_sha256, fileSizeBytes: Number(row.file_size_bytes || 0), status: row.status
+      }));
+    }
+    const reviewerResult = await this.database.query(
+      'SELECT id, email, full_name FROM users WHERE id=$1', [userId]
+    );
+    const reviewer = reviewerResult.rows[0];
+    if (!reviewer) {
+      return { blocked: true, code: 'COMPLIANCE_REVIEWER_NOT_FOUND', message: 'Reviewer identity was not found.' };
+    }
+    const inserted = await this.database.query(
+      `INSERT INTO compliance_applicability_reviews (
+         company_id, shipment_id, evaluation_id, reviewer_id, reviewer_name_snapshot,
+         reviewer_email_snapshot, reviewer_role, decision, notes, input_sha256,
+         result_sha256, evidence_snapshot
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) RETURNING *`,
+      [companyId, shipmentId, evaluationId, userId, reviewer.full_name || reviewer.email,
+        reviewer.email || null, reviewerRole, decision, notes,
+        evaluation.input_sha256, evaluation.result_sha256, JSON.stringify(evidenceSnapshot)]
+    );
+    return this._formatComplianceApplicabilityReview(inserted.rows[0]);
   }
 
   async upsertProfile(companyId, shipmentId, userId, input = {}) {
@@ -3276,6 +3409,33 @@ class ExportShipmentService {
       sourceSnapshotSha256: row.source_snapshot_sha256
     };
   }
+
+  _formatComplianceApplicabilityEvaluation(row) {
+    if (!row) return null;
+    return {
+      id: row.id, shipmentId: row.shipment_id,
+      rulesetId: row.ruleset_id, rulesetVersion: row.ruleset_version,
+      rulesetCoverage: row.ruleset_coverage, sourceManifestSha256: row.source_manifest_sha256,
+      assessmentDate: dateOnly(row.assessment_date), input: row.input_snapshot,
+      inputSha256: row.input_sha256, result: row.result_snapshot,
+      resultSha256: row.result_sha256, status: row.status,
+      createdBy: row.created_by, createdAt: row.created_at,
+      latestReview: row.latest_review ? this._formatComplianceApplicabilityReview(row.latest_review) : null
+    };
+  }
+
+  _formatComplianceApplicabilityReview(row) {
+    if (!row) return null;
+    return {
+      id: row.id, evaluationId: row.evaluation_id,
+      reviewerId: row.reviewer_id, reviewerRole: row.reviewer_role,
+      reviewerName: row.reviewer_name_snapshot || null,
+      reviewerEmail: row.reviewer_email_snapshot || null,
+      decision: row.decision, notes: row.notes,
+      inputSha256: row.input_sha256, resultSha256: row.result_sha256,
+      evidenceSnapshot: row.evidence_snapshot || [], createdAt: row.created_at
+    };
+  }
 }
 
 const service = new ExportShipmentService();
@@ -3291,4 +3451,5 @@ module.exports.CARRIER_RULESET_VERSION = CARRIER_RULESET_VERSION;
 module.exports.VN_CUSTOMS_HANDOFF_SCHEMA = VN_CUSTOMS_HANDOFF_SCHEMA;
 module.exports.EU_IMPORT_HANDOFF_SCHEMA = EU_IMPORT_HANDOFF_SCHEMA;
 module.exports.ICS2_HANDOFF_SCHEMA = ICS2_HANDOFF_SCHEMA;
+module.exports.COMPLIANCE_APPLICABILITY_RULESET = COMPLIANCE_APPLICABILITY_RULESET;
 module.exports.RULESET_VERSION = RULESET_VERSION;

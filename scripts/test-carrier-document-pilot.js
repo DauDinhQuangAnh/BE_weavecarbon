@@ -15,7 +15,7 @@ const { createExportShipmentService } = require('../src/services/exportShipmentS
 
 const REQUIRED_CONFIRMATION = 'I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA';
 const result = {
-  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-handoff-pilot-v5',
+  schemaVersion: 'weavecarbon-carrier-vn-customs-eu-import-ics2-origin-compliance-pilot-v6',
   startedAt: new Date().toISOString(),
   status: 'running',
   isolatedDatabaseConfirmed: false,
@@ -39,7 +39,7 @@ async function writeResult() {
   const contents = `${JSON.stringify(result, null, 2)}\n`;
   for (const name of [
     'carrier-document-pilot', 'vn-customs-handoff-pilot', 'eu-import-handoff-pilot',
-    'ics2-handoff-pilot', 'origin-handoff-pilot'
+    'ics2-handoff-pilot', 'origin-handoff-pilot', 'compliance-applicability-pilot'
   ]) {
     const directory = path.resolve(__dirname, '..', 'artifacts', name);
     await fs.promises.mkdir(directory, { recursive: true });
@@ -784,6 +784,62 @@ async function run() {
     proofOfOriginStatus: originDataset.proofOfOriginStatus
   });
   check('r07_json_reviewed_and_locked_without_proof_or_preference_claim');
+
+  const applicability = await service.evaluateComplianceApplicability(
+    ids.companyId, ids.shipmentId, ids.userId, {
+      assessmentDate: '2026-09-13', productCategory: 'apparel', intendedUse: 'everyday wear',
+      consumerGroup: 'adults', importerRole: 'EU importer', salesChannels: ['retail', 'online'],
+      consumerProduct: true, placedOnEuMarket: true, textileFibrePercent: 100,
+      materialFacts: [{
+        reference: `TRIM-${runId}`, description: 'Synthetic animal-origin trim', hsCode: '4205',
+        originCountry: 'IN', percentageByWeight: 1, animalOrigin: true, substancesScreened: false
+      }],
+      notes: 'Synthetic R20 applicability input; not a legal determination.'
+    }
+  );
+  assert.equal(applicability.status, 'specialist_review_required');
+  assert.equal(applicability.rulesetCoverage, 'limited');
+  assert.equal(applicability.input.products[0].taricCode, '6205200010');
+  assert.ok(applicability.result.matches.some((item) =>
+    item.code === 'EU_TEXTILE_FIBRE_LABEL_SCOPE' && item.decision === 'requirements_identified'
+  ));
+  assert.ok(applicability.result.matches.some((item) =>
+    item.code === 'EU_REACH_SUBSTANCE_SCREEN' && item.decision === 'specialist_review_required'
+  ));
+  assert.equal(await service.listComplianceApplicabilityEvaluations(ids.otherCompanyId, ids.shipmentId), null);
+  check('r20_source_versioned_applicability_is_explainable_and_tenant_isolated');
+
+  const evidenceFreeReview = await service.reviewComplianceApplicability(
+    ids.companyId, ids.shipmentId, applicability.id, ids.userId, {
+      reviewerRole: 'compliance_specialist', decision: 'confirmed_for_internal_planning',
+      notes: 'Synthetic specialist review without evidence must fail.'
+    }
+  );
+  assert.equal(evidenceFreeReview.code, 'COMPLIANCE_REVIEW_EVIDENCE_REQUIRED');
+  const wrongApplicabilityRole = await service.reviewComplianceApplicability(
+    ids.companyId, ids.shipmentId, applicability.id, ids.userId, {
+      reviewerRole: 'export_operator', decision: 'confirmed_for_internal_planning',
+      notes: 'Wrong role test.', evidenceDocumentIds: [originEvidence.evidenceId]
+    }
+  );
+  assert.equal(wrongApplicabilityRole.code, 'COMPLIANCE_REVIEW_ROLE_INVALID');
+  const applicabilityReview = await service.reviewComplianceApplicability(
+    ids.companyId, ids.shipmentId, applicability.id, ids.userId, {
+      reviewerRole: 'compliance_specialist', decision: 'confirmed_for_internal_planning',
+      notes: 'Synthetic internal-planning review only; source versions require rechecking.',
+      evidenceDocumentIds: [originEvidence.evidenceId]
+    }
+  );
+  assert.equal(applicabilityReview.inputSha256, applicability.inputSha256);
+  assert.equal(applicabilityReview.resultSha256, applicability.resultSha256);
+  assert.equal(applicabilityReview.evidenceSnapshot[0].id, originEvidence.evidenceId);
+  await assert.rejects(
+    pool.query('UPDATE compliance_applicability_evaluations SET status=$1 WHERE id=$2', [
+      'not_applicable', applicability.id
+    ]),
+    /append-only and immutable/i
+  );
+  check('r20_specialist_review_is_hash_bound_evidence_backed_and_immutable');
 
   const firstReadiness = await service.getReadiness(ids.companyId, ids.shipmentId);
   assert.equal(firstReadiness.documents.find((item) => item.type === 'carbon_annex').status, 'ready');

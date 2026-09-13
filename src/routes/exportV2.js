@@ -401,6 +401,58 @@ router.get('/shipments/:shipmentId/origin/reconciliation', asyncHandler(async (r
   return sendSuccess(res, { data });
 }));
 
+router.get('/shipments/:shipmentId/compliance/applicability-evaluations', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const data = await exportShipmentService.listComplianceApplicabilityEvaluations(
+    companyId, req.params.shipmentId
+  );
+  if (!data) return sendNotFound(res);
+  return sendSuccess(res, { data });
+}));
+
+router.post('/shipments/:shipmentId/compliance/applicability-evaluations', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.evaluateComplianceApplicability(
+    companyId, req.params.shipmentId, req.userId, req.body || {}
+  );
+  if (!result) return sendNotFound(res);
+  if (result.blocked) {
+    return sendError(res, { status: 400, code: result.code, message: result.message });
+  }
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.compliance_applicability_evaluation', newValue: result.id,
+    reason: 'export.compliance.applicability.evaluate',
+    notes: `${result.rulesetVersion}:${result.status}`
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
+router.post('/shipments/:shipmentId/compliance/applicability-evaluations/:evaluationId/reviews', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await exportShipmentService.reviewComplianceApplicability(
+    companyId, req.params.shipmentId, req.params.evaluationId, req.userId, req.body || {}
+  );
+  if (!result) {
+    return sendError(res, {
+      status: 404, code: 'COMPLIANCE_APPLICABILITY_EVALUATION_NOT_FOUND',
+      message: 'Applicability evaluation not found for this shipment.'
+    });
+  }
+  if (result.blocked) {
+    return sendError(res, { status: 409, code: result.code, message: result.message });
+  }
+  await logAuditTrail({
+    companyId, userId: req.userId, dataGroup: 'exports',
+    changedField: 'shipment_export.compliance_applicability_review', newValue: result.id,
+    reason: 'export.compliance.applicability.review', notes: result.decision
+  });
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
 router.post('/shipments/:shipmentId/lines/sync', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
