@@ -1,6 +1,7 @@
 const {
   RULESET,
   packagingDataset,
+  classificationDataset,
   buildInputSnapshot,
   evaluateComplianceApplicability
 } = require('../../src/services/complianceApplicabilityControls');
@@ -32,7 +33,7 @@ const snapshot = (destinationCountry = 'NL') => ({
 });
 
 const context = {
-  assessmentDate: '2026-09-13', productCategory: 'apparel', intendedUse: 'everyday wear',
+  assessmentDate: '2026-09-14', productCategory: 'apparel', intendedUse: 'everyday wear',
   consumerGroup: 'adults', importerRole: 'EU importer', salesChannels: ['retail', 'online'],
   consumerProduct: true, placedOnEuMarket: true, textileFibrePercent: 85,
   packagingContext: {
@@ -50,7 +51,7 @@ describe('R20 compliance applicability controls', () => {
   test('captures exact shipment codes, material facts and an explicit effective date', () => {
     const input = buildInputSnapshot(snapshot(), context);
 
-    expect(input.assessmentDate).toBe('2026-09-13');
+    expect(input.assessmentDate).toBe('2026-09-14');
     expect(input.shipment).toMatchObject({ destinationCountry: 'NL', destinationIsEu: true });
     expect(input.products[0]).toMatchObject({
       hsCode: '62052000', hsConfirmed: true, taricCode: '6205200010', taricConfirmed: true
@@ -66,8 +67,14 @@ describe('R20 compliance applicability controls', () => {
     const textile = evaluation.result.matches.find((item) => item.code === 'EU_TEXTILE_FIBRE_LABEL_SCOPE');
 
     expect(textile).toMatchObject({
-      decision: 'requirements_identified', matchPrecision: 'chapter_plus_operator_fact',
+      decision: 'requirements_identified', matchPrecision: 'exact_taric_plus_operator_fact',
       sourceId: 'EU-1007-2011'
+    });
+    expect(evaluation.result.classifications[0]).toMatchObject({
+      declaredCnCode: '62052000', declaredTaricCode: '6205200010',
+      datasetDescription: 'Hand-printed by the batik method', matchStatus: 'exact_taric_match',
+      operatorDescriptionReviewRequired: true,
+      consultationUrl: expect.stringContaining('Taric=6205200010')
     });
     expect(evaluation.result.status).toBe('specialist_review_required');
     expect(evaluation.result.rulesetCoverage).toBe('limited');
@@ -75,7 +82,7 @@ describe('R20 compliance applicability controls', () => {
     expect(evaluation.result.disclaimer).toMatch(/not legal advice/i);
     expect(evaluation.inputSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(evaluation.result.resultSha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(RULESET.sources.every((source) => source.url.startsWith('https://eur-lex.europa.eu/'))).toBe(true);
+    expect(RULESET.sources.every((source) => /^https:\/\/(eur-lex|ec)\.europa\.eu\//.test(source.url))).toBe(true);
   });
 
   test('uses the maintained PPWR dataset without inferring Member-State EPR compliance', () => {
@@ -139,6 +146,74 @@ describe('R20 compliance applicability controls', () => {
 
     expect(evaluation.result.missingInputs).toContain('products[0].confirmedTaricCode');
     expect(textile.matchedProductCodes).toEqual(['62052000']);
+    expect(evaluation.result.classifications[0]).toMatchObject({
+      matchStatus: 'exact_cn_match', matchPrecision: 'exact_cn_operator_confirmed'
+    });
+  });
+
+  test('routes an unlisted exact textile code to a dataset gap instead of a chapter-level decision', () => {
+    const value = snapshot();
+    value.lines[0].hsCode = '62063000';
+    value.euImportLineDetails[0].taricCode = '6206300000';
+    const evaluation = evaluateComplianceApplicability(value, context);
+
+    expect(evaluation.result.matches).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'EU_TEXTILE_FIBRE_LABEL_SCOPE' })
+    ]));
+    expect(evaluation.result.matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'EU_CN_TARIC_ROUTING_DATASET_GAP', decision: 'specialist_review_required'
+      })
+    ]));
+    expect(evaluation.result.classifications[0].matchStatus).toBe('not_covered');
+  });
+
+  test('routes an exact footwear TARIC leaf without relying on Chapter 64 alone', () => {
+    const value = snapshot();
+    value.lines[0].goodsDescription = 'Men leather shoes';
+    value.lines[0].hsCode = '64039996';
+    value.euImportLineDetails[0].taricCode = '6403999690';
+    const evaluation = evaluateComplianceApplicability(value, {
+      ...context, productCategory: 'footwear', textileFibrePercent: null
+    });
+    const footwear = evaluation.result.matches.find((item) =>
+      item.code === 'EU_FOOTWEAR_MATERIAL_LABEL_SCOPE'
+    );
+
+    expect(footwear).toMatchObject({
+      decision: 'specialist_review_required', matchPrecision: 'exact_taric_routing',
+      matchedProductCodes: ['6403999690']
+    });
+    expect(evaluation.result.classifications[0]).toMatchObject({
+      category: 'footwear', matchStatus: 'exact_taric_match', datasetDescription: 'Other'
+    });
+  });
+
+  test('does not fall back to CN routing when a confirmed TARIC conflicts with the dataset', () => {
+    const value = snapshot();
+    value.euImportLineDetails[0].taricCode = '6205200099';
+    const evaluation = evaluateComplianceApplicability(value, context);
+
+    expect(evaluation.result.classifications[0].matchStatus).toBe('taric_not_in_dataset');
+    expect(evaluation.result.matches).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'EU_TEXTILE_FIBRE_LABEL_SCOPE' })
+    ]));
+    expect(evaluation.result.matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'EU_CN_TARIC_ROUTING_DATASET_GAP' })
+    ]));
+  });
+
+  test('does not reuse a daily TARIC snapshot for another assessment date', () => {
+    const evaluation = evaluateComplianceApplicability(snapshot(), {
+      ...context, assessmentDate: '2026-09-13'
+    });
+
+    expect(evaluation.result.classifications[0]).toMatchObject({
+      matchStatus: 'taric_snapshot_date_mismatch', matchPrecision: 'stale_dataset'
+    });
+    expect(evaluation.result.matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'EU_CN_TARIC_ROUTING_DATASET_GAP' })
+    ]));
   });
 
   test('produces stable hashes for an unchanged normalized evaluation', () => {
@@ -147,5 +222,6 @@ describe('R20 compliance applicability controls', () => {
 
     expect(second.inputSha256).toBe(first.inputSha256);
     expect(second.result.resultSha256).toBe(first.result.resultSha256);
+    expect(classificationDataset.entries).toHaveLength(3);
   });
 });

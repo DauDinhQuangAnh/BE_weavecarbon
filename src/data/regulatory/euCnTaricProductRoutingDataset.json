@@ -1,0 +1,76 @@
+{
+  "datasetId": "weavecarbon.eu-cn-taric-product-routing",
+  "version": "EU-CN-TARIC-2026.09.14.1",
+  "coverageStatus": "limited",
+  "cnValidFrom": "2026-01-01",
+  "cnValidTo": "2026-12-31",
+  "taricConsultedAt": "2026-09-14",
+  "taricOriginContext": "VN",
+  "taricConsultationBaseUrl": "https://ec.europa.eu/taxation_customs/dds2/taric/measures.jsp",
+  "sources": [
+    {
+      "id": "EU-2025-1926",
+      "title": "Commission Implementing Regulation (EU) 2025/1926 — Combined Nomenclature 2026",
+      "url": "https://eur-lex.europa.eu/eli/reg_impl/2025/1926/oj",
+      "version": "original-2025-10-31-applicable-2026-01-01"
+    },
+    {
+      "id": "EU-TARIC-2026-09-14",
+      "title": "European Commission TARIC consultation — Vietnam origin snapshot",
+      "url": "https://ec.europa.eu/taxation_customs/dds2/taric/taric_consultation.jsp?Lang=en&SimDate=20260914",
+      "version": "consulted-2026-09-14"
+    }
+  ],
+  "entries": [
+    {
+      "cnCode": "61051000",
+      "cnDescription": "Men's or boys' shirts, knitted or crocheted — of cotton",
+      "category": "apparel",
+      "legalRouteCodes": ["EU_TEXTILE_FIBRE_LABEL_SCOPE"],
+      "taricLeaves": [
+        {
+          "code": "6105100000",
+          "description": "Men's or boys' shirts, knitted or crocheted — of cotton"
+        }
+      ]
+    },
+    {
+      "cnCode": "62052000",
+      "cnDescription": "Men's or boys' shirts, not knitted or crocheted — of cotton",
+      "category": "apparel",
+      "legalRouteCodes": ["EU_TEXTILE_FIBRE_LABEL_SCOPE"],
+      "taricLeaves": [
+        {
+          "code": "6205200010",
+          "description": "Hand-printed by the batik method"
+        },
+        {
+          "code": "6205200090",
+          "description": "Other"
+        }
+      ]
+    },
+    {
+      "cnCode": "64039996",
+      "cnDescription": "Footwear with outer soles of rubber, plastics, leather or composition leather and uppers of leather — other — for men",
+      "category": "footwear",
+      "legalRouteCodes": ["EU_FOOTWEAR_MATERIAL_LABEL_SCOPE"],
+      "taricLeaves": [
+        {
+          "code": "6403999610",
+          "description": "Sports footwear; tennis shoes, basketball shoes, gym shoes, training shoes and the like"
+        },
+        {
+          "code": "6403999690",
+          "description": "Other"
+        }
+      ]
+    }
+  ],
+  "excludedConclusions": [
+    "customs classification approval",
+    "binding tariff information",
+    "duty, preference or trade-measure calculation",
+    "coverage of any CN or TARIC code not listed"
+  ]
+}

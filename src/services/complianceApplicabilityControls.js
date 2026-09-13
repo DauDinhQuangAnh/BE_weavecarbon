@@ -6,6 +6,7 @@ function deepFreeze(value) {
 }
 
 const packagingDataset = deepFreeze(require('../data/regulatory/euPackagingApplicabilityDataset.json'));
+const classificationDataset = deepFreeze(require('../data/regulatory/euCnTaricProductRoutingDataset.json'));
 
 const EU_COUNTRY_CODES = new Set([
   'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR',
@@ -14,7 +15,7 @@ const EU_COUNTRY_CODES = new Set([
 
 const RULESET = Object.freeze({
   id: 'weavecarbon.eu-product-compliance-triage',
-  version: 'R20-EU-APPLICABILITY-2026.09.2',
+  version: 'R20-EU-APPLICABILITY-2026.09.3',
   coverageStatus: 'limited',
   effectiveFrom: '2024-12-13',
   sources: Object.freeze([
@@ -42,7 +43,8 @@ const RULESET = Object.freeze({
       url: 'https://eur-lex.europa.eu/eli/reg/2006/1907/oj',
       version: 'current-version-must-be-verified-at-review'
     }),
-    ...packagingDataset.sources.map((source) => Object.freeze({ ...source }))
+    ...packagingDataset.sources.map((source) => Object.freeze({ ...source })),
+    ...classificationDataset.sources.map((source) => Object.freeze({ ...source }))
   ])
 });
 
@@ -73,6 +75,73 @@ function normalizedList(value) {
 
 function sourceManifest() {
   return RULESET.sources.map((source) => ({ ...source }));
+}
+
+function classifyProduct(product, assessmentDate) {
+  const confirmedCnCode = product.hsConfirmed && product.hsCode.length === 8 ? product.hsCode : null;
+  const confirmedTaricCode = product.taricConfirmed && product.taricCode.length === 10
+    ? product.taricCode : null;
+  const entry = classificationDataset.entries.find((item) =>
+    item.cnCode === confirmedCnCode || item.taricLeaves.some((leaf) => leaf.code === confirmedTaricCode)
+  );
+  const consultationUrl = confirmedTaricCode
+    ? `${classificationDataset.taricConsultationBaseUrl}?Lang=en&SimDate=${classificationDataset.taricConsultedAt.replaceAll('-', '')}&Area=${classificationDataset.taricOriginContext}&Taric=${confirmedTaricCode}&LangDescr=en`
+    : null;
+
+  const base = {
+    exportLineId: product.exportLineId,
+    sku: product.sku,
+    operatorDescription: product.description,
+    declaredCnCode: confirmedCnCode,
+    declaredTaricCode: confirmedTaricCode,
+    datasetId: classificationDataset.datasetId,
+    datasetVersion: classificationDataset.version,
+    datasetDescription: null,
+    category: null,
+    legalRouteCodes: [],
+    matchStatus: 'not_covered',
+    matchPrecision: 'none',
+    operatorDescriptionReviewRequired: true,
+    consultationUrl
+  };
+  if (!entry) return base;
+
+  const leaf = confirmedTaricCode
+    ? entry.taricLeaves.find((item) => item.code === confirmedTaricCode)
+    : null;
+  const cnDateCurrent = Boolean(assessmentDate)
+    && assessmentDate >= classificationDataset.cnValidFrom
+    && assessmentDate <= classificationDataset.cnValidTo;
+  const taricDateCurrent = assessmentDate === classificationDataset.taricConsultedAt;
+
+  if (confirmedTaricCode && !leaf) {
+    return {
+      ...base, declaredCnCode: entry.cnCode, datasetDescription: entry.cnDescription,
+      category: entry.category, matchStatus: 'taric_not_in_dataset', matchPrecision: 'dataset_gap'
+    };
+  }
+  if (!cnDateCurrent) {
+    return {
+      ...base, declaredCnCode: entry.cnCode, datasetDescription: leaf?.description || entry.cnDescription,
+      category: entry.category, matchStatus: 'cn_version_date_mismatch', matchPrecision: 'stale_dataset'
+    };
+  }
+  if (leaf && !taricDateCurrent) {
+    return {
+      ...base, declaredCnCode: entry.cnCode, datasetDescription: leaf.description,
+      category: entry.category, matchStatus: 'taric_snapshot_date_mismatch', matchPrecision: 'stale_dataset'
+    };
+  }
+
+  return {
+    ...base,
+    declaredCnCode: entry.cnCode,
+    datasetDescription: leaf?.description || entry.cnDescription,
+    category: entry.category,
+    legalRouteCodes: [...entry.legalRouteCodes],
+    matchStatus: leaf ? 'exact_taric_match' : 'exact_cn_match',
+    matchPrecision: leaf ? 'exact_taric_operator_confirmed' : 'exact_cn_operator_confirmed'
+  };
 }
 
 function normalizeMaterial(value = {}, source = 'operator_context') {
@@ -213,8 +282,15 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
   const productCodes = normalized.products.map((item) =>
     item.taricCode && item.taricConfirmed ? item.taricCode : item.hsCode
   );
-  const textileCodes = productCodes.filter((item) => item.startsWith('61') || item.startsWith('62'));
-  const footwearCodes = productCodes.filter((item) => item.startsWith('64'));
+  const classifications = normalized.products.map((product) => classifyProduct(product, normalized.assessmentDate));
+  const textileClassifications = classifications.filter((item) =>
+    item.legalRouteCodes.includes('EU_TEXTILE_FIBRE_LABEL_SCOPE')
+  );
+  const footwearClassifications = classifications.filter((item) =>
+    item.legalRouteCodes.includes('EU_FOOTWEAR_MATERIAL_LABEL_SCOPE')
+  );
+  const textileCodes = textileClassifications.map((item) => item.declaredTaricCode || item.declaredCnCode);
+  const footwearCodes = footwearClassifications.map((item) => item.declaredTaricCode || item.declaredCnCode);
 
   if (!normalized.shipment.destinationIsEu) {
     matches.push(result(
@@ -236,7 +312,8 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
         {
           sourceId: 'EU-1007-2011', matchedProductCodes: textileCodes,
           requiredEvidenceTypes: ['controlled_fibre_composition', 'component_breakdown', 'market_language_plan'],
-          matchPrecision: 'chapter_plus_operator_fact'
+          matchPrecision: textileClassifications.every((item) => item.matchStatus === 'exact_taric_match')
+            ? 'exact_taric_plus_operator_fact' : 'exact_cn_plus_operator_fact'
         }
       ));
     }
@@ -248,7 +325,26 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
         {
           sourceId: 'EU-94-11-EC', matchedProductCodes: footwearCodes,
           requiredEvidenceTypes: ['upper_lining_sock_outsole_material_breakdown', 'component_80_percent_calculation'],
-          matchPrecision: 'chapter_routing'
+          matchPrecision: footwearClassifications.every((item) => item.matchStatus === 'exact_taric_match')
+            ? 'exact_taric_routing' : 'exact_cn_routing'
+        }
+      ));
+    }
+
+    const classificationGaps = classifications.filter((item) =>
+      ['61', '62', '64'].some((chapter) =>
+        normalized.products.find((product) => product.exportLineId === item.exportLineId)?.hsCode.startsWith(chapter)
+      ) && !['exact_cn_match', 'exact_taric_match'].includes(item.matchStatus)
+    );
+    if (classificationGaps.length) {
+      matches.push(result(
+        'EU_CN_TARIC_ROUTING_DATASET_GAP', 'specialist_review_required',
+        'At least one declared Chapter 61/62/64 classification is absent from, conflicts with, or falls outside the effective date of the limited maintained dataset; no product-law scope conclusion is made for that line.',
+        {
+          sourceId: 'EU-2025-1926',
+          matchedProductCodes: classificationGaps.map((item) => item.declaredTaricCode || item.declaredCnCode).filter(Boolean),
+          requiredEvidenceTypes: ['classification_rationale', 'product_technical_description', 'current_taric_consultation'],
+          matchPrecision: 'dataset_gap'
         }
       ));
     }
@@ -361,12 +457,12 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
     : matches.some((item) => item.decision === 'requirements_identified')
       ? 'requirements_identified' : 'not_applicable';
   const sources = sourceManifest();
-  const datasets = [{
-    id: packagingDataset.datasetId,
-    version: packagingDataset.version,
-    coverageStatus: packagingDataset.coverageStatus,
-    sha256: sha256(packagingDataset)
-  }];
+  const datasets = [packagingDataset, classificationDataset].map((dataset) => ({
+    id: dataset.datasetId,
+    version: dataset.version,
+    coverageStatus: dataset.coverageStatus,
+    sha256: sha256(dataset)
+  }));
   const sourceManifestSha256 = sha256(sources);
   const inputSha256 = sha256(normalized);
   const body = {
@@ -381,6 +477,7 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
     status,
     specialistReviewRequired: requiresSpecialist,
     missingInputs: unique(missingInputs),
+    classifications,
     matches,
     requiredEvidenceTypes: unique(matches.flatMap((item) => item.requiredEvidenceTypes)),
     sources,
@@ -397,6 +494,8 @@ function evaluateComplianceApplicability(snapshot, input = {}) {
 module.exports = {
   RULESET,
   packagingDataset,
+  classificationDataset,
+  classifyProduct,
   buildInputSnapshot,
   evaluateComplianceApplicability,
   sha256

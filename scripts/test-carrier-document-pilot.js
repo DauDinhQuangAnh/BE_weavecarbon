@@ -824,7 +824,7 @@ async function run() {
 
   const applicability = await service.evaluateComplianceApplicability(
     ids.companyId, ids.shipmentId, ids.userId, {
-      assessmentDate: '2026-09-13', productCategory: 'apparel', intendedUse: 'everyday wear',
+      assessmentDate: '2026-09-14', productCategory: 'apparel', intendedUse: 'everyday wear',
       consumerGroup: 'adults', importerRole: 'EU importer', salesChannels: ['retail', 'online'],
       consumerProduct: true, placedOnEuMarket: true, textileFibrePercent: 100,
       packagingContext: {
@@ -856,6 +856,10 @@ async function run() {
   ));
   assert.equal(applicability.result.datasets[0].id, 'weavecarbon.eu-ppwr-applicability');
   assert.match(applicability.result.datasets[0].sha256, /^[a-f0-9]{64}$/);
+  assert.equal(applicability.result.datasets[1].id, 'weavecarbon.eu-cn-taric-product-routing');
+  assert.match(applicability.result.datasets[1].sha256, /^[a-f0-9]{64}$/);
+  assert.equal(applicability.result.classifications[0].matchStatus, 'exact_taric_match');
+  assert.equal(applicability.result.classifications[0].datasetDescription, 'Hand-printed by the batik method');
   assert.equal(await service.listComplianceApplicabilityEvaluations(ids.otherCompanyId, ids.shipmentId), null);
   check('r20_source_versioned_applicability_is_explainable_and_tenant_isolated');
 

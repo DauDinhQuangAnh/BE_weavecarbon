@@ -16,7 +16,7 @@ const snapshot = {
   euImportLineDetails: [], originProfile: null
 };
 const input = {
-  assessmentDate: '2026-09-13', productCategory: 'apparel', intendedUse: 'wearing',
+  assessmentDate: '2026-09-14', productCategory: 'apparel', intendedUse: 'wearing',
   consumerGroup: 'adult', importerRole: 'importer', salesChannels: ['retail'],
   consumerProduct: true, placedOnEuMarket: true, textileFibrePercent: 100,
   packagingContext: {
