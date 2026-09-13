@@ -28,7 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
-| Active R11 implementation branch in both repositories | `feat/r11-reach-svhc-dossier` (local, stacked on R10 while R04/R05 PRs remain open) |
+| Active R12 implementation branch in both repositories | `feat/r12-pcf-study-dossier` (local, stacked on R11 while R04/R05 PRs remain open) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -59,6 +59,8 @@ This tracker separates four facts that must never be conflated:
 | Frontend R10 GPSR safety-workspace commit | `1b8a6ed70f8d05c84574583e2ddac1a68a19ce27` |
 | Backend R11 REACH/SVHC dossier commit | `edd355217e7587df41939410c04c08c24def00f8` |
 | Frontend R11 REACH/SVHC workspace commit | `613c8f92b48b8f8e0d35abc682dda785dbe8f8f5` |
+| Backend R12 PCF study-controls commit | `781f12981e120d2c4463722758f3a60ab355035a` |
+| Frontend R12 PCF study-workspace commit | `83cd39358165b573ec0d335bc41aa132983a9942` |
 | R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
@@ -91,10 +93,12 @@ git -C weavecarbon switch main
 R06 is preserved locally at `feat/r06-ics2-filing-handoff`; R07 is stacked on it at
 `feat/r07-evfta-origin-handoff`; R20 is stacked on R07 at `feat/r20-applicability-core`; R18 is stacked on R20 at
 `feat/r18-environmental-claim-register`; R08 is stacked on R18 at `feat/r08-textile-fibre-label`; R10 is stacked on R08 at
-`feat/r10-gpsr-technical-file`; R11 is stacked on R10 at `feat/r11-reach-svhc-dossier`. All contain R05, which
+`feat/r10-gpsr-technical-file`; R11 is stacked on R10 at `feat/r11-reach-svhc-dossier`; R12 is stacked on R11 at
+`feat/r12-pcf-study-dossier`. All contain R05, which
 contains R04. Preserve that dependency order until the existing R04/R05 pull requests merge, and do not merge or deploy
-R06/R07/R20/R18/R08/R10/R11 as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06,
-R20 onto R07, R18 onto R20, R08 onto R18, R10 onto R08 and R11 onto R10; verify migrations and recorded commits stay ordered.
+R06/R07/R20/R18/R08/R10/R11/R12 as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06,
+R20 onto R07, R18 onto R20, R08 onto R18, R10 onto R08, R11 onto R10 and R12 onto R11; verify migrations and recorded
+commits stay ordered.
 
 Then give the next AI this instruction:
 
@@ -166,6 +170,9 @@ Known overall checks at the latest feature commits:
 - Backend R11 local gate: 125/125 suites and 757/757 tests passed plus syntax/OpenAPI/generated-artifact/architecture/lint;
   frontend R11 gate: 54/54 files and 216/216 tests plus TypeScript/contract/network/policy checks and the 62-route
   production build. The isolated PostgreSQL 18.1 pilot passed all 37 cumulative checks.
+- Backend R12 local gate: 128/128 suites and 769/769 tests passed plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend R12 gate: 56/56 files and 220/220 tests plus TypeScript/contract/network/policy checks and the 62-route
+  production build. The isolated local PostgreSQL pilot passed all 40 cumulative checks.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
@@ -190,7 +197,7 @@ Known overall checks at the latest feature commits:
 | 9 | EU footwear material label | Footwear products | `NOT_STARTED` | No three-part/80% model | Component model, 80% rule, pictogram/text and locale output |
 | 10 | GPSR technical file and traceability | Consumer products | `PARTIAL` | Immutable technical-file revisions, product/batch identity, operators, risk/test/warning/Article 19 controls, named review and post-market ledger | Real product/operator validation, destination-language review and externally performed incident/corrective-action/recall pilot |
 | 11 | REACH/SVHC dossier | Conditional by substance/material/threshold | `PARTIAL` | Immutable article/component/material/substance dossiers, source snapshots, Article 33/7 and SCIP assessments, Annex XVII results, named review and obligation-event evidence | Import/maintain the complete current Candidate List and applicable restrictions; generate approved safe-use/response artifacts and complete a qualified real-product pilot |
-| 12 | Product Carbon Footprint/ISO 14067 support | Buyer/tender/claim dependent | `INTERNAL_ONLY` | Server-authoritative partial PCF PDF/XLSX | Goal/scope, functional unit, DQ, allocation, uncertainty and assurance gate |
+| 12 | Product Carbon Footprint/ISO 14067 support | Buyer/tender/claim dependent | `INTERNAL_ONLY` | Immutable study revisions bind goal/scope, functional/reference flow, boundary/process/cutoff/PCR/allocation/recycling, DQ/uncertainty, AD×EF reproduction, evidence and named internal practitioner review to an authoritative partial-PCF snapshot | Complete a qualified real-product study/full relevant life-cycle boundary and link authentic critical review/assurance before any external, comparative or verified claim |
 | 13 | Corporate/facility GHG report | Buyer/ESG/assurance dependent | `INTERNAL_ONLY` | Electricity/fuel worksheet | Organisational boundary, full sources/gases, base year and exclusions |
 | 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Immutable ZIP, exact term/factor evidence coverage, append-only review/internal issue, and isolated PostgreSQL pilot gate | Run human real-evidence staging review; signed share link and external assurance |
 | 15 | Apparel & Footwear PEF/PEFCR | Voluntary or buyer-specific | `NOT_STARTED` | Climate-only partial PCF is not PEF | Full life cycle, EF datasets/impact categories and validation statement |
@@ -477,11 +484,22 @@ boundary/process map; exclusions/cut-offs; PCR; raw activity data and evidence; 
 geography/year/GWP; allocation/recycling; data quality; uncertainty/sensitivity; stage results; fossil/biogenic/removal/LUC;
 engine/hash/change log; assurance statement when applicable.
 
-**Current:** server-authoritative partial PCF with stage totals, factor registry/version/hash, proxy/confidence indicators and
-PDF/XLSX. It is explicitly pre-audit and not independently verified.
+**Implemented:** migration 035 and limited ruleset `weavecarbon.product-carbon-footprint-study`
+`R12-PCF-ISO14067-2024CONFIRMED-1` add immutable shipment/product study revisions and append-only named
+`pcf_practitioner_reviewer` decisions. Every study binds the functional unit/reference flow, goal/audience/period,
+boundary and included stages, process/evidence map, exclusions/cutoff, PCR decision and validity, allocation/recycling,
+five-dimension data-quality narrative and improvement plan, parameter/scenario/model uncertainty and sensitivity,
+land-use-change and biogenic-carbon treatment, limitations, exact calculation snapshot/hash and locked evidence bytes.
+Stored AD × EF contribution terms must reproduce the reported result. A newer calculation or changed evidence reopens the
+study. Comparative assertions and “verified” language are blocked without a current authentic assurance/critical-review
+record tied to that calculation. The API, OpenAPI contract and shipment UI explicitly identify the output as a climate-only
+partial CFP, not ISO certification, EPD, PEF, public comparison or independent assurance.
 
-**Remaining:** functional-unit workflow, study period, process completeness, PCR, allocation/recycling, formal DQ, qualitative
-uncertainty, LUC method, evidence binding and assurance workflow.
+**Remaining:** R12 stays `INTERNAL_ONLY`. The existing calculation boundary excludes use/end-of-life and is not a full
+product-specific life-cycle study. A qualified independent practitioner must complete a real-product process/evidence and
+PCR review, validate allocation/recycling, cutoffs, primary-data representativeness, LUC/biogenic treatment and quantitative
+uncertainty, then an authorised reviewer/assurance provider must issue any applicable critical-review or assurance record.
+PDF/XLSX remain supporting carbon outputs rather than an externally verified ISO 14067 report.
 
 **Definition of Done:** calculation is reproducible from stored AD x EF, methodology/conformance checklist passes, claim
 scope is accurate, and verification language is impossible unless an actual assurance record is linked.
@@ -692,7 +710,7 @@ then run exact-head CI/staging and a named specialist pilot using real product/B
 **Definition of Done:** source-versioned rules return explainable applicable/not-applicable decisions and required evidence;
 specialist reviewer approves high-risk classifications. Never claim the list is universally complete.
 
-## 7. Remaining implementation order from 2026-09-12
+## 7. Remaining implementation order from 2026-09-13
 
 1. **The R18 production-copy containment, R18 claim register, minimum R20 applicability core and limited R08 textile-label
    control now exist locally.** Next,
@@ -707,8 +725,9 @@ specialist reviewer approves high-risk classifications. Never claim the list is 
    artwork, product-safety, chemical-specialist and responsible-operator pilots before any external readiness claim.
 5. **Complete R07 origin only when preferential treatment is claimed**, including BOM/rules/evidence before generating
    EUR.1 or origin-declaration drafts.
-6. **Raise carbon maturity:** R12 PCF, R13 corporate/facility GHG and authentic R14 assurance. Implement R15 from the 2025
-   Apparel & Footwear PEFCR only when commercially required.
+6. **Raise carbon maturity:** limited controlled R12 PCF study support now exists. Next implement R13 corporate/facility GHG,
+   then close authentic R12/R14 practitioner and assurance gates. Implement R15 from the 2025 Apparel & Footwear PEFCR only
+   when commercially required.
 7. **Build versioned future foundations:** R16 generic DPP architecture without inventing delegated-act product fields;
    implement R17 EU-core EPR now and add Member-State adapters as national schemes are published.
 8. **Maintain R19 scope screening:** baseline CN 61/62/64 must remain `CBAM_NOT_APPLICABLE`; Annex-I matches require
@@ -1505,3 +1524,25 @@ Backend carbon trace core:
   response artifacts, qualified real-product chemical review and authentic responsible-actor communications or
   notifications. R12 PCF/ISO 14067 support is the next baseline implementation phase; R09 remains conditional on a CN 64
   footwear product. Nothing was pushed, merged or deployed.
+
+### 2026-09-13 — R12 product carbon footprint study controls
+
+- Backend commit `781f12981e120d2c4463722758f3a60ab355035a` and frontend commit
+  `83cd39358165b573ec0d335bc41aa132983a9942` add migration 035, a versioned limited ISO 14067-aligned study evaluator,
+  immutable study/review records, calculation/evidence/assurance binding, OpenAPI contracts and the shipment PCF workspace.
+- Sources are ISO 14067:2018 (confirmed in 2024 and marked for revision), ISO 14040:2006/Amd 1:2020 and the GHG Protocol
+  Product Life Cycle Accounting and Reporting Standard. The ruleset limits results to climate change and does not treat
+  offsets, comparisons, EPD/PEF or communication claims as part of the calculation.
+- The workflow records goal/scope, functional unit/reference flow, period, process/boundary/cutoff/PCR/allocation/recycling,
+  data quality, uncertainty/sensitivity, LUC/biogenic treatment and locked evidence. It independently sums the stored AD × EF
+  terms against the frozen reported total; approvals are calculation-hash/evidence-byte bound and require a named PCF role.
+- Local gates pass: backend 128/128 suites and 769/769 tests plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend 56/56 files and 220/220 tests, TypeScript/contract/network/policy checks and a production build of all 62 routes.
+  The same 20 pre-existing frontend lint warnings remain and there are no lint errors.
+- A fresh dedicated local PostgreSQL database (`weavecarbon_r12_final`) loaded the base schema and migrations 001–035. The
+  guarded cumulative pilot passed 40/40 checks with `productionDataTouched=false`; retained artifact
+  `artifacts/pcf-study-pilot/result.json` has SHA-256
+  `45373a581f5e1b5366cd916bba7742012f7456ad2db7a47daba92f6790436b3e`.
+- R12 remains `INTERNAL_ONLY` pending a qualified real-product/full-boundary study and authentic critical review/assurance.
+  R13 corporate/facility GHG is the next baseline implementation phase; R09 remains conditional on a CN 64 footwear
+  product. Nothing was pushed, merged, deployed or changed on the production host.
