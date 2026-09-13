@@ -28,7 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
-| Active R18 implementation branch in both repositories | `feat/r18-environmental-claim-register` (local, stacked on the R20 checkpoint while R04/R05 PRs remain open) |
+| Active R08 implementation branch in both repositories | `feat/r08-textile-fibre-label` (local, stacked on R18 while R04/R05 PRs remain open) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -53,6 +53,8 @@ This tracker separates four facts that must never be conflated:
 | Frontend R20 applicability-workspace commit | `9fc53da684664d41be6bf428e3bdbcee78f22c84` |
 | Backend R18 environmental-claim-register commit | `805f2d9c3d67cb2181b7afe984a7a2996c2f1490` |
 | Frontend R18 claim-register-workspace commit | `f931785d17617fb950e71ae5af8f9e7132ac13ff` |
+| Backend R08 textile-fibre-label commit | `01047f01a565611cc71dfb418ad35371b3deb322` |
+| Frontend R08 textile-label-workspace commit | `3554a9b04b72c6f76c335ac6cc2ef46668fec839` |
 | R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
@@ -84,10 +86,10 @@ git -C weavecarbon switch main
 
 R06 is preserved locally at `feat/r06-ics2-filing-handoff`; R07 is stacked on it at
 `feat/r07-evfta-origin-handoff`; R20 is stacked on R07 at `feat/r20-applicability-core`; R18 is stacked on R20 at
-`feat/r18-environmental-claim-register`. All contain R05, which contains R04. Preserve that dependency order until the
-existing R04/R05 pull requests merge, and do not merge or deploy R06/R07/R20/R18 as a substitute for those reviews. After
-merge, rebase R06 onto `main`, then R07 onto R06, R20 onto R07 and R18 onto R20; verify migrations and recorded commits stay
-ordered.
+`feat/r18-environmental-claim-register`; R08 is stacked on R18 at `feat/r08-textile-fibre-label`. All contain R05, which
+contains R04. Preserve that dependency order until the existing R04/R05 pull requests merge, and do not merge or deploy
+R06/R07/R20/R18/R08 as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06, R20 onto
+R07, R18 onto R20 and R08 onto R18; verify migrations and recorded commits stay ordered.
 
 Then give the next AI this instruction:
 
@@ -370,7 +372,22 @@ an unsupported claim; output is explicitly draft until the exporter/authority pe
 **Required inputs:** product components; allowed fibre names and mass percentages; ordering/rounding; animal-origin flag;
 market languages; manufacturer/economic operator; placement/attachment and online-sale representation; version.
 
-**Current:** generic composition exists, but there is no controlled legal vocabulary, component logic, locale pack or label.
+**Implemented:** migration 032 and ruleset `weavecarbon.eu-textile-fibre-label`
+`R08-EU-TEXTILE-2018.02.15-1` add immutable shipment label-specification revisions and append-only named reviews. The
+limited validator provides controlled English Annex-I fibre codes/names, percentage totals and descending-order checks,
+Article 11 component logic (including main linings below 30%), the Article 12 non-textile animal-origin statement gate,
+market-language operator approval, economic-operator identity, durable/legible/visible/accessible/secure attachment and
+pre-purchase online-display controls. Each revision binds its normalized input, result, source manifest and locked evidence
+with SHA-256. Only the newest revision that passes automated controls can receive a `textile_label_reviewer` decision for
+internal artwork. The UI exposes component/fibre editing, operator-supplied market text, evidence upload/lock, findings,
+source version and an explicitly non-certified English preview.
+
+**Remaining:** R08 remains `PARTIAL`. The controlled list currently supports the Annex-I English canonical vocabulary,
+not complete official-language locale packs or certified translations. Product-specific Annex IV–VI rules, justified
+`other fibres`, decorative/antistatic exclusions, virgin-wool claims, analytical allowances/tolerances and exceptional
+products deliberately route to specialist review rather than being guessed. A representative physical label and online
+listing still need review for each destination language by the responsible economic operator and a qualified textile-
+labelling specialist; no real label was approved, printed, published or deployed.
 
 **Definition of Done:** rules reject invalid fibre names/percentages; component and animal-origin rules pass; print and
 online preview are generated for the destination language; compliance reviewer signs off representative products.
@@ -631,15 +648,16 @@ specialist reviewer approves high-risk classifications. Never claim the list is 
 
 ## 7. Remaining implementation order from 2026-09-12
 
-1. **The R18 production-copy containment, R18 claim register and minimum R20 applicability core now exist locally.** Next,
+1. **The R18 production-copy containment, R18 claim register, minimum R20 applicability core and limited R08 textile-label
+   control now exist locally.** Next,
    connect production claim surfaces to the register and expand R20's maintained datasets/domain coverage before allowing
    external compliance claims.
 2. **Close the existing real-world gates:** R01/R02 operator and warehouse pilots; R03 authentic carrier pilot; R05/R06
    isolated staging/CI. Keep R04 waiting for an exact broker schema instead of expanding a guessed mapping.
-3. **Build shared product-compliance primitives** for components/materials/substances, EU economic operators, languages,
-   market/effective-date rules and immutable evidence so R08-R11 do not create competing source-of-truth models.
-4. **Complete obligations already applicable to baseline consumer goods:** R10 GPSR, R08 textile label, R09 footwear label
-   and R11 REACH/SVHC. Select R08 or R09 by actual product type.
+3. **Extend the shared product-compliance primitives** introduced through R07/R20/R08 for substances, maintained locale
+   packs and market/effective-date rules so R09-R11 do not create competing source-of-truth models.
+4. **Complete obligations already applicable to baseline consumer goods:** R10 GPSR next for CN 61/62; select R09 footwear
+   label when a CN 64 product is in scope, then complete R11 REACH/SVHC. Close R08's real-language/artwork pilot in parallel.
 5. **Complete R07 origin only when preferential treatment is claimed**, including BOM/rules/evidence before generating
    EUR.1 or origin-declaration drafts.
 6. **Raise carbon maturity:** R12 PCF, R13 corporate/facility GHG and authentic R14 assurance. Implement R15 from the 2025
@@ -1368,3 +1386,25 @@ Backend carbon trace core:
   children belong to the separate Airweave Node process. No host mutation, pull, restart, push, merge or deploy occurred.
 - R18 remains `PARTIAL` until all real public claim surfaces enforce dossier references and a qualified reviewer validates
   Member-State law, authentic calculation/evidence and an actual claim lifecycle.
+
+### 2026-09-13 — R08 EU textile fibre-label controls
+
+- Backend commit `01047f01a565611cc71dfb418ad35371b3deb322` and frontend commit
+  `3554a9b04b72c6f76c335ac6cc2ef46668fec839` add immutable label specifications, controlled Annex-I fibre input,
+  component/language/animal-origin/placement validation, evidence locking, named append-only review and the shipment R08
+  workspace. The frontend OpenAPI snapshot and generated types were synchronized to the current backend artifact.
+- The legal source is the in-force 15 February 2018 consolidated Regulation (EU) No 1007/2011. Automated coverage includes
+  Articles 2, 5, 9, 11, 12, 14 and 16; derogations and special products are conservatively routed to specialist review.
+  This is an internal specification/preview and not a certified translation, final artwork or authority approval.
+- Migration 032 uses tenant-bound composite foreign keys, indexes tenant access and non-leading user foreign keys, and
+  makes both specifications and review events append-only. Approval is limited to the newest passing revision and current
+  locked evidence bytes.
+- Local gates pass: backend 119/119 suites and 731/731 tests plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend 50/50 files and 208/208 tests, TypeScript/lint/contract checks and a production build of all 62 routes. The 20
+  frontend lint warnings pre-date R08 and there are no lint errors.
+- A fresh PostgreSQL 18.1 database (`weavecarbon_r08_final`) loaded the base schema and migrations 001–032. The guarded
+  cumulative pilot passed 31/31 checks with `productionDataTouched=false`; retained artifact
+  `artifacts/textile-fibre-label-pilot/result.json` has SHA-256
+  `9fd302e7e4e20225aee430fb3ac30344a1c2b93d44ab1d7775223e251cc67ed6`.
+- R08 remains `PARTIAL` pending complete destination-language packs, special-product/derogation rules, representative
+  physical and online artwork review, and a qualified real-product pilot. Nothing was pushed, merged or deployed.
