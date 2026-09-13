@@ -28,7 +28,7 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
-| Active R07 implementation branch in both repositories | `feat/r07-evfta-origin-handoff` (local, stacked on the R06 checkpoint while R04/R05 PRs remain open) |
+| Active R20 implementation branch in both repositories | `feat/r20-applicability-core` (local, stacked on the R07 checkpoint while R04/R05 PRs remain open) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -49,6 +49,8 @@ This tracker separates four facts that must never be conflated:
 | Frontend R05 EU import declarant-handoff commit | `f46dd1c64d9a5abd5b3c0a7049c4558bf1db6b15` |
 | Frontend R06 ICS2 filer-handoff local commit | `ba5d70fd47c2bd010db1ac03753e4b0d584603e5` |
 | Frontend production-claim/CBAM scope-guard commit | `9323d96f7d20f62ba51b07cfaaf41233a5047ad2` |
+| Backend R20 applicability-core commit | `8010dc11af56596e381dccc2e60f8aac4a859c44` |
+| Frontend R20 applicability-workspace commit | `9fc53da684664d41be6bf428e3bdbcee78f22c84` |
 | R05 stacked pull requests | Backend `#30` onto R04 `#29`; frontend `#33` onto R04 `#32` |
 | Backend feature-branch CI gate commit | `e124648f41c4f9c34b556c6b8b03ab6bda31a6e2` |
 | Frontend isolated-staging stack commit | `188fe3d` |
@@ -78,9 +80,10 @@ git -C weavecarbon switch main
 ```
 
 R06 is preserved locally at `feat/r06-ics2-filing-handoff`; R07 is stacked on it at
-`feat/r07-evfta-origin-handoff`. Both contain R05, which contains R04. Preserve that dependency order until the existing
-R04/R05 pull requests merge, and do not merge or deploy R06/R07 as a substitute for those reviews. After merge, rebase
-R06 onto `main`, then rebase R07 onto R06 and verify the recorded implementation commits and migrations remain ordered.
+`feat/r07-evfta-origin-handoff`; R20 is stacked on R07 at `feat/r20-applicability-core`. All contain R05, which contains
+R04. Preserve that dependency order until the existing R04/R05 pull requests merge, and do not merge or deploy R06/R07/R20
+as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06, then R20 onto R07, and verify
+the recorded implementation commits and migrations remain ordered.
 
 Then give the next AI this instruction:
 
@@ -136,6 +139,10 @@ Known overall checks at the latest feature commits:
 - Frontend R06 local gate: 42/42 files and 177/177 tests passed; TypeScript and the 62-page production build passed.
 - Frontend claim-safety gate: 43/43 files and 194/194 tests passed; `npm run check` and the 62-route production build
   passed at `9323d96f7d20f62ba51b07cfaaf41233a5047ad2`. Lint retained 20 pre-existing warnings and reported no error.
+- Backend R20 local gate: 113/113 suites and 705/705 tests passed; syntax, OpenAPI, generated-artifact, architecture and
+  lint gates passed. The fresh guarded PostgreSQL 18 pilot passed all 27 cumulative R01-R07/R20 checks.
+- Frontend R20 local gate: 46/46 files and 200/200 tests passed; `npm run check` and the 62-route production build passed.
+  Lint retained 20 pre-existing warnings and reported no error.
 - Backend CI run `34289284974` passed all six jobs on disposable PostgreSQL 16. It loaded the base schema, seeded the legacy
   fixture, applied every migration through 020, passed immutable snapshot/M1/M4 checks, the guarded Audit Pack lifecycle
   pilot, hot-query audit, backup/restore drill and API integration. The `audit-pack-pilot-34289284974` result artifact is
@@ -168,7 +175,7 @@ Known overall checks at the latest feature commits:
 | 17 | Textile/footwear EPR reporting | EU framework plus Member-State implementation | `PARTIAL` | EU framework is final; only static requirement labels exist in the application | Build EU-core producer/register/market-volume model, then country adapters before the 17 April 2028 scheme deadline |
 | 18 | Green-claim substantiation dossier | Whenever environmental claims are made | `PARTIAL` | P0 production-copy containment and CBAM/ISO/audit-readiness guards; no claim register yet | Claim register, evidence binding, legal approval and expiry/withdrawal triggers before external claims |
 | 19 | CBAM declaration/operator report | Annex-I CBAM goods only | `NOT_APPLICABLE_BASELINE` | Scope screening; old styled templates remain demo-only | Maintain versioned CN list; implement official fields only for Annex-I goods |
-| 20 | Specialist permits/certificates | Conditional by exact product and lane | `PARTIAL` | Minimum versioned CBAM/CN applicability primitive exists; other domains remain a static checklist | Generalise to source-versioned product/material/lane/market/effective-date rules with specialist review |
+| 20 | Specialist permits/certificates | Conditional by exact product and lane | `PARTIAL` | Limited, source-versioned EU triage uses shipment HS/TARIC, origin/material, market and effective-date facts; immutable explainable evaluations and evidence-backed specialist review | Add exact CN/TARIC/substance/species datasets, expand specialist domains, then complete a named real-shipment specialist pilot and exact-head CI/staging |
 
 No item in this matrix is currently confirmed `READY_TO_ISSUE` on production.
 
@@ -581,17 +588,29 @@ rules and official fields; output is never called an annual declaration unless f
 consumer group, importer role, channel, shipment value and mode. Possible triggers include CITES/animal origin, PPE,
 children's products, biocidal treatment, chemical controls, packaging/waste, sanctions or safety standards.
 
-**Current:** the minimum reusable status pattern exists for CBAM (`not applicable`, `missing code`, `review match`) with a
-version/effective date and tests. It is only a conservative heading-prefix screen, not an exact TARIC decision. Other
-specialist domains still rely on a static checklist and cannot determine legal applicability.
+**Implemented:** migration 030 and ruleset `weavecarbon.eu-product-compliance-triage`
+`R20-EU-APPLICABILITY-2026.09.1` create immutable, checksum-bound shipment evaluations from confirmed HS/TARIC, origin,
+R07 BOM-derived and supplemental material facts, EU market/use/consumer/importer/channel context and assessment date.
+The deliberately limited first coverage identifies textile labelling, footwear labelling, GPSR baseline, REACH specialist
+review and animal-origin disclosure candidates with an explainable reason, match precision, required evidence, source URL
+and source version. Missing or inexact facts route to `specialist_review_required`; an unconfirmed TARIC is never treated as
+exact. A named `compliance_specialist` may append an evidence-backed review bound to the exact input/result hashes. The UI
+shows the limited-coverage and legal-review boundary and cannot label this internal triage as a permit, certificate or legal
+approval.
+
+**Remaining:** replace broad chapter/heading triggers with maintained exact CN/TARIC, REACH substance/threshold and species
+datasets; encode Member-State and date-versioned rules; cover CITES, PPE, children's products, biocidal treatment,
+packaging/waste, sanctions and relevant product-safety standards; validate source-change lifecycle and amendment handling;
+then run exact-head CI/staging and a named specialist pilot using real product/BOM/lab evidence. No global
+`not applicable` decision is permitted outside the declared coverage.
 
 **Definition of Done:** source-versioned rules return explainable applicable/not-applicable decisions and required evidence;
 specialist reviewer approves high-risk classifications. Never claim the list is universally complete.
 
 ## 7. Remaining implementation order from 2026-09-12
 
-1. **Finish R18 production-claim containment and build the minimum R20 applicability core** before adding another report.
-   Applicability must use exact product, CN/TARIC, material, lane, market and effective date rather than a static checklist.
+1. **The R18 production-copy containment and minimum R20 applicability core now exist locally.** Next, build the R18 claim
+   register and expand R20's maintained datasets/domain coverage before allowing external compliance claims.
 2. **Close the existing real-world gates:** R01/R02 operator and warehouse pilots; R03 authentic carrier pilot; R05/R06
    isolated staging/CI. Keep R04 waiting for an exact broker schema instead of expanding a guessed mapping.
 3. **Build shared product-compliance primitives** for components/materials/substances, EU economic operators, languages,
@@ -657,6 +676,7 @@ npm run test:vn-customs-handoff-pilot # same guarded R03/R04 fixture; see docs/V
 npm run test:eu-import-handoff-pilot # same guarded R01-R05 fixture; see docs/EU_IMPORT_HANDOFF_PILOT_RUNBOOK.md
 npm run test:ics2-handoff-pilot # same guarded R01-R06 fixture; see docs/ICS2_HANDOFF_PILOT_RUNBOOK.md
 npm run test:origin-handoff-pilot # same guarded R01-R07 fixture; see docs/ORIGIN_HANDOFF_PILOT_RUNBOOK.md
+npm run test:compliance-applicability-pilot # same guarded cumulative fixture; see docs/COMPLIANCE_APPLICABILITY_PILOT_RUNBOOK.md
 git diff --check
 ```
 
@@ -1275,3 +1295,27 @@ Backend carbon trace core:
   and could shift to the preceding UTC day, preventing the unchanged second TARIC confirmation. The database driver now
   preserves PostgreSQL `DATE` as a timezone-free ISO string, with a regression test; the pilot then passed without
   weakening the two-step control.
+
+### 2026-09-13 — R20 product-compliance applicability core
+
+- Backend commit `8010dc11af56596e381dccc2e60f8aac4a859c44` and frontend commit
+  `9fc53da684664d41be6bf428e3bdbcee78f22c84` add the first limited, source-versioned EU product-compliance triage. It binds
+  shipment classification, origin/material facts, market context and assessment date to immutable input/result/source
+  checksums; later edits require a new evaluation rather than mutating history.
+- The first ruleset covers baseline routing for Regulation (EU) 1007/2011 textile labelling, Directive 94/11/EC footwear
+  labelling, Regulation (EU) 2023/988 GPSR and Regulation (EC) 1907/2006 REACH. Match reasons, precision, missing facts,
+  evidence requirements and exact source versions are visible. Coverage is explicitly limited and cannot support a global
+  non-applicability claim.
+- Migration 030 uses tenant-bound composite foreign keys and supporting foreign-key/query indexes. A named
+  `compliance_specialist` review is append-only, bound to the exact evaluation hashes and requires locked or
+  third-party-verified shipment evidence before it can confirm internal planning.
+- Local gates pass: backend 113/113 suites and 705/705 tests plus syntax/OpenAPI/generated-artifact/architecture/lint;
+  frontend 46/46 files and 200/200 tests, `npm run check`, and a production build of all 62 routes. Frontend lint retains
+  20 pre-existing warnings and has no errors.
+- A fresh dedicated PostgreSQL 18 database (`weavecarbon_r20_pilot`) loaded the base schema and migrations 001-030. The
+  guarded cumulative pilot passed all 27 checks with `productionDataTouched=false`; the retained result is
+  `artifacts/compliance-applicability-pilot/result.json`, SHA-256
+  `6b21f6a97f2cb9b7b03eb71a8b859c8f32fcc5a218195eb552f4b23ff73dd3c0`.
+- R20 remains `PARTIAL` pending exact maintained regulatory datasets, broader domain coverage, exact-head CI/staging and a
+  qualified specialist pilot on real product/BOM/lab evidence. The work is local only; nothing was pushed, merged or
+  deployed.
