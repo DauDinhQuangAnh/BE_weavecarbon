@@ -904,6 +904,30 @@ const REQUEST_BODY_OVERRIDES = {
     }, additionalProperties: false
   },
   'POST /corporate-ghg-inventories': { $ref: '#/components/schemas/CorporateGhgInventoryInput' },
+  'POST /industrial-core/facilities': {
+    type: 'object', required: ['facilityReference', 'name', 'countryCode'], properties: {
+      facilityReference: { type: 'string', minLength: 1, maxLength: 120 },
+      name: { type: 'string', minLength: 1, maxLength: 240 },
+      countryCode: { type: 'string', pattern: '^[A-Za-z]{2}$' },
+      timezone: { type: 'string', minLength: 1, maxLength: 200 },
+      lifecycleStatus: { type: 'string', enum: ['planned', 'active', 'inactive'] },
+      boundaryNotes: { type: 'string', maxLength: 10000 }, metadata: { type: 'object' }
+    }, additionalProperties: false
+  },
+  'POST /industrial-core/activities': {
+    type: 'object', required: ['activityReference', 'facilityRevisionId', 'activityType', 'periodStart', 'periodEnd',
+      'quantity', 'canonicalUnit', 'sourceKind', 'dataQualityLevel', 'sourceSha256'], properties: {
+      activityReference: { type: 'string', minLength: 1, maxLength: 120 }, facilityRevisionId: { type: 'string', format: 'uuid' },
+      processRevisionId: { type: 'string', format: 'uuid', nullable: true }, measurementPointRevisionId: { type: 'string', format: 'uuid', nullable: true },
+      activityType: { type: 'string', minLength: 1, maxLength: 200 }, periodStart: { type: 'string', format: 'date-time' },
+      periodEnd: { type: 'string', format: 'date-time' }, quantity: { type: 'number', minimum: 0 },
+      canonicalUnit: { type: 'string', minLength: 1, maxLength: 100 },
+      sourceKind: { type: 'string', enum: ['invoice', 'meter', 'plc', 'sensor', 'supplier', 'manual', 'api'] },
+      dataQualityLevel: { type: 'string', enum: ['L1', 'L2', 'L3', 'L4', 'L5'] },
+      rawPayload: { type: 'object' }, sourceSha256: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' },
+      evidenceDocumentIds: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } }
+    }, additionalProperties: false
+  },
   'POST /corporate-ghg-inventories/{inventoryId}/reviews': {
     type: 'object', required: ['reviewerRole', 'decision', 'notes'], properties: {
       reviewerRole: { type: 'string', enum: ['corporate_ghg_inventory_reviewer'] },

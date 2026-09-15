@@ -16441,6 +16441,363 @@
         ]
       }
     },
+    "/industrial-core/activities": {
+      "get": {
+        "operationId": "getIndustrialCoreActivities",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /industrial-core/activities",
+        "tags": [
+          "Industrial carbon core"
+        ]
+      },
+      "post": {
+        "operationId": "postIndustrialCoreActivities",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "activityReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "activityType": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "canonicalUnit": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "dataQualityLevel": {
+                    "enum": [
+                      "L1",
+                      "L2",
+                      "L3",
+                      "L4",
+                      "L5"
+                    ],
+                    "type": "string"
+                  },
+                  "evidenceDocumentIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "measurementPointRevisionId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "periodEnd": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "periodStart": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "processRevisionId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "rawPayload": {
+                    "type": "object"
+                  },
+                  "sourceKind": {
+                    "enum": [
+                      "invoice",
+                      "meter",
+                      "plc",
+                      "sensor",
+                      "supplier",
+                      "manual",
+                      "api"
+                    ],
+                    "type": "string"
+                  },
+                  "sourceSha256": {
+                    "pattern": "^[a-fA-F0-9]{64}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "activityReference",
+                  "facilityRevisionId",
+                  "activityType",
+                  "periodStart",
+                  "periodEnd",
+                  "quantity",
+                  "canonicalUnit",
+                  "sourceKind",
+                  "dataQualityLevel",
+                  "sourceSha256"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /industrial-core/activities",
+        "tags": [
+          "Industrial carbon core"
+        ]
+      }
+    },
+    "/industrial-core/capabilities": {
+      "get": {
+        "operationId": "getIndustrialCoreCapabilities",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /industrial-core/capabilities",
+        "tags": [
+          "Industrial carbon core"
+        ]
+      }
+    },
+    "/industrial-core/facilities": {
+      "get": {
+        "operationId": "getIndustrialCoreFacilities",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /industrial-core/facilities",
+        "tags": [
+          "Industrial carbon core"
+        ]
+      },
+      "post": {
+        "operationId": "postIndustrialCoreFacilities",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "boundaryNotes": {
+                    "maxLength": 10000,
+                    "type": "string"
+                  },
+                  "countryCode": {
+                    "pattern": "^[A-Za-z]{2}$",
+                    "type": "string"
+                  },
+                  "facilityReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "lifecycleStatus": {
+                    "enum": [
+                      "planned",
+                      "active",
+                      "inactive"
+                    ],
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "type": "object"
+                  },
+                  "name": {
+                    "maxLength": 240,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "facilityReference",
+                  "name",
+                  "countryCode"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /industrial-core/facilities",
+        "tags": [
+          "Industrial carbon core"
+        ]
+      }
+    },
     "/logistics/overview": {
       "get": {
         "operationId": "getLogisticsOverview",
@@ -20594,6 +20951,9 @@
     },
     {
       "name": "EU textile EPR"
+    },
+    {
+      "name": "Industrial carbon core"
     },
     {
       "name": "Operations"

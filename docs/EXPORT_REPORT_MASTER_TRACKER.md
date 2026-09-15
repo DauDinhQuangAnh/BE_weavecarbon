@@ -1,5 +1,10 @@
 # WeaveCarbon Export Report Master Tracker
 
+> Product rebaseline (2026-09-15): export reporting is now one adapter workstream inside the wider
+> Industrial Carbon & Climate Data Infrastructure roadmap. Use
+> [INDUSTRIAL_PLATFORM_MASTER_TRACKER.md](./INDUSTRIAL_PLATFORM_MASTER_TRACKER.md) for macro-phase status;
+> keep this tracker as the detailed source of truth for R01-R20 export work.
+
 > **READ THIS FILE FIRST.** This is the canonical handoff and progress tracker for export-report work.
 > It covers both the backend and frontend repositories. Update it in the same commit as every material
 > report change. Do not infer legal readiness from passing unit tests or from the existence of a download button.

@@ -1,0 +1,38 @@
+# WeaveCarbon Industrial Platform Master Tracker
+
+Baseline date: 2026-09-15  
+Vision source: `WeaveCarbon Mới cập nhật 12.09.docx`  
+Current implementation branch: `feat/g2-industrial-core-baseline`
+
+## Product boundary
+
+WeaveCarbon is being rebaselined as Industrial Carbon & Climate Data Infrastructure. The existing R01-R20 work remains valuable, but is one **Export & Traceability adapter workstream**, not the whole platform.
+
+Capability labels are contractual:
+
+- `implemented`: working product capability with repository evidence.
+- `partial`: a safe baseline exists, but the complete operating workflow does not.
+- `planned`: vision only; it must not be represented as production-ready.
+
+## Macro phases
+
+| Phase | Scope | Current state | Exit gate |
+|---|---|---|---|
+| G2-00 | Rebaseline and truthful capability contract | Implemented in this branch | Versioned registry, tracker and visible workspace |
+| G2-01 | Canonical industrial data model and evidence graph | Partial | Facility/process/measurement/activity CRUD, lineage queries and review controls |
+| G2-02 | System-wide DQL and factor governance | Partial | DQL scoring, factor approval/version lifecycle and audit UI |
+| G2-03 | Vietnam domestic GHG/MRV lifecycle | Partial | Boundaries, measurement plan, inventory, review and governed filing pack |
+| G2-04 | Mitigation and allowance/quota operations | Planned | Initiative ledger, scenario, allocation and evidence controls |
+| G2-05 | Steel and cement Industry Packs | Planned | Approved calculation/rule packs and pilot fixtures |
+| G2-06 | WeaveNode and industrial ingestion | Planned | Signed device identity, buffering, replay and calibration workflow |
+| G2-07 | Climate risk, multi-facility and vertical scale | Planned | Hazard/exposure model, scenarios and portfolio aggregation |
+
+## This baseline delivers
+
+- Additive immutable schemas for facility, process, measurement point and activity records.
+- Tenant-bound references and activity-to-evidence links.
+- Required activity provenance (`source_sha256`) and DQL (`L1`-`L5`).
+- Authenticated capability, facility and activity APIs.
+- A UI workspace that clearly separates implemented, partial and planned capability.
+
+This baseline does **not** claim a complete domestic MRV system, complete Industry Packs, WeaveNode telemetry or climate-risk decision intelligence.
