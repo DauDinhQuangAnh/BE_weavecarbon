@@ -20,7 +20,7 @@ Capability labels are contractual:
 |---|---|---|---|
 | G2-00 | Rebaseline and truthful capability contract | Implemented in this branch | Versioned registry, tracker and visible workspace |
 | G2-01 | Canonical industrial data model and evidence graph | Implemented | Facility/process/measurement/activity revision APIs, lineage queries and review controls |
-| G2-02 | System-wide DQL and factor governance | Partial | DQL scoring, factor approval/version lifecycle and audit UI |
+| G2-02 | System-wide DQL and factor governance | Implemented | Versioned five-dimension DQL, factor proposal/review ledgers and audit UI |
 | G2-03 | Vietnam domestic GHG/MRV lifecycle | Partial | Boundaries, measurement plan, inventory, review and governed filing pack |
 | G2-04 | Mitigation and allowance/quota operations | Planned | Initiative ledger, scenario, allocation and evidence controls |
 | G2-05 | Steel and cement Industry Packs | Planned | Approved calculation/rule packs and pilot fixtures |

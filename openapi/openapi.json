@@ -7237,6 +7237,447 @@
         ]
       }
     },
+    "/data-governance/dql-assessments": {
+      "get": {
+        "operationId": "getDataGovernanceDqlAssessments",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /data-governance/dql-assessments",
+        "tags": [
+          "Data quality and factor governance"
+        ]
+      },
+      "post": {
+        "operationId": "postDataGovernanceDqlAssessments",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "completenessPercent": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "completenessScore": {
+                    "maximum": 5,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "evidenceDocumentIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "geographicScore": {
+                    "maximum": 5,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "improvementActions": {
+                    "items": {
+                      "maxLength": 1000,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "rationale": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reliabilityScore": {
+                    "maximum": 5,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "subjectReference": {
+                    "maxLength": 240,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "subjectType": {
+                    "enum": [
+                      "activity",
+                      "facility",
+                      "process",
+                      "measurement_point",
+                      "emission_factor"
+                    ],
+                    "type": "string"
+                  },
+                  "technologicalScore": {
+                    "maximum": 5,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "temporalScore": {
+                    "maximum": 5,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "subjectType",
+                  "subjectReference",
+                  "temporalScore",
+                  "geographicScore",
+                  "technologicalScore",
+                  "completenessScore",
+                  "reliabilityScore",
+                  "completenessPercent",
+                  "rationale"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /data-governance/dql-assessments",
+        "tags": [
+          "Data quality and factor governance"
+        ]
+      }
+    },
+    "/data-governance/factor-proposals": {
+      "get": {
+        "operationId": "getDataGovernanceFactorProposals",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /data-governance/factor-proposals",
+        "tags": [
+          "Data quality and factor governance"
+        ]
+      },
+      "post": {
+        "operationId": "postDataGovernanceFactorProposals",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "boundary": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "evidenceDocumentIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "factorId": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "factorValue": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "geography": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "gwpBasis": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "isProxy": {
+                    "type": "boolean"
+                  },
+                  "label": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "proposalReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sourceName": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sourceUrl": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sourceYear": {
+                    "maximum": 2200,
+                    "minimum": 1900,
+                    "nullable": true,
+                    "type": "integer"
+                  },
+                  "uncertaintyCv": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "unit": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "validFrom": {
+                    "format": "date",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "validTo": {
+                    "format": "date",
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "proposalReference",
+                  "factorId",
+                  "label",
+                  "factorValue",
+                  "unit",
+                  "sourceName",
+                  "sourceUrl",
+                  "geography",
+                  "boundary",
+                  "gwpBasis",
+                  "uncertaintyCv",
+                  "evidenceDocumentIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /data-governance/factor-proposals",
+        "tags": [
+          "Data quality and factor governance"
+        ]
+      }
+    },
+    "/data-governance/factor-proposals/{proposalId}/reviews": {
+      "post": {
+        "operationId": "postDataGovernanceFactorProposalsByProposalIdReviews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposalId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approved_for_release_candidate",
+                      "needs_information",
+                      "rejected"
+                    ],
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reviewerRole": {
+                    "enum": [
+                      "emission_factor_reviewer"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reviewerRole",
+                  "decision",
+                  "notes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /data-governance/factor-proposals/{proposalId}/reviews",
+        "tags": [
+          "Data quality and factor governance"
+        ]
+      }
+    },
     "/electricity-invoices": {
       "get": {
         "operationId": "getElectricityInvoices",
@@ -21381,6 +21822,9 @@
     },
     {
       "name": "Industrial carbon core"
+    },
+    {
+      "name": "Data quality and factor governance"
     },
     {
       "name": "Operations"

@@ -27,6 +27,7 @@ const operationsRoutes = require('../routes/operations');
 const corporateGhgInventoriesRoutes = require('../routes/corporateGhgInventories');
 const euTextileEprRoutes = require('../routes/euTextileEpr');
 const industrialCoreRoutes = require('../routes/industrialCore');
+const dataQualityGovernanceRoutes = require('../routes/dataQualityGovernance');
 
 const apiRoutes = [
   { basePath: '/api/auth', tag: 'Auth', router: authRoutes },
@@ -57,6 +58,7 @@ const apiRoutes = [
   { basePath: '/api/corporate-ghg-inventories', tag: 'Corporate GHG inventories', router: corporateGhgInventoriesRoutes },
   { basePath: '/api/eu-textile-epr', tag: 'EU textile EPR', router: euTextileEprRoutes },
   { basePath: '/api/industrial-core', tag: 'Industrial carbon core', router: industrialCoreRoutes },
+  { basePath: '/api/data-governance', tag: 'Data quality and factor governance', router: dataQualityGovernanceRoutes },
   { basePath: '/api/operations', tag: 'Operations', router: operationsRoutes }
 ];
 

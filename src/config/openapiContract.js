@@ -951,6 +951,36 @@ const REQUEST_BODY_OVERRIDES = {
       notes: { type: 'string', minLength: 1, maxLength: 5000 }
     }, additionalProperties: false
   },
+  'POST /data-governance/dql-assessments': {
+    type: 'object', required: ['subjectType', 'subjectReference', 'temporalScore', 'geographicScore', 'technologicalScore',
+      'completenessScore', 'reliabilityScore', 'completenessPercent', 'rationale'], properties: {
+      subjectType: { type: 'string', enum: ['activity', 'facility', 'process', 'measurement_point', 'emission_factor'] },
+      subjectReference: { type: 'string', minLength: 1, maxLength: 240 }, temporalScore: { type: 'integer', minimum: 1, maximum: 5 },
+      geographicScore: { type: 'integer', minimum: 1, maximum: 5 }, technologicalScore: { type: 'integer', minimum: 1, maximum: 5 },
+      completenessScore: { type: 'integer', minimum: 1, maximum: 5 }, reliabilityScore: { type: 'integer', minimum: 1, maximum: 5 },
+      completenessPercent: { type: 'number', minimum: 0, maximum: 100 }, rationale: { type: 'string', minLength: 1, maxLength: 5000 },
+      improvementActions: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 1000 } },
+      evidenceDocumentIds: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } }
+    }, additionalProperties: false
+  },
+  'POST /data-governance/factor-proposals': {
+    type: 'object', required: ['proposalReference', 'factorId', 'label', 'factorValue', 'unit', 'sourceName', 'sourceUrl',
+      'geography', 'boundary', 'gwpBasis', 'uncertaintyCv', 'evidenceDocumentIds'], properties: {
+      proposalReference: { type: 'string', minLength: 1, maxLength: 120 }, factorId: { type: 'string', minLength: 1, maxLength: 200 },
+      label: { type: 'string', minLength: 1, maxLength: 500 }, factorValue: { type: 'number', minimum: 0 }, unit: { type: 'string', minLength: 1 },
+      sourceName: { type: 'string', minLength: 1 }, sourceUrl: { type: 'string', minLength: 1 }, sourceYear: { type: 'integer', minimum: 1900, maximum: 2200, nullable: true },
+      geography: { type: 'string', minLength: 1 }, boundary: { type: 'string', minLength: 1 }, validFrom: { type: 'string', format: 'date', nullable: true },
+      validTo: { type: 'string', format: 'date', nullable: true }, gwpBasis: { type: 'string', minLength: 1 }, uncertaintyCv: { type: 'number', minimum: 0 },
+      isProxy: { type: 'boolean' }, evidenceDocumentIds: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } }
+    }, additionalProperties: false
+  },
+  'POST /data-governance/factor-proposals/{proposalId}/reviews': {
+    type: 'object', required: ['reviewerRole', 'decision', 'notes'], properties: {
+      reviewerRole: { type: 'string', enum: ['emission_factor_reviewer'] },
+      decision: { type: 'string', enum: ['approved_for_release_candidate', 'needs_information', 'rejected'] },
+      notes: { type: 'string', minLength: 1, maxLength: 5000 }
+    }, additionalProperties: false
+  },
   'POST /corporate-ghg-inventories/{inventoryId}/reviews': {
     type: 'object', required: ['reviewerRole', 'decision', 'notes'], properties: {
       reviewerRole: { type: 'string', enum: ['corporate_ghg_inventory_reviewer'] },
