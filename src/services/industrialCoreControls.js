@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.15.3';
+const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.15.4';
 const STATUS = Object.freeze(['implemented', 'partial', 'planned']);
 
 const CAPABILITY_REGISTRY = Object.freeze({
@@ -15,7 +15,7 @@ const CAPABILITY_REGISTRY = Object.freeze({
     { id: 'semantic', label: 'Semantic harmonization', status: 'implemented', evidence: ['canonical facility/process/measurement/activity schema', 'tenant-bound revision ledgers'], nextGate: 'extend taxonomy through industry packs' },
     { id: 'evidence', label: 'Evidence and provenance', status: 'implemented', evidence: ['evidence locker', 'activity lineage query', 'immutable review snapshots', 'audit trail'], nextGate: 'cross-workstream graph traversal' },
     { id: 'computation', label: 'Carbon computation', status: 'implemented', evidence: ['factor registry', 'PCF studies', 'corporate GHG inventory'], nextGate: 'process allocation engine' },
-    { id: 'domestic-mrv', label: 'Domestic GHG and MRV operations', status: 'partial', evidence: ['corporate inventory', 'facility/activity baseline'], nextGate: 'measurement plan and review lifecycle' },
+    { id: 'domestic-mrv', label: 'Domestic GHG and MRV operations', status: 'implemented', evidence: ['effective-date legal basis', 'measurement plan revisions', 'corporate inventory linkage', 'filing readiness snapshots'], nextGate: 'specialist pilots and authority-channel integration' },
     { id: 'export', label: 'Export and traceability adapters', status: 'implemented', evidence: ['R01-R20 export workstream'], nextGate: 'map canonical industrial records into adapters' },
     { id: 'data-quality', label: 'Data quality and factor governance', status: 'implemented', evidence: ['versioned DQL scoring', 'immutable factor proposals', 'evidence-gated reviews'], nextGate: 'apply DQL gates to domestic MRV filing packs' },
     { id: 'industry-rules', label: 'Industry packs', status: 'planned', evidence: [], nextGate: 'steel and cement rule packs' },

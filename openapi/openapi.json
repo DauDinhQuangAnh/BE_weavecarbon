@@ -21725,6 +21725,420 @@
           "Suppliers"
         ]
       }
+    },
+    "/vn-mrv/cases": {
+      "get": {
+        "operationId": "getVnMrvCases",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /vn-mrv/cases",
+        "tags": [
+          "Vietnam GHG and MRV preparation"
+        ]
+      },
+      "post": {
+        "operationId": "postVnMrvCases",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "applicabilityStatus": {
+                    "enum": [
+                      "confirmed_listed",
+                      "potentially_listed",
+                      "not_listed",
+                      "undetermined"
+                    ],
+                    "type": "string"
+                  },
+                  "assessmentDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "caseReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "listingEvidenceDocumentId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "listingReference": {
+                    "type": "string"
+                  },
+                  "rationale": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reportingYear": {
+                    "maximum": 2200,
+                    "minimum": 2020,
+                    "type": "integer"
+                  },
+                  "sector": {
+                    "enum": [
+                      "energy",
+                      "industry_trade",
+                      "transport",
+                      "construction",
+                      "agriculture_environment",
+                      "waste",
+                      "other"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "caseReference",
+                  "facilityRevisionId",
+                  "reportingYear",
+                  "sector",
+                  "applicabilityStatus",
+                  "assessmentDate",
+                  "rationale"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /vn-mrv/cases",
+        "tags": [
+          "Vietnam GHG and MRV preparation"
+        ]
+      }
+    },
+    "/vn-mrv/filings": {
+      "get": {
+        "operationId": "getVnMrvFilings",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /vn-mrv/filings",
+        "tags": [
+          "Vietnam GHG and MRV preparation"
+        ]
+      },
+      "post": {
+        "operationId": "postVnMrvFilings",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "caseId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "corporateInventoryId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "measurementPlanId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "caseId",
+                  "measurementPlanId",
+                  "corporateInventoryId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /vn-mrv/filings",
+        "tags": [
+          "Vietnam GHG and MRV preparation"
+        ]
+      }
+    },
+    "/vn-mrv/measurement-plans": {
+      "get": {
+        "operationId": "getVnMrvMeasurementPlans",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /vn-mrv/measurement-plans",
+        "tags": [
+          "Vietnam GHG and MRV preparation"
+        ]
+      },
+      "post": {
+        "operationId": "postVnMrvMeasurementPlans",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "caseId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "dqlAssessmentIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "evidenceDocumentIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "methodology": {
+                    "type": "object"
+                  },
+                  "operationalBoundary": {
+                    "type": "object"
+                  },
+                  "organizationalBoundary": {
+                    "type": "object"
+                  },
+                  "planReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "qaqcPlan": {
+                    "type": "object"
+                  },
+                  "sourceMap": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "uncertaintyPlan": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "caseId",
+                  "planReference",
+                  "organizationalBoundary",
+                  "operationalBoundary",
+                  "sourceMap",
+                  "methodology",
+                  "qaqcPlan",
+                  "uncertaintyPlan",
+                  "dqlAssessmentIds",
+                  "evidenceDocumentIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /vn-mrv/measurement-plans",
+        "tags": [
+          "Vietnam GHG and MRV preparation"
+        ]
+      }
     }
   },
   "security": [
@@ -21825,6 +22239,9 @@
     },
     {
       "name": "Data quality and factor governance"
+    },
+    {
+      "name": "Vietnam GHG and MRV preparation"
     },
     {
       "name": "Operations"

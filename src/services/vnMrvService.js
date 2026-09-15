@@ -1,0 +1,50 @@
+const pool = require('../config/database');
+const { RULESET, validateCase, validatePlan, filingReadiness, sha } = require('./vnMrvControls');
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+class VnMrvService {
+  constructor(database = pool) { this.database = database; }
+  async exists(companyId) { const r = await this.database.query('SELECT id FROM companies WHERE id=$1', [companyId]); return Boolean(r.rows[0]); }
+  async evidence(companyId, ids) { if (!ids.length) return []; const r = await this.database.query(`SELECT id, document_name, evidence_type, status, checksum_sha256, file_size_bytes FROM evidence_documents WHERE company_id=$1 AND id=ANY($2::uuid[]) ORDER BY id`, [companyId, ids]); return r.rows.map((x) => ({ id: x.id, name: x.document_name, type: x.evidence_type, status: x.status, checksumSha256: x.checksum_sha256, fileSizeBytes: Number(x.file_size_bytes || 0) })); }
+  async listCases(companyId) { if (!(await this.exists(companyId))) return null; const r = await this.database.query(`SELECT c.*, f.facility_reference, f.name AS facility_name FROM vn_mrv_case_revisions c JOIN industrial_facility_revisions f ON f.id=c.facility_revision_id AND f.company_id=c.company_id WHERE c.company_id=$1 ORDER BY c.created_at DESC`, [companyId]); return r.rows.map(this.formatCase); }
+  async createCase(companyId, userId, input) {
+    if (!(await this.exists(companyId))) return null; const { value, errors } = validateCase(input);
+    if (errors.length) return { blocked: true, code: 'VN_MRV_CASE_INVALID', message: errors.join(' '), details: errors };
+    const [facility, listingEvidence] = await Promise.all([
+      this.database.query('SELECT id FROM industrial_facility_revisions WHERE id=$1 AND company_id=$2', [value.facilityRevisionId, companyId]),
+      value.listingEvidenceDocumentId ? this.evidence(companyId, [value.listingEvidenceDocumentId]) : Promise.resolve([])
+    ]);
+    if (!facility.rows[0] || (value.listingEvidenceDocumentId && listingEvidence.length !== 1)) return { blocked: true, code: 'VN_MRV_REFERENCE_INVALID', message: 'Facility and listing evidence must belong to the active company.' };
+    const client = await this.database.connect(); try { await client.query('BEGIN'); await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`${companyId}:vn-mrv:${value.caseReference}`]);
+      const n = await client.query('SELECT COALESCE(MAX(revision),0)+1 AS revision FROM vn_mrv_case_revisions WHERE company_id=$1 AND case_reference=$2', [companyId, value.caseReference]);
+      const r = await client.query(`INSERT INTO vn_mrv_case_revisions (company_id,case_reference,revision,facility_revision_id,reporting_year,sector,applicability_status,listing_reference,listing_evidence_document_id,legal_basis_snapshot,assessment_date,rationale,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13) RETURNING *`, [companyId,value.caseReference,Number(n.rows[0].revision),value.facilityRevisionId,value.reportingYear,value.sector,value.applicabilityStatus,value.listingReference,value.listingEvidenceDocumentId,JSON.stringify(value.legalBasis),value.assessmentDate,value.rationale,userId]);
+      await client.query('COMMIT'); return this.formatCase(r.rows[0]); } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+  }
+  async createPlan(companyId, userId, input) {
+    const { value, errors } = validatePlan(input); if (errors.length) return { blocked: true, code: 'VN_MRV_PLAN_INVALID', message: errors.join(' '), details: errors };
+    const [caseRow, dql, evidence] = await Promise.all([
+      this.database.query('SELECT * FROM vn_mrv_case_revisions WHERE id=$1 AND company_id=$2', [value.caseId, companyId]),
+      value.dqlAssessmentIds.length ? this.database.query('SELECT id FROM industrial_dql_assessments WHERE company_id=$1 AND id=ANY($2::uuid[])', [companyId,value.dqlAssessmentIds]) : Promise.resolve({ rows: [] }), this.evidence(companyId,value.evidenceDocumentIds)
+    ]);
+    if (!caseRow.rows[0] || dql.rows.length !== value.dqlAssessmentIds.length || evidence.length !== value.evidenceDocumentIds.length) return { blocked: true, code: 'VN_MRV_PLAN_REFERENCE_INVALID', message: 'Case, DQL and evidence references must belong to the active company.' };
+    const client = await this.database.connect(); try { await client.query('BEGIN'); await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`${companyId}:vn-mrv-plan:${value.planReference}`]);
+      const n = await client.query('SELECT COALESCE(MAX(revision),0)+1 AS revision FROM vn_mrv_measurement_plan_revisions WHERE company_id=$1 AND plan_reference=$2',[companyId,value.planReference]);
+      const r = await client.query(`INSERT INTO vn_mrv_measurement_plan_revisions (company_id,case_id,plan_reference,revision,organizational_boundary,operational_boundary,source_map,methodology,qaqc_plan,uncertainty_plan,dql_assessment_ids,evidence_snapshot,plan_sha256,created_by) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14) RETURNING *`,[companyId,value.caseId,value.planReference,Number(n.rows[0].revision),JSON.stringify(value.organizationalBoundary),JSON.stringify(value.operationalBoundary),JSON.stringify(value.sourceMap),JSON.stringify(value.methodology),JSON.stringify(value.qaqcPlan),JSON.stringify(value.uncertaintyPlan),JSON.stringify(value.dqlAssessmentIds),JSON.stringify(evidence),value.planSha256,userId]);
+      await client.query('COMMIT'); return this.formatPlan(r.rows[0]); } catch(e) { await client.query('ROLLBACK').catch(()=>{}); throw e; } finally { client.release(); }
+  }
+  async listPlans(companyId) { if (!(await this.exists(companyId))) return null; const r=await this.database.query('SELECT * FROM vn_mrv_measurement_plan_revisions WHERE company_id=$1 ORDER BY created_at DESC',[companyId]); return r.rows.map(this.formatPlan); }
+  async prepareFiling(companyId, userId, input = {}) {
+    const caseId=String(input.caseId||''); const planId=String(input.measurementPlanId||''); const inventoryId=String(input.corporateInventoryId||'');
+    if (![caseId,planId,inventoryId].every((id)=>UUID.test(id))) return { blocked:true,code:'VN_MRV_FILING_INVALID',message:'caseId, measurementPlanId and corporateInventoryId must be UUIDs.' };
+    const [c,p,i] = await Promise.all([this.database.query('SELECT * FROM vn_mrv_case_revisions WHERE id=$1 AND company_id=$2',[caseId,companyId]),this.database.query('SELECT * FROM vn_mrv_measurement_plan_revisions WHERE id=$1 AND case_id=$2 AND company_id=$3',[planId,caseId,companyId]),this.database.query('SELECT * FROM corporate_ghg_inventory_revisions WHERE id=$1 AND company_id=$2',[inventoryId,companyId])]);
+    if (!c.rows[0]||!p.rows[0]||!i.rows[0]) return { blocked:true,code:'VN_MRV_FILING_REFERENCE_INVALID',message:'Case, plan and inventory must belong to the active company and case.' };
+    const dqlIds=p.rows[0].dql_assessment_ids||[]; const dql=dqlIds.length?await this.database.query('SELECT * FROM industrial_dql_assessments WHERE company_id=$1 AND id=ANY($2::uuid[])',[companyId,dqlIds]):{rows:[]};
+    const ready=filingReadiness({mrvCase:c.rows[0],plan:p.rows[0],inventory:i.rows[0],dqlRows:dql.rows}); const evidence=[...(p.rows[0].evidence_snapshot||[]),...(i.rows[0].evidence_snapshot||[])];
+    const payload={schemaId:'weavecarbon.vn-mrv-filing-preparation',schemaVersion:'1.0.0',ruleset:RULESET,case:this.formatCase(c.rows[0]),measurementPlan:this.formatPlan(p.rows[0]),inventory:{id:i.rows[0].id,reference:i.rows[0].inventory_reference,revision:Number(i.rows[0].revision),resultSha256:i.rows[0].result_sha256},dql:dql.rows.map((x)=>({id:x.id,level:x.data_quality_level,score:Number(x.overall_score)})),readiness:ready}; const payloadSha256=sha(payload);
+    const r=await this.database.query(`INSERT INTO vn_mrv_filing_snapshots (company_id,case_id,measurement_plan_id,corporate_inventory_id,template_reference,template_version,payload,payload_sha256,readiness_status,blockers,evidence_snapshot,disclaimer,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10::jsonb,$11::jsonb,$12,$13) RETURNING *`,[companyId,caseId,planId,inventoryId,'VN-MRV-INTERNAL-PREPARATION','1.0.0',JSON.stringify(payload),payloadSha256,ready.status,JSON.stringify(ready.blockers),JSON.stringify(evidence),RULESET.disclaimer,userId]); return this.formatFiling(r.rows[0]);
+  }
+  async listFilings(companyId) { if (!(await this.exists(companyId))) return null; const r=await this.database.query('SELECT * FROM vn_mrv_filing_snapshots WHERE company_id=$1 ORDER BY created_at DESC',[companyId]); return r.rows.map(this.formatFiling); }
+  formatCase(x) { return {id:x.id,caseReference:x.case_reference,revision:Number(x.revision),facilityRevisionId:x.facility_revision_id,facilityReference:x.facility_reference,facilityName:x.facility_name,reportingYear:Number(x.reporting_year),sector:x.sector,applicabilityStatus:x.applicability_status,listingReference:x.listing_reference,legalBasis:x.legal_basis_snapshot,assessmentDate:x.assessment_date,rationale:x.rationale,createdAt:x.created_at}; }
+  formatPlan(x) { return {id:x.id,caseId:x.case_id,planReference:x.plan_reference,revision:Number(x.revision),organizationalBoundary:x.organizational_boundary,operationalBoundary:x.operational_boundary,sourceMap:x.source_map,methodology:x.methodology,qaqcPlan:x.qaqc_plan,uncertaintyPlan:x.uncertainty_plan,dqlAssessmentIds:x.dql_assessment_ids,evidenceSnapshot:x.evidence_snapshot,planSha256:x.plan_sha256,createdAt:x.created_at}; }
+  formatFiling(x) { return {id:x.id,caseId:x.case_id,measurementPlanId:x.measurement_plan_id,corporateInventoryId:x.corporate_inventory_id,templateReference:x.template_reference,templateVersion:x.template_version,payload:x.payload,payloadSha256:x.payload_sha256,readinessStatus:x.readiness_status,blockers:x.blockers,evidenceSnapshot:x.evidence_snapshot,disclaimer:x.disclaimer,createdAt:x.created_at}; }
+}
+module.exports={VnMrvService,vnMrvService:new VnMrvService()};
