@@ -29,6 +29,7 @@ const euTextileEprRoutes = require('../routes/euTextileEpr');
 const industrialCoreRoutes = require('../routes/industrialCore');
 const dataQualityGovernanceRoutes = require('../routes/dataQualityGovernance');
 const vnMrvRoutes = require('../routes/vnMrv');
+const mitigationOperationsRoutes = require('../routes/mitigationOperations');
 
 const apiRoutes = [
   { basePath: '/api/auth', tag: 'Auth', router: authRoutes },
@@ -61,6 +62,7 @@ const apiRoutes = [
   { basePath: '/api/industrial-core', tag: 'Industrial carbon core', router: industrialCoreRoutes },
   { basePath: '/api/data-governance', tag: 'Data quality and factor governance', router: dataQualityGovernanceRoutes },
   { basePath: '/api/vn-mrv', tag: 'Vietnam GHG and MRV preparation', router: vnMrvRoutes },
+  { basePath: '/api/mitigation-operations', tag: 'Mitigation and allowance operations', router: mitigationOperationsRoutes },
   { basePath: '/api/operations', tag: 'Operations', router: operationsRoutes }
 ];
 

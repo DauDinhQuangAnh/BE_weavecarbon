@@ -18168,6 +18168,639 @@
         ]
       }
     },
+    "/mitigation-operations/allocations": {
+      "get": {
+        "operationId": "getMitigationOperationsAllocations",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /mitigation-operations/allocations",
+        "tags": [
+          "Mitigation and allowance operations"
+        ]
+      },
+      "post": {
+        "operationId": "postMitigationOperationsAllocations",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "allocationReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "externalReference": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "instrumentType": {
+                    "enum": [
+                      "authority_quota",
+                      "internal_budget",
+                      "transfer_reference",
+                      "credit_reference"
+                    ],
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "quantityTco2e": {
+                    "exclusiveMinimum": true,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "recordStatus": {
+                    "enum": [
+                      "draft_reference",
+                      "evidence_confirmed"
+                    ],
+                    "type": "string"
+                  },
+                  "reportingYear": {
+                    "maximum": 2200,
+                    "minimum": 2020,
+                    "type": "integer"
+                  },
+                  "vintageYear": {
+                    "maximum": 2200,
+                    "minimum": 2020,
+                    "nullable": true,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "allocationReference",
+                  "facilityRevisionId",
+                  "reportingYear",
+                  "instrumentType",
+                  "recordStatus",
+                  "quantityTco2e",
+                  "notes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /mitigation-operations/allocations",
+        "tags": [
+          "Mitigation and allowance operations"
+        ]
+      }
+    },
+    "/mitigation-operations/initiatives": {
+      "get": {
+        "operationId": "getMitigationOperationsInitiatives",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /mitigation-operations/initiatives",
+        "tags": [
+          "Mitigation and allowance operations"
+        ]
+      },
+      "post": {
+        "operationId": "postMitigationOperationsInitiatives",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "assumptions": {
+                    "type": "object"
+                  },
+                  "baselineInventoryId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "baselineYear": {
+                    "maximum": 2200,
+                    "minimum": 2020,
+                    "type": "integer"
+                  },
+                  "evidenceDocumentIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "evidenceRole": {
+                    "enum": [
+                      "baseline",
+                      "methodology",
+                      "approval",
+                      "implementation",
+                      "monitoring",
+                      "verification"
+                    ],
+                    "type": "string"
+                  },
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "initiativeReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "lifecycleStatus": {
+                    "enum": [
+                      "proposed",
+                      "approved_internal",
+                      "in_progress",
+                      "completed",
+                      "cancelled"
+                    ],
+                    "type": "string"
+                  },
+                  "methodology": {
+                    "type": "object"
+                  },
+                  "ownerName": {
+                    "maxLength": 240,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "plannedEnd": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "plannedStart": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "targetReductionTco2e": {
+                    "exclusiveMinimum": true,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "title": {
+                    "maxLength": 240,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "initiativeReference",
+                  "facilityRevisionId",
+                  "title",
+                  "lifecycleStatus",
+                  "ownerName",
+                  "baselineYear",
+                  "targetReductionTco2e",
+                  "plannedStart",
+                  "plannedEnd",
+                  "methodology",
+                  "assumptions",
+                  "evidenceDocumentIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /mitigation-operations/initiatives",
+        "tags": [
+          "Mitigation and allowance operations"
+        ]
+      }
+    },
+    "/mitigation-operations/positions": {
+      "get": {
+        "operationId": "getMitigationOperationsPositions",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /mitigation-operations/positions",
+        "tags": [
+          "Mitigation and allowance operations"
+        ]
+      },
+      "post": {
+        "operationId": "postMitigationOperationsPositions",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "allocationIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "corporateInventoryId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "reportingYear": {
+                    "maximum": 2200,
+                    "minimum": 2020,
+                    "type": "integer"
+                  },
+                  "scenarioIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "type": "array",
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "facilityRevisionId",
+                  "corporateInventoryId",
+                  "reportingYear",
+                  "allocationIds",
+                  "scenarioIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /mitigation-operations/positions",
+        "tags": [
+          "Mitigation and allowance operations"
+        ]
+      }
+    },
+    "/mitigation-operations/scenarios": {
+      "get": {
+        "operationId": "getMitigationOperationsScenarios",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /mitigation-operations/scenarios",
+        "tags": [
+          "Mitigation and allowance operations"
+        ]
+      },
+      "post": {
+        "operationId": "postMitigationOperationsScenarios",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "annualProjection": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "assumptions": {
+                    "type": "object"
+                  },
+                  "baselineEmissionsTco2e": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "evidenceDocumentIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "initiativeId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "periodEnd": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "periodStart": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "projectedEmissionsTco2e": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "scenarioReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "scenarioType": {
+                    "enum": [
+                      "baseline",
+                      "planned",
+                      "conservative",
+                      "stress"
+                    ],
+                    "type": "string"
+                  },
+                  "sensitivity": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "initiativeId",
+                  "scenarioReference",
+                  "scenarioType",
+                  "periodStart",
+                  "periodEnd",
+                  "baselineEmissionsTco2e",
+                  "projectedEmissionsTco2e",
+                  "annualProjection",
+                  "assumptions",
+                  "sensitivity",
+                  "evidenceDocumentIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /mitigation-operations/scenarios",
+        "tags": [
+          "Mitigation and allowance operations"
+        ]
+      }
+    },
     "/operations/jobs/{id}": {
       "get": {
         "operationId": "getOperationsJobsById",
@@ -22242,6 +22875,9 @@
     },
     {
       "name": "Vietnam GHG and MRV preparation"
+    },
+    {
+      "name": "Mitigation and allowance operations"
     },
     {
       "name": "Operations"

@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.15.4';
+const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.15.5';
 const STATUS = Object.freeze(['implemented', 'partial', 'planned']);
 
 const CAPABILITY_REGISTRY = Object.freeze({
@@ -18,6 +18,7 @@ const CAPABILITY_REGISTRY = Object.freeze({
     { id: 'domestic-mrv', label: 'Domestic GHG and MRV operations', status: 'implemented', evidence: ['effective-date legal basis', 'measurement plan revisions', 'corporate inventory linkage', 'filing readiness snapshots'], nextGate: 'specialist pilots and authority-channel integration' },
     { id: 'export', label: 'Export and traceability adapters', status: 'implemented', evidence: ['R01-R20 export workstream'], nextGate: 'map canonical industrial records into adapters' },
     { id: 'data-quality', label: 'Data quality and factor governance', status: 'implemented', evidence: ['versioned DQL scoring', 'immutable factor proposals', 'evidence-gated reviews'], nextGate: 'apply DQL gates to domestic MRV filing packs' },
+    { id: 'mitigation-allowance', label: 'Mitigation and allowance operations', status: 'implemented', evidence: ['initiative revisions', 'evidence-backed scenarios', 'allowance allocation references', 'gross-preserving position snapshots'], nextGate: 'specialist pilot and registry reconciliation connector' },
     { id: 'industry-rules', label: 'Industry packs', status: 'planned', evidence: [], nextGate: 'steel and cement rule packs' },
     { id: 'decision-intelligence', label: 'Climate risk and decision intelligence', status: 'planned', evidence: [], nextGate: 'physical risk data and scenario model' }
   ]),
@@ -30,7 +31,7 @@ const CAPABILITY_REGISTRY = Object.freeze({
     { id: 'transport', status: 'implemented' }, { id: 'evidence', status: 'implemented' },
     { id: 'meter-device', status: 'implemented' }, { id: 'emission-factor', status: 'implemented' },
     { id: 'methodology', status: 'partial' }, { id: 'calculation-line', status: 'implemented' },
-    { id: 'allowance-credit-reference', status: 'planned' }, { id: 'mitigation-initiative', status: 'planned' },
+    { id: 'allowance-credit-reference', status: 'implemented' }, { id: 'mitigation-initiative', status: 'implemented' },
     { id: 'review-verification', status: 'implemented' }, { id: 'target-requirement', status: 'planned' }
   ])
 });
