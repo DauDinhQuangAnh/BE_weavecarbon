@@ -1,4 +1,5 @@
-const { getCapabilityRegistry, validateFacilityInput, validateActivityInput } = require('../../src/services/industrialCoreControls');
+const { getCapabilityRegistry, validateFacilityInput, validateActivityInput, validateProcessInput,
+  validateMeasurementPointInput, validateActivityReviewInput } = require('../../src/services/industrialCoreControls');
 
 describe('G2 industrial core controls', () => {
   test('publishes an honest, versioned capability registry', () => {
@@ -21,5 +22,12 @@ describe('G2 industrial core controls', () => {
       'facilityRevisionId must be a UUID.', 'A valid periodStart and periodEnd are required.',
       'canonicalUnit is required.', 'sourceSha256 must be a SHA-256 hex digest.'
     ]));
+  });
+
+  test('validates process, measurement point and reviewer contracts', () => {
+    const facilityRevisionId = '30000000-0000-4000-8000-000000000001';
+    expect(validateProcessInput({ facilityRevisionId, processReference: 'P-1', name: 'Kiln', processType: 'thermal' }).errors).toEqual([]);
+    expect(validateMeasurementPointInput({ facilityRevisionId, measurementPointReference: 'M-1', measurementType: 'electricity', canonicalUnit: 'kWh', sourceType: 'meter' }).errors).toEqual([]);
+    expect(validateActivityReviewInput({ reviewerRole: 'industrial_activity_reviewer', decision: 'approved', notes: 'Evidence checked.' }).errors).toEqual([]);
   });
 });

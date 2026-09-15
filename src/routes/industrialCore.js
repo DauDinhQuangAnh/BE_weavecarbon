@@ -27,6 +27,36 @@ router.post('/facilities', requireCompanyAdmin, asyncHandler(async (req, res) =>
   return sendSuccess(res, { status: 201, data: item });
 }));
 
+router.get('/processes', asyncHandler(async (req, res) => {
+  const items = await industrialCoreService.listProcesses(req.companyId);
+  if (!items) return sendError(res, { status: 404, code: 'NO_COMPANY', message: 'Active company not found.' });
+  return sendSuccess(res, { data: items });
+}));
+
+router.post('/processes', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const item = await industrialCoreService.createProcess(req.companyId, req.userId, req.body);
+  if (!item) return sendError(res, { status: 404, code: 'NO_COMPANY', message: 'Active company not found.' });
+  if (item.blocked) return sendError(res, { status: 422, code: item.code, message: item.message, details: item.details });
+  await logAuditTrail({ companyId: req.companyId, userId: req.userId, dataGroup: 'industrial_core',
+    changedField: 'process.revision_created', newValue: item.id, reason: 'g2.process_revision_created', notes: item.processReference });
+  return sendSuccess(res, { status: 201, data: item });
+}));
+
+router.get('/measurement-points', asyncHandler(async (req, res) => {
+  const items = await industrialCoreService.listMeasurementPoints(req.companyId);
+  if (!items) return sendError(res, { status: 404, code: 'NO_COMPANY', message: 'Active company not found.' });
+  return sendSuccess(res, { data: items });
+}));
+
+router.post('/measurement-points', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const item = await industrialCoreService.createMeasurementPoint(req.companyId, req.userId, req.body);
+  if (!item) return sendError(res, { status: 404, code: 'NO_COMPANY', message: 'Active company not found.' });
+  if (item.blocked) return sendError(res, { status: 422, code: item.code, message: item.message, details: item.details });
+  await logAuditTrail({ companyId: req.companyId, userId: req.userId, dataGroup: 'industrial_core',
+    changedField: 'measurement_point.revision_created', newValue: item.id, reason: 'g2.measurement_point_revision_created', notes: item.measurementPointReference });
+  return sendSuccess(res, { status: 201, data: item });
+}));
+
 router.get('/activities', asyncHandler(async (req, res) => {
   const items = await industrialCoreService.listActivities(req.companyId, req.query.limit);
   if (!items) return sendError(res, { status: 404, code: 'NO_COMPANY', message: 'Active company not found.' });
@@ -39,6 +69,21 @@ router.post('/activities', requireCompanyAdmin, asyncHandler(async (req, res) =>
   if (item.blocked) return sendError(res, { status: 422, code: item.code, message: item.message, details: item.details });
   await logAuditTrail({ companyId: req.companyId, userId: req.userId, dataGroup: 'industrial_core',
     changedField: 'activity.record_created', newValue: item.id, reason: 'g2.activity_record_created', notes: item.activityReference });
+  return sendSuccess(res, { status: 201, data: item });
+}));
+
+router.get('/activities/:activityId/lineage', asyncHandler(async (req, res) => {
+  const item = await industrialCoreService.getActivityLineage(req.companyId, req.params.activityId);
+  if (!item) return sendError(res, { status: 404, code: 'INDUSTRIAL_ACTIVITY_NOT_FOUND', message: 'Activity record not found.' });
+  return sendSuccess(res, { data: item });
+}));
+
+router.post('/activities/:activityId/reviews', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const item = await industrialCoreService.reviewActivity(req.companyId, req.params.activityId, req.userId, req.body);
+  if (!item) return sendError(res, { status: 404, code: 'INDUSTRIAL_ACTIVITY_NOT_FOUND', message: 'Activity record not found.' });
+  if (item.blocked) return sendError(res, { status: 422, code: item.code, message: item.message, details: item.details });
+  await logAuditTrail({ companyId: req.companyId, userId: req.userId, dataGroup: 'industrial_core',
+    changedField: 'activity.review_created', newValue: item.id, reason: 'g2.activity_review_created', notes: item.decision });
   return sendSuccess(res, { status: 201, data: item });
 }));
 

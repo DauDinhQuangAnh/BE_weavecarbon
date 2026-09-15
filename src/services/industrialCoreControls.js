@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.15.1';
+const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.15.2';
 const STATUS = Object.freeze(['implemented', 'partial', 'planned']);
 
 const CAPABILITY_REGISTRY = Object.freeze({
@@ -12,8 +12,8 @@ const CAPABILITY_REGISTRY = Object.freeze({
   truthBoundary: 'Only capabilities marked implemented are operational. Partial and planned capabilities must not be presented as production-complete.',
   layers: Object.freeze([
     { id: 'ingestion', label: 'Data ingestion', status: 'partial', evidence: ['manual-entry', 'invoice-upload'], nextGate: 'WeaveNode and governed connector contracts' },
-    { id: 'semantic', label: 'Semantic harmonization', status: 'partial', evidence: ['canonical facility/process/activity schema'], nextGate: 'unit and taxonomy registry' },
-    { id: 'evidence', label: 'Evidence and provenance', status: 'implemented', evidence: ['evidence locker', 'immutable snapshots', 'audit trail'], nextGate: 'activity-level review workflow' },
+    { id: 'semantic', label: 'Semantic harmonization', status: 'implemented', evidence: ['canonical facility/process/measurement/activity schema', 'tenant-bound revision ledgers'], nextGate: 'extend taxonomy through industry packs' },
+    { id: 'evidence', label: 'Evidence and provenance', status: 'implemented', evidence: ['evidence locker', 'activity lineage query', 'immutable review snapshots', 'audit trail'], nextGate: 'cross-workstream graph traversal' },
     { id: 'computation', label: 'Carbon computation', status: 'implemented', evidence: ['factor registry', 'PCF studies', 'corporate GHG inventory'], nextGate: 'process allocation engine' },
     { id: 'domestic-mrv', label: 'Domestic GHG and MRV operations', status: 'partial', evidence: ['corporate inventory', 'facility/activity baseline'], nextGate: 'measurement plan and review lifecycle' },
     { id: 'export', label: 'Export and traceability adapters', status: 'implemented', evidence: ['R01-R20 export workstream'], nextGate: 'map canonical industrial records into adapters' },
@@ -22,16 +22,16 @@ const CAPABILITY_REGISTRY = Object.freeze({
     { id: 'decision-intelligence', label: 'Climate risk and decision intelligence', status: 'planned', evidence: [], nextGate: 'physical risk data and scenario model' }
   ]),
   entities: Object.freeze([
-    { id: 'organization', status: 'implemented' }, { id: 'facility', status: 'partial' },
+    { id: 'organization', status: 'implemented' }, { id: 'facility', status: 'implemented' },
     { id: 'supplier', status: 'implemented' }, { id: 'material', status: 'implemented' },
     { id: 'product', status: 'implemented' }, { id: 'batch-lot', status: 'implemented' },
-    { id: 'process', status: 'partial' }, { id: 'activity', status: 'partial' },
+    { id: 'process', status: 'implemented' }, { id: 'activity', status: 'implemented' },
     { id: 'emission-source', status: 'partial' }, { id: 'resource-energy', status: 'partial' },
     { id: 'transport', status: 'implemented' }, { id: 'evidence', status: 'implemented' },
-    { id: 'meter-device', status: 'partial' }, { id: 'emission-factor', status: 'implemented' },
+    { id: 'meter-device', status: 'implemented' }, { id: 'emission-factor', status: 'implemented' },
     { id: 'methodology', status: 'partial' }, { id: 'calculation-line', status: 'implemented' },
     { id: 'allowance-credit-reference', status: 'planned' }, { id: 'mitigation-initiative', status: 'planned' },
-    { id: 'review-verification', status: 'partial' }, { id: 'target-requirement', status: 'planned' }
+    { id: 'review-verification', status: 'implemented' }, { id: 'target-requirement', status: 'planned' }
   ])
 });
 
@@ -93,5 +93,60 @@ function validateActivityInput(input = {}) {
   return { value, errors };
 }
 
+function normalizeProcessInput(input = {}) {
+  return { facilityRevisionId: text(input.facilityRevisionId || input.facility_revision_id),
+    processReference: text(input.processReference || input.process_reference), name: text(input.name),
+    processType: text(input.processType || input.process_type),
+    lifecycleStatus: text(input.lifecycleStatus || input.lifecycle_status).toLowerCase() || 'active',
+    metadata: input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata) ? input.metadata : {} };
+}
+
+function validateProcessInput(input = {}) {
+  const value = normalizeProcessInput(input); const errors = [];
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuid.test(value.facilityRevisionId)) errors.push('facilityRevisionId must be a UUID.');
+  if (!value.processReference || value.processReference.length > 120) errors.push('processReference is required and must not exceed 120 characters.');
+  if (!value.name || value.name.length > 240) errors.push('name is required and must not exceed 240 characters.');
+  if (!value.processType) errors.push('processType is required.');
+  if (!['planned', 'active', 'inactive'].includes(value.lifecycleStatus)) errors.push('lifecycleStatus is invalid.');
+  return { value, errors };
+}
+
+function normalizeMeasurementPointInput(input = {}) {
+  const interval = input.samplingIntervalSeconds ?? input.sampling_interval_seconds;
+  return { facilityRevisionId: text(input.facilityRevisionId || input.facility_revision_id),
+    processRevisionId: text(input.processRevisionId || input.process_revision_id) || null,
+    measurementPointReference: text(input.measurementPointReference || input.measurement_point_reference),
+    measurementType: text(input.measurementType || input.measurement_type), canonicalUnit: text(input.canonicalUnit || input.canonical_unit),
+    sourceType: text(input.sourceType || input.source_type).toLowerCase(), deviceIdentity: text(input.deviceIdentity || input.device_identity) || null,
+    calibrationStatus: text(input.calibrationStatus || input.calibration_status).toLowerCase() || 'unknown',
+    calibrationDueOn: text(input.calibrationDueOn || input.calibration_due_on) || null,
+    samplingIntervalSeconds: interval === '' || interval === null || interval === undefined ? null : Number(interval),
+    metadata: input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata) ? input.metadata : {} };
+}
+
+function validateMeasurementPointInput(input = {}) {
+  const value = normalizeMeasurementPointInput(input); const errors = [];
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuid.test(value.facilityRevisionId)) errors.push('facilityRevisionId must be a UUID.');
+  if (value.processRevisionId && !uuid.test(value.processRevisionId)) errors.push('processRevisionId must be a UUID.');
+  if (!value.measurementPointReference || value.measurementPointReference.length > 120) errors.push('measurementPointReference is required and must not exceed 120 characters.');
+  if (!value.measurementType || !value.canonicalUnit) errors.push('measurementType and canonicalUnit are required.');
+  if (!['meter', 'plc', 'sensor', 'weavenode', 'manual', 'api'].includes(value.sourceType)) errors.push('sourceType is invalid.');
+  if (!['unknown', 'current', 'expired', 'not_applicable'].includes(value.calibrationStatus)) errors.push('calibrationStatus is invalid.');
+  if (value.samplingIntervalSeconds !== null && (!Number.isInteger(value.samplingIntervalSeconds) || value.samplingIntervalSeconds <= 0)) errors.push('samplingIntervalSeconds must be a positive integer.');
+  return { value, errors };
+}
+
+function validateActivityReviewInput(input = {}) {
+  const value = { reviewerRole: text(input.reviewerRole || input.reviewer_role),
+    decision: text(input.decision).toLowerCase(), notes: text(input.notes) }; const errors = [];
+  if (value.reviewerRole !== 'industrial_activity_reviewer') errors.push('reviewerRole must be industrial_activity_reviewer.');
+  if (!['approved', 'needs_information', 'rejected'].includes(value.decision)) errors.push('decision is invalid.');
+  if (!value.notes || value.notes.length > 5000) errors.push('notes are required and must not exceed 5000 characters.');
+  return { value, errors };
+}
+
 module.exports = { STATUS, CAPABILITY_REGISTRY, getCapabilityRegistry, normalizeFacilityInput, validateFacilityInput,
-  normalizeActivityInput, validateActivityInput };
+  normalizeActivityInput, validateActivityInput, normalizeProcessInput, validateProcessInput,
+  normalizeMeasurementPointInput, validateMeasurementPointInput, validateActivityReviewInput };

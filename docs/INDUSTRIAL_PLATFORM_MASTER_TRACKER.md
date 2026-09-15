@@ -19,7 +19,7 @@ Capability labels are contractual:
 | Phase | Scope | Current state | Exit gate |
 |---|---|---|---|
 | G2-00 | Rebaseline and truthful capability contract | Implemented in this branch | Versioned registry, tracker and visible workspace |
-| G2-01 | Canonical industrial data model and evidence graph | Partial | Facility/process/measurement/activity CRUD, lineage queries and review controls |
+| G2-01 | Canonical industrial data model and evidence graph | Implemented | Facility/process/measurement/activity revision APIs, lineage queries and review controls |
 | G2-02 | System-wide DQL and factor governance | Partial | DQL scoring, factor approval/version lifecycle and audit UI |
 | G2-03 | Vietnam domestic GHG/MRV lifecycle | Partial | Boundaries, measurement plan, inventory, review and governed filing pack |
 | G2-04 | Mitigation and allowance/quota operations | Planned | Initiative ledger, scenario, allocation and evidence controls |
@@ -33,6 +33,7 @@ Capability labels are contractual:
 - Tenant-bound references and activity-to-evidence links.
 - Required activity provenance (`source_sha256`) and DQL (`L1`-`L5`).
 - Authenticated capability, facility and activity APIs.
+- Process and measurement-point revision APIs, activity evidence lineage and immutable review decisions.
 - A UI workspace that clearly separates implemented, partial and planned capability.
 
 This baseline does **not** claim a complete domestic MRV system, complete Industry Packs, WeaveNode telemetry or climate-risk decision intelligence.

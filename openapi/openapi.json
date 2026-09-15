@@ -16625,6 +16625,143 @@
         ]
       }
     },
+    "/industrial-core/activities/{activityId}/lineage": {
+      "get": {
+        "operationId": "getIndustrialCoreActivitiesByActivityIdLineage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /industrial-core/activities/{activityId}/lineage",
+        "tags": [
+          "Industrial carbon core"
+        ]
+      }
+    },
+    "/industrial-core/activities/{activityId}/reviews": {
+      "post": {
+        "operationId": "postIndustrialCoreActivitiesByActivityIdReviews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approved",
+                      "needs_information",
+                      "rejected"
+                    ],
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reviewerRole": {
+                    "enum": [
+                      "industrial_activity_reviewer"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reviewerRole",
+                  "decision",
+                  "notes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /industrial-core/activities/{activityId}/reviews",
+        "tags": [
+          "Industrial carbon core"
+        ]
+      }
+    },
     "/industrial-core/capabilities": {
       "get": {
         "operationId": "getIndustrialCoreCapabilities",
@@ -16793,6 +16930,296 @@
           }
         ],
         "summary": "POST /industrial-core/facilities",
+        "tags": [
+          "Industrial carbon core"
+        ]
+      }
+    },
+    "/industrial-core/measurement-points": {
+      "get": {
+        "operationId": "getIndustrialCoreMeasurementPoints",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /industrial-core/measurement-points",
+        "tags": [
+          "Industrial carbon core"
+        ]
+      },
+      "post": {
+        "operationId": "postIndustrialCoreMeasurementPoints",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "calibrationDueOn": {
+                    "format": "date",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "calibrationStatus": {
+                    "enum": [
+                      "unknown",
+                      "current",
+                      "expired",
+                      "not_applicable"
+                    ],
+                    "type": "string"
+                  },
+                  "canonicalUnit": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "deviceIdentity": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "measurementPointReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "measurementType": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "type": "object"
+                  },
+                  "processRevisionId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "samplingIntervalSeconds": {
+                    "minimum": 1,
+                    "nullable": true,
+                    "type": "integer"
+                  },
+                  "sourceType": {
+                    "enum": [
+                      "meter",
+                      "plc",
+                      "sensor",
+                      "weavenode",
+                      "manual",
+                      "api"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "facilityRevisionId",
+                  "measurementPointReference",
+                  "measurementType",
+                  "canonicalUnit",
+                  "sourceType"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /industrial-core/measurement-points",
+        "tags": [
+          "Industrial carbon core"
+        ]
+      }
+    },
+    "/industrial-core/processes": {
+      "get": {
+        "operationId": "getIndustrialCoreProcesses",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /industrial-core/processes",
+        "tags": [
+          "Industrial carbon core"
+        ]
+      },
+      "post": {
+        "operationId": "postIndustrialCoreProcesses",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "lifecycleStatus": {
+                    "enum": [
+                      "planned",
+                      "active",
+                      "inactive"
+                    ],
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "type": "object"
+                  },
+                  "name": {
+                    "maxLength": 240,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "processReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "processType": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "facilityRevisionId",
+                  "processReference",
+                  "name",
+                  "processType"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /industrial-core/processes",
         "tags": [
           "Industrial carbon core"
         ]

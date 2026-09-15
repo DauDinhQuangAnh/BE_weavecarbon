@@ -928,6 +928,29 @@ const REQUEST_BODY_OVERRIDES = {
       evidenceDocumentIds: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } }
     }, additionalProperties: false
   },
+  'POST /industrial-core/processes': {
+    type: 'object', required: ['facilityRevisionId', 'processReference', 'name', 'processType'], properties: {
+      facilityRevisionId: { type: 'string', format: 'uuid' }, processReference: { type: 'string', minLength: 1, maxLength: 120 },
+      name: { type: 'string', minLength: 1, maxLength: 240 }, processType: { type: 'string', minLength: 1, maxLength: 200 },
+      lifecycleStatus: { type: 'string', enum: ['planned', 'active', 'inactive'] }, metadata: { type: 'object' }
+    }, additionalProperties: false
+  },
+  'POST /industrial-core/measurement-points': {
+    type: 'object', required: ['facilityRevisionId', 'measurementPointReference', 'measurementType', 'canonicalUnit', 'sourceType'], properties: {
+      facilityRevisionId: { type: 'string', format: 'uuid' }, processRevisionId: { type: 'string', format: 'uuid', nullable: true },
+      measurementPointReference: { type: 'string', minLength: 1, maxLength: 120 }, measurementType: { type: 'string', minLength: 1, maxLength: 200 },
+      canonicalUnit: { type: 'string', minLength: 1, maxLength: 100 }, sourceType: { type: 'string', enum: ['meter', 'plc', 'sensor', 'weavenode', 'manual', 'api'] },
+      deviceIdentity: { type: 'string', maxLength: 500 }, calibrationStatus: { type: 'string', enum: ['unknown', 'current', 'expired', 'not_applicable'] },
+      calibrationDueOn: { type: 'string', format: 'date', nullable: true }, samplingIntervalSeconds: { type: 'integer', minimum: 1, nullable: true }, metadata: { type: 'object' }
+    }, additionalProperties: false
+  },
+  'POST /industrial-core/activities/{activityId}/reviews': {
+    type: 'object', required: ['reviewerRole', 'decision', 'notes'], properties: {
+      reviewerRole: { type: 'string', enum: ['industrial_activity_reviewer'] },
+      decision: { type: 'string', enum: ['approved', 'needs_information', 'rejected'] },
+      notes: { type: 'string', minLength: 1, maxLength: 5000 }
+    }, additionalProperties: false
+  },
   'POST /corporate-ghg-inventories/{inventoryId}/reviews': {
     type: 'object', required: ['reviewerRole', 'decision', 'notes'], properties: {
       reviewerRole: { type: 'string', enum: ['corporate_ghg_inventory_reviewer'] },
