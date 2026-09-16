@@ -17,6 +17,7 @@ const PUBLIC_OPERATIONS = new Set([
   'POST /auth/verify-email',
   'POST /auth/verify-email/resend',
   'POST /contact/lead',
+  'POST /weavenode/ingest',
   'GET /passport/{productId}',
   'GET /reports/v2/public/audit-pack-shares/{token}',
   'GET /reports/v2/public/audit-pack-shares/{token}/download',
@@ -950,6 +951,27 @@ const REQUEST_BODY_OVERRIDES = {
       decision: { type: 'string', enum: ['approved', 'needs_information', 'rejected'] },
       notes: { type: 'string', minLength: 1, maxLength: 5000 }
     }, additionalProperties: false
+  },
+  'POST /weavenode/ingest': {
+    type: 'object', required: ['deviceId','sequenceNumber','recordedAt','periodStart','periodEnd','quantity','unit','signatureBase64'],
+    properties: { deviceId: { type: 'string', format: 'uuid' }, sequenceNumber: { type: 'integer', minimum: 1 },
+      recordedAt: { type: 'string', format: 'date-time' }, periodStart: { type: 'string', format: 'date-time' },
+      periodEnd: { type: 'string', format: 'date-time' }, quantity: { type: 'number', minimum: 0, maximum: 1000000000000 },
+      unit: { type: 'string', minLength: 1, maxLength: 100 }, signatureBase64: { type: 'string', minLength: 88, maxLength: 88 } },
+    additionalProperties: false
+  },
+  'POST /weavenode/devices': {
+    type: 'object', required: ['measurementPointRevisionId','deviceReference','publicKeyPem'],
+    properties: { measurementPointRevisionId: { type: 'string', format: 'uuid' }, deviceReference: { type: 'string', minLength: 1, maxLength: 120 },
+      publicKeyPem: { type: 'string', minLength: 1 } }, additionalProperties: false
+  },
+  'POST /weavenode/devices/{deviceId}/revoke': {
+    type: 'object', required: ['reason'], properties: { reason: { type: 'string', minLength: 1, maxLength: 2000 } }, additionalProperties: false
+  },
+  'POST /weavenode/devices/{deviceId}/calibrations': {
+    type: 'object', required: ['validFrom','validTo','evidenceDocumentId','notes'],
+    properties: { validFrom: { type: 'string', format: 'date-time' }, validTo: { type: 'string', format: 'date-time' },
+      evidenceDocumentId: { type: 'string', format: 'uuid' }, notes: { type: 'string', minLength: 1, maxLength: 2000 } }, additionalProperties: false
   },
   'POST /data-governance/dql-assessments': {
     type: 'object', required: ['subjectType', 'subjectReference', 'temporalScore', 'geographicScore', 'technologicalScore',

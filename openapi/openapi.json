@@ -23056,6 +23056,474 @@
           "Vietnam GHG and MRV preparation"
         ]
       }
+    },
+    "/weavenode/devices": {
+      "get": {
+        "operationId": "getWeavenodeDevices",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /weavenode/devices",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      },
+      "post": {
+        "operationId": "postWeavenodeDevices",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "deviceReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "measurementPointRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "publicKeyPem": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "measurementPointRevisionId",
+                  "deviceReference",
+                  "publicKeyPem"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /weavenode/devices",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      }
+    },
+    "/weavenode/devices/{deviceId}/calibrations": {
+      "post": {
+        "operationId": "postWeavenodeDevicesByDeviceIdCalibrations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deviceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "validFrom": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "validTo": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "validFrom",
+                  "validTo",
+                  "evidenceDocumentId",
+                  "notes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /weavenode/devices/{deviceId}/calibrations",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      }
+    },
+    "/weavenode/devices/{deviceId}/packets": {
+      "get": {
+        "operationId": "getWeavenodeDevicesByDeviceIdPackets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deviceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /weavenode/devices/{deviceId}/packets",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      }
+    },
+    "/weavenode/devices/{deviceId}/replay": {
+      "post": {
+        "operationId": "postWeavenodeDevicesByDeviceIdReplay",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deviceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /weavenode/devices/{deviceId}/replay",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      }
+    },
+    "/weavenode/devices/{deviceId}/revoke": {
+      "post": {
+        "operationId": "postWeavenodeDevicesByDeviceIdRevoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deviceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /weavenode/devices/{deviceId}/revoke",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      }
+    },
+    "/weavenode/ingest": {
+      "post": {
+        "operationId": "postWeavenodeIngest",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "deviceId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "periodEnd": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "periodStart": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "maximum": 1000000000000,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "recordedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "sequenceNumber": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "signatureBase64": {
+                    "maxLength": 88,
+                    "minLength": 88,
+                    "type": "string"
+                  },
+                  "unit": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "deviceId",
+                  "sequenceNumber",
+                  "recordedAt",
+                  "periodStart",
+                  "periodEnd",
+                  "quantity",
+                  "unit",
+                  "signatureBase64"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [],
+        "summary": "POST /weavenode/ingest",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      }
     }
   },
   "security": [
@@ -23165,6 +23633,9 @@
     },
     {
       "name": "Steel and cement industry-pack pilots"
+    },
+    {
+      "name": "WeaveNode signed ingestion pilot"
     },
     {
       "name": "Operations"

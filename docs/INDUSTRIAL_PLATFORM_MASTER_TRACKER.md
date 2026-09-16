@@ -24,7 +24,7 @@ Capability labels are contractual:
 | G2-03 | Vietnam domestic GHG/MRV lifecycle | Implemented | Effective-date applicability case, measurement plan, inventory linkage and governed preparation snapshot |
 | G2-04 | Mitigation and allowance/quota operations | Implemented | Immutable initiative/evidence ledgers, quantified scenarios, governed allocation references and gross-preserving position snapshots |
 | G2-05 | Steel and cement Industry Packs | Partial | Versioned process taxonomy, required fields, governed-factor calculation, evidence checks and deterministic pilot fixtures implemented; independent sector-expert approval and real-facility pilot remain |
-| G2-06 | WeaveNode and industrial ingestion | Planned | Signed device identity, buffering, replay and calibration workflow |
+| G2-06 | WeaveNode and industrial ingestion | Partial | Ed25519 device enrollment, signed packet buffer, sequence-safe replay and evidence-bound calibration software pilot implemented; real gateway/network soak, key custody and site calibration acceptance remain |
 | G2-07 | Climate risk, multi-facility and vertical scale | Planned | Hazard/exposure model, scenarios and portfolio aggregation |
 
 ## This baseline delivers

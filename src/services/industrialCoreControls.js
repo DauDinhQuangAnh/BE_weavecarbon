@@ -11,7 +11,7 @@ const CAPABILITY_REGISTRY = Object.freeze({
   updatedOn: '2026-09-15',
   truthBoundary: 'Only capabilities marked implemented are operational. Partial and planned capabilities must not be presented as production-complete.',
   layers: Object.freeze([
-    { id: 'ingestion', label: 'Data ingestion', status: 'partial', evidence: ['manual-entry', 'invoice-upload'], nextGate: 'WeaveNode and governed connector contracts' },
+    { id: 'ingestion', label: 'Data ingestion', status: 'partial', evidence: ['manual-entry', 'invoice-upload', 'weavenode-signed-software-pilot'], nextGate: 'Real gateway/network soak, key custody and site calibration acceptance' },
     { id: 'semantic', label: 'Semantic harmonization', status: 'implemented', evidence: ['canonical facility/process/measurement/activity schema', 'tenant-bound revision ledgers'], nextGate: 'extend taxonomy through industry packs' },
     { id: 'evidence', label: 'Evidence and provenance', status: 'implemented', evidence: ['evidence locker', 'activity lineage query', 'immutable review snapshots', 'audit trail'], nextGate: 'cross-workstream graph traversal' },
     { id: 'computation', label: 'Carbon computation', status: 'implemented', evidence: ['factor registry', 'PCF studies', 'corporate GHG inventory'], nextGate: 'process allocation engine' },
