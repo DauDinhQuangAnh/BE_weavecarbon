@@ -25,7 +25,7 @@ Capability labels are contractual:
 | G2-04 | Mitigation and allowance/quota operations | Implemented | Immutable initiative/evidence ledgers, quantified scenarios, governed allocation references and gross-preserving position snapshots |
 | G2-05 | Steel and cement Industry Packs | Partial | Versioned process taxonomy, required fields, governed-factor calculation, evidence checks and deterministic pilot fixtures implemented; independent sector-expert approval and real-facility pilot remain |
 | G2-06 | WeaveNode and industrial ingestion | Partial | Ed25519 device enrollment, signed packet buffer, sequence-safe replay and evidence-bound calibration software pilot implemented; real gateway/network soak, key custody and site calibration acceptance remain |
-| G2-07 | Climate risk, multi-facility and vertical scale | Planned | Hazard/exposure model, scenarios and portfolio aggregation |
+| G2-07 | Climate risk, multi-facility and vertical scale | Partial | Evidence-bound facility location, author-assigned hazard/exposure/vulnerability screening and same-scenario multi-facility portfolio snapshots implemented; ERA5-Land/CMIP6 ingestion, calibrated hazards, carbon-climate criticality, specialist review, supplier coverage and vertical pilots remain |
 
 ## This baseline delivers
 
@@ -36,4 +36,4 @@ Capability labels are contractual:
 - Process and measurement-point revision APIs, activity evidence lineage and immutable review decisions.
 - A UI workspace that clearly separates implemented, partial and planned capability.
 
-This baseline does **not** claim authority submission, registry ownership/transfer/surrender, expert-approved Industry Packs, WeaveNode telemetry or climate-risk decision intelligence.
+This baseline does **not** claim authority submission, registry ownership/transfer/surrender, expert-approved Industry Packs, production-grade WeaveNode telemetry or validated physical climate-risk forecasts.

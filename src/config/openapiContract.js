@@ -973,6 +973,39 @@ const REQUEST_BODY_OVERRIDES = {
     properties: { validFrom: { type: 'string', format: 'date-time' }, validTo: { type: 'string', format: 'date-time' },
       evidenceDocumentId: { type: 'string', format: 'uuid' }, notes: { type: 'string', minLength: 1, maxLength: 2000 } }, additionalProperties: false
   },
+  'POST /climate-risk/locations': {
+    type: 'object', required: ['facilityRevisionId','latitude','longitude','precisionMeters','locationBasis','evidenceDocumentId'],
+    properties: { facilityRevisionId: { type: 'string', format: 'uuid' }, latitude: { type: 'number', minimum: -90, maximum: 90 },
+      longitude: { type: 'number', minimum: -180, maximum: 180 }, precisionMeters: { type: 'integer', minimum: 1, maximum: 100000 },
+      locationBasis: { type: 'string', minLength: 1, maxLength: 2000 }, evidenceDocumentId: { type: 'string', format: 'uuid' } },
+    additionalProperties: false
+  },
+  'POST /climate-risk/assessments': {
+    type: 'object', required: ['facilityRevisionId','locationRevisionId','hazardType','scenarioKind','scenarioReference',
+      'horizonStart','horizonEnd','sourceKind','sourceUrl','datasetIdentifier','datasetVersion','spatialResolution',
+      'temporalResolution','gridReference','spatialMatchNotes','hazardMetric','metricValue','metricUnit','uncertaintyNotes','exposureRating',
+      'vulnerabilityRating','businessDependencyPercent','priorityBand','ratingRationale','evidenceDocumentId'],
+    properties: { facilityRevisionId: { type: 'string', format: 'uuid' }, locationRevisionId: { type: 'string', format: 'uuid' },
+      hazardType: { type: 'string', enum: ['heat','drought','extreme_rainfall'] }, scenarioKind: { type: 'string', enum: ['historical','projection'] },
+      scenarioReference: { type: 'string', minLength: 1, maxLength: 120 }, horizonStart: { type: 'string', format: 'date' },
+      horizonEnd: { type: 'string', format: 'date' }, sourceKind: { type: 'string', enum: ['ERA5_LAND','CMIP6','OTHER'] },
+      sourceUrl: { type: 'string', format: 'uri', pattern: '^https://' }, datasetIdentifier: { type: 'string', minLength: 1, maxLength: 240 },
+      datasetVersion: { type: 'string', minLength: 1, maxLength: 120 }, spatialResolution: { type: 'string', minLength: 1, maxLength: 120 },
+      temporalResolution: { type: 'string', minLength: 1, maxLength: 120 }, modelName: { type: 'string', maxLength: 120 },
+      gridReference: { type: 'string', minLength: 1, maxLength: 240 }, spatialMatchNotes: { type: 'string', minLength: 1, maxLength: 4000 },
+      scenarioName: { type: 'string', maxLength: 120 }, hazardMetric: { type: 'string', minLength: 1, maxLength: 120 },
+      metricValue: { type: 'number' }, metricUnit: { type: 'string', minLength: 1, maxLength: 100 },
+      uncertaintyNotes: { type: 'string', minLength: 1, maxLength: 4000 }, exposureRating: { type: 'integer', minimum: 1, maximum: 5 },
+      vulnerabilityRating: { type: 'integer', minimum: 1, maximum: 5 }, businessDependencyPercent: { type: 'number', minimum: 0, maximum: 100 },
+      priorityBand: { type: 'string', enum: ['low','medium','high'] }, ratingRationale: { type: 'string', minLength: 1, maxLength: 4000 },
+      evidenceDocumentId: { type: 'string', format: 'uuid' } }, additionalProperties: false
+  },
+  'POST /climate-risk/portfolios': {
+    type: 'object', required: ['portfolioReference','assessmentIds','methodologyNotes'], properties: {
+      portfolioReference: { type: 'string', minLength: 1, maxLength: 120 },
+      assessmentIds: { type: 'array', minItems: 2, maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
+      methodologyNotes: { type: 'string', minLength: 1, maxLength: 4000 } }, additionalProperties: false
+  },
   'POST /data-governance/dql-assessments': {
     type: 'object', required: ['subjectType', 'subjectReference', 'temporalScore', 'geographicScore', 'technologicalScore',
       'completenessScore', 'reliabilityScore', 'completenessPercent', 'rationale'], properties: {

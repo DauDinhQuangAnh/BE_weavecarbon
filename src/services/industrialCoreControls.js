@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.16.1';
+const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.16.2';
 const STATUS = Object.freeze(['implemented', 'partial', 'planned']);
 
 const CAPABILITY_REGISTRY = Object.freeze({
@@ -8,7 +8,7 @@ const CAPABILITY_REGISTRY = Object.freeze({
   schemaVersion: '1.0.0',
   platformVersion: VERSION,
   coverage: 'baseline',
-  updatedOn: '2026-09-15',
+  updatedOn: '2026-09-16',
   truthBoundary: 'Only capabilities marked implemented are operational. Partial and planned capabilities must not be presented as production-complete.',
   layers: Object.freeze([
     { id: 'ingestion', label: 'Data ingestion', status: 'partial', evidence: ['manual-entry', 'invoice-upload', 'weavenode-signed-software-pilot'], nextGate: 'Real gateway/network soak, key custody and site calibration acceptance' },
@@ -20,7 +20,7 @@ const CAPABILITY_REGISTRY = Object.freeze({
     { id: 'data-quality', label: 'Data quality and factor governance', status: 'implemented', evidence: ['versioned DQL scoring', 'immutable factor proposals', 'evidence-gated reviews'], nextGate: 'apply DQL gates to domestic MRV filing packs' },
     { id: 'mitigation-allowance', label: 'Mitigation and allowance operations', status: 'implemented', evidence: ['initiative revisions', 'evidence-backed scenarios', 'allowance allocation references', 'gross-preserving position snapshots'], nextGate: 'specialist pilot and registry reconciliation connector' },
     { id: 'industry-rules', label: 'Industry packs', status: 'partial', evidence: ['versioned steel/cement pilot manifests', 'factor-governed deterministic snapshots', 'pilot fixtures'], nextGate: 'independent sector-expert approval and real-facility pilot' },
-    { id: 'decision-intelligence', label: 'Climate risk and decision intelligence', status: 'planned', evidence: [], nextGate: 'physical risk data and scenario model' }
+    { id: 'decision-intelligence', label: 'Climate risk and decision intelligence', status: 'partial', evidence: ['evidence-bound-facility-screening', 'scenario-scoped-portfolio-snapshot'], nextGate: 'Dataset ingestion, hazard calibration, carbon-climate overlay, specialist validation and supplier coverage' }
   ]),
   entities: Object.freeze([
     { id: 'organization', status: 'implemented' }, { id: 'facility', status: 'implemented' },

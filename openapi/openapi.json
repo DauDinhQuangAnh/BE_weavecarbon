@@ -6329,6 +6329,560 @@
         ]
       }
     },
+    "/climate-risk/assessments": {
+      "get": {
+        "operationId": "getClimateRiskAssessments",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /climate-risk/assessments",
+        "tags": [
+          "Climate risk screening pilot"
+        ]
+      },
+      "post": {
+        "operationId": "postClimateRiskAssessments",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "businessDependencyPercent": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "datasetIdentifier": {
+                    "maxLength": 240,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "datasetVersion": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "exposureRating": {
+                    "maximum": 5,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "gridReference": {
+                    "maxLength": 240,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "hazardMetric": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "hazardType": {
+                    "enum": [
+                      "heat",
+                      "drought",
+                      "extreme_rainfall"
+                    ],
+                    "type": "string"
+                  },
+                  "horizonEnd": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "horizonStart": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "locationRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "metricUnit": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "metricValue": {
+                    "type": "number"
+                  },
+                  "modelName": {
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "priorityBand": {
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high"
+                    ],
+                    "type": "string"
+                  },
+                  "ratingRationale": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "scenarioKind": {
+                    "enum": [
+                      "historical",
+                      "projection"
+                    ],
+                    "type": "string"
+                  },
+                  "scenarioName": {
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "scenarioReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sourceKind": {
+                    "enum": [
+                      "ERA5_LAND",
+                      "CMIP6",
+                      "OTHER"
+                    ],
+                    "type": "string"
+                  },
+                  "sourceUrl": {
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "type": "string"
+                  },
+                  "spatialMatchNotes": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "spatialResolution": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "temporalResolution": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "uncertaintyNotes": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "vulnerabilityRating": {
+                    "maximum": 5,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "facilityRevisionId",
+                  "locationRevisionId",
+                  "hazardType",
+                  "scenarioKind",
+                  "scenarioReference",
+                  "horizonStart",
+                  "horizonEnd",
+                  "sourceKind",
+                  "sourceUrl",
+                  "datasetIdentifier",
+                  "datasetVersion",
+                  "spatialResolution",
+                  "temporalResolution",
+                  "gridReference",
+                  "spatialMatchNotes",
+                  "hazardMetric",
+                  "metricValue",
+                  "metricUnit",
+                  "uncertaintyNotes",
+                  "exposureRating",
+                  "vulnerabilityRating",
+                  "businessDependencyPercent",
+                  "priorityBand",
+                  "ratingRationale",
+                  "evidenceDocumentId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /climate-risk/assessments",
+        "tags": [
+          "Climate risk screening pilot"
+        ]
+      }
+    },
+    "/climate-risk/locations": {
+      "get": {
+        "operationId": "getClimateRiskLocations",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /climate-risk/locations",
+        "tags": [
+          "Climate risk screening pilot"
+        ]
+      },
+      "post": {
+        "operationId": "postClimateRiskLocations",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "latitude": {
+                    "maximum": 90,
+                    "minimum": -90,
+                    "type": "number"
+                  },
+                  "locationBasis": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "longitude": {
+                    "maximum": 180,
+                    "minimum": -180,
+                    "type": "number"
+                  },
+                  "precisionMeters": {
+                    "maximum": 100000,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "facilityRevisionId",
+                  "latitude",
+                  "longitude",
+                  "precisionMeters",
+                  "locationBasis",
+                  "evidenceDocumentId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /climate-risk/locations",
+        "tags": [
+          "Climate risk screening pilot"
+        ]
+      }
+    },
+    "/climate-risk/portfolios": {
+      "get": {
+        "operationId": "getClimateRiskPortfolios",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /climate-risk/portfolios",
+        "tags": [
+          "Climate risk screening pilot"
+        ]
+      },
+      "post": {
+        "operationId": "postClimateRiskPortfolios",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "assessmentIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "minItems": 2,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "methodologyNotes": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "portfolioReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "portfolioReference",
+                  "assessmentIds",
+                  "methodologyNotes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /climate-risk/portfolios",
+        "tags": [
+          "Climate risk screening pilot"
+        ]
+      }
+    },
+    "/climate-risk/portfolios/{portfolioId}": {
+      "get": {
+        "operationId": "getClimateRiskPortfoliosByPortfolioId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "portfolioId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /climate-risk/portfolios/{portfolioId}",
+        "tags": [
+          "Climate risk screening pilot"
+        ]
+      }
+    },
     "/company/members": {
       "get": {
         "operationId": "getCompanyMembers",
@@ -23636,6 +24190,9 @@
     },
     {
       "name": "WeaveNode signed ingestion pilot"
+    },
+    {
+      "name": "Climate risk screening pilot"
     },
     {
       "name": "Operations"
