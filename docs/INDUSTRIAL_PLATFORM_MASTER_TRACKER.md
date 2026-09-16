@@ -23,7 +23,7 @@ Capability labels are contractual:
 | G2-02 | System-wide DQL and factor governance | Implemented | Versioned five-dimension DQL, factor proposal/review ledgers and audit UI |
 | G2-03 | Vietnam domestic GHG/MRV lifecycle | Implemented | Effective-date applicability case, measurement plan, inventory linkage and governed preparation snapshot |
 | G2-04 | Mitigation and allowance/quota operations | Implemented | Immutable initiative/evidence ledgers, quantified scenarios, governed allocation references and gross-preserving position snapshots |
-| G2-05 | Steel and cement Industry Packs | Planned | Approved calculation/rule packs and pilot fixtures |
+| G2-05 | Steel and cement Industry Packs | Partial | Versioned process taxonomy, required fields, governed-factor calculation, evidence checks and deterministic pilot fixtures implemented; independent sector-expert approval and real-facility pilot remain |
 | G2-06 | WeaveNode and industrial ingestion | Planned | Signed device identity, buffering, replay and calibration workflow |
 | G2-07 | Climate risk, multi-facility and vertical scale | Planned | Hazard/exposure model, scenarios and portfolio aggregation |
 
@@ -36,4 +36,4 @@ Capability labels are contractual:
 - Process and measurement-point revision APIs, activity evidence lineage and immutable review decisions.
 - A UI workspace that clearly separates implemented, partial and planned capability.
 
-This baseline does **not** claim authority submission, registry ownership/transfer/surrender, complete Industry Packs, WeaveNode telemetry or climate-risk decision intelligence.
+This baseline does **not** claim authority submission, registry ownership/transfer/surrender, expert-approved Industry Packs, WeaveNode telemetry or climate-risk decision intelligence.

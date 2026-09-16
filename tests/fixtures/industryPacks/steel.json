@@ -1,0 +1,12 @@
+{
+  "packId": "steel", "facilityRevisionId": "10000000-0000-4000-8000-000000000001", "processRevisionId": "20000000-0000-4000-8000-000000000001",
+  "studyReference": "STEEL-EAF-PILOT-1", "periodStart": "2026-01-01", "periodEnd": "2026-12-31", "outputTonnes": 100,
+  "productReference": "CRUDE-STEEL-1", "allocation": { "method": "single_product", "share": 1 },
+  "methodology": { "boundary": "EAF process gate only", "source": "Site engineering pilot method" },
+  "productionEvidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"],
+  "activityLines": [
+    { "category": "process", "sourceReference": "EAF-PROCESS", "activityQuantity": 100, "activityUnit": "tonne", "factorProposalId": "40000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "fuel", "sourceReference": "NATGAS", "activityQuantity": 50, "activityUnit": "m3", "factorProposalId": "50000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "electricity", "sourceReference": "EAF-METER", "activityQuantity": 300, "activityUnit": "kWh", "factorProposalId": "60000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] }
+  ]
+}

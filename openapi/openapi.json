@@ -17666,6 +17666,290 @@
         ]
       }
     },
+    "/industry-packs/manifests": {
+      "get": {
+        "operationId": "getIndustryPacksManifests",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /industry-packs/manifests",
+        "tags": [
+          "Steel and cement industry-pack pilots"
+        ]
+      }
+    },
+    "/industry-packs/pilots": {
+      "get": {
+        "operationId": "getIndustryPacksPilots",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /industry-packs/pilots",
+        "tags": [
+          "Steel and cement industry-pack pilots"
+        ]
+      },
+      "post": {
+        "operationId": "postIndustryPacksPilots",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "activityLines": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "activityQuantity": {
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "activityUnit": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "category": {
+                          "enum": [
+                            "process",
+                            "fuel",
+                            "electricity"
+                          ],
+                          "type": "string"
+                        },
+                        "evidenceDocumentIds": {
+                          "items": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "factorProposalId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "sourceReference": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "category",
+                        "sourceReference",
+                        "activityQuantity",
+                        "activityUnit",
+                        "factorProposalId",
+                        "evidenceDocumentIds"
+                      ],
+                      "type": "object"
+                    },
+                    "minItems": 3,
+                    "type": "array"
+                  },
+                  "allocation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "method": {
+                        "enum": [
+                          "single_product"
+                        ],
+                        "type": "string"
+                      },
+                      "share": {
+                        "enum": [
+                          1
+                        ],
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "method",
+                      "share"
+                    ],
+                    "type": "object"
+                  },
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "methodology": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "boundary": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "source": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "boundary",
+                      "source"
+                    ],
+                    "type": "object"
+                  },
+                  "outputTonnes": {
+                    "exclusiveMinimum": true,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "packId": {
+                    "enum": [
+                      "steel",
+                      "cement"
+                    ],
+                    "type": "string"
+                  },
+                  "periodEnd": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "periodStart": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "processRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "productReference": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "productionEvidenceDocumentIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "studyReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "packId",
+                  "facilityRevisionId",
+                  "processRevisionId",
+                  "studyReference",
+                  "periodStart",
+                  "periodEnd",
+                  "outputTonnes",
+                  "productReference",
+                  "allocation",
+                  "methodology",
+                  "productionEvidenceDocumentIds",
+                  "activityLines"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /industry-packs/pilots",
+        "tags": [
+          "Steel and cement industry-pack pilots"
+        ]
+      }
+    },
     "/logistics/overview": {
       "get": {
         "operationId": "getLogisticsOverview",
@@ -22878,6 +23162,9 @@
     },
     {
       "name": "Mitigation and allowance operations"
+    },
+    {
+      "name": "Steel and cement industry-pack pilots"
     },
     {
       "name": "Operations"

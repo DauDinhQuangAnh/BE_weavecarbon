@@ -1,0 +1,12 @@
+{
+  "packId": "cement", "facilityRevisionId": "10000000-0000-4000-8000-000000000001", "processRevisionId": "20000000-0000-4000-8000-000000000001",
+  "studyReference": "CEMENT-KILN-PILOT-1", "periodStart": "2026-01-01", "periodEnd": "2026-12-31", "outputTonnes": 200,
+  "productReference": "CLINKER-1", "allocation": { "method": "single_product", "share": 1 },
+  "methodology": { "boundary": "Kiln clinker gate only", "source": "Site engineering pilot method" },
+  "productionEvidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"],
+  "activityLines": [
+    { "category": "process", "sourceReference": "CARBONATE", "activityQuantity": 200, "activityUnit": "tonne", "factorProposalId": "40000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "fuel", "sourceReference": "KILN-FUEL", "activityQuantity": 75, "activityUnit": "tonne", "factorProposalId": "50000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "electricity", "sourceReference": "KILN-METER", "activityQuantity": 500, "activityUnit": "kWh", "factorProposalId": "60000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] }
+  ]
+}

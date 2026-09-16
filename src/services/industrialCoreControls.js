@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.15.5';
+const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.16.1';
 const STATUS = Object.freeze(['implemented', 'partial', 'planned']);
 
 const CAPABILITY_REGISTRY = Object.freeze({
@@ -19,7 +19,7 @@ const CAPABILITY_REGISTRY = Object.freeze({
     { id: 'export', label: 'Export and traceability adapters', status: 'implemented', evidence: ['R01-R20 export workstream'], nextGate: 'map canonical industrial records into adapters' },
     { id: 'data-quality', label: 'Data quality and factor governance', status: 'implemented', evidence: ['versioned DQL scoring', 'immutable factor proposals', 'evidence-gated reviews'], nextGate: 'apply DQL gates to domestic MRV filing packs' },
     { id: 'mitigation-allowance', label: 'Mitigation and allowance operations', status: 'implemented', evidence: ['initiative revisions', 'evidence-backed scenarios', 'allowance allocation references', 'gross-preserving position snapshots'], nextGate: 'specialist pilot and registry reconciliation connector' },
-    { id: 'industry-rules', label: 'Industry packs', status: 'planned', evidence: [], nextGate: 'steel and cement rule packs' },
+    { id: 'industry-rules', label: 'Industry packs', status: 'partial', evidence: ['versioned steel/cement pilot manifests', 'factor-governed deterministic snapshots', 'pilot fixtures'], nextGate: 'independent sector-expert approval and real-facility pilot' },
     { id: 'decision-intelligence', label: 'Climate risk and decision intelligence', status: 'planned', evidence: [], nextGate: 'physical risk data and scenario model' }
   ]),
   entities: Object.freeze([

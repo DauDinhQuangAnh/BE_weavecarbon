@@ -6,7 +6,7 @@ describe('G2 industrial core controls', () => {
     const registry = getCapabilityRegistry();
     expect(registry.coverage).toBe('baseline');
     expect(registry.truthBoundary).toMatch(/planned capabilities must not be presented/i);
-    expect(registry.layers.some((item) => item.id === 'industry-rules' && item.status === 'planned')).toBe(true);
+    expect(registry.layers.some((item) => item.id === 'industry-rules' && item.status === 'partial')).toBe(true);
     expect(registry.manifestSha256).toMatch(/^[a-f0-9]{64}$/);
   });
 
