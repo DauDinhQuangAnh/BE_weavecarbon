@@ -18,4 +18,4 @@ All endpoints except reads require a company admin. All references and ledgers a
 
 ## Acceptance still required
 
-Integrate licensed/versioned dataset extraction; validate against a real facility and supplier sample; agree hazard metrics and thresholds with climate specialists; test geospatial matching and scenario comparability; add a governed carbon-data overlay before claiming combined carbon-climate criticality; document uncertainties and operational review. G2-07 remains partial until this evidence exists.
+Integrate licensed/versioned dataset extraction; validate against a real facility and supplier sample; agree hazard metrics and thresholds with climate specialists; test geospatial matching and scenario comparability; validate the governed G2-11 carbon-climate-dependency overlay; document uncertainties and operational review. G2-07 remains partial until this evidence exists.

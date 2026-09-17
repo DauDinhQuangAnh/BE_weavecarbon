@@ -1067,6 +1067,87 @@ const REQUEST_BODY_OVERRIDES = {
       rollbackOfUpdateId: { type: 'string', format: 'uuid', nullable: true }, reason: { type: 'string', minLength: 1, maxLength: 2000 } },
     additionalProperties: false
   },
+  'POST /supplier-network/profiles': {
+    type: 'object', required: ['supplierReference','legalName','countryCode','sector','supplierTier','lifecycleStatus','evidenceDocumentId'],
+    properties: { supplierReference: { type: 'string', minLength: 1, maxLength: 120 }, legalName: { type: 'string', minLength: 1, maxLength: 240 },
+      tradingName: { type: 'string', maxLength: 240, nullable: true }, countryCode: { type: 'string', pattern: '^[A-Za-z]{2}$' },
+      sector: { type: 'string', minLength: 1, maxLength: 160 }, supplierTier: { type: 'integer', minimum: 1, maximum: 4 },
+      lifecycleStatus: { type: 'string', enum: ['prospective','active','inactive'] }, evidenceDocumentId: { type: 'string', format: 'uuid' },
+      metadata: { type: 'object', additionalProperties: true } }, additionalProperties: false
+  },
+  'POST /supplier-network/sites': {
+    type: 'object', required: ['supplierRevisionId','siteReference','siteName','countryCode','latitude','longitude','precisionMeters','locationBasis','evidenceDocumentId'],
+    properties: { supplierRevisionId: { type: 'string', format: 'uuid' }, siteReference: { type: 'string', minLength: 1, maxLength: 120 },
+      siteName: { type: 'string', minLength: 1, maxLength: 240 }, countryCode: { type: 'string', pattern: '^[A-Za-z]{2}$' },
+      latitude: { type: 'number', minimum: -90, maximum: 90 }, longitude: { type: 'number', minimum: -180, maximum: 180 },
+      precisionMeters: { type: 'integer', minimum: 1, maximum: 100000 }, locationBasis: { type: 'string', minLength: 1, maxLength: 2000 },
+      evidenceDocumentId: { type: 'string', format: 'uuid' } }, additionalProperties: false
+  },
+  'POST /supplier-network/relationships': {
+    type: 'object', required: ['supplierRevisionId','relationshipReference','materialOrService','procurementCategory','spendPercent',
+      'productionDependencyPercent','singleSource','dependentSkuCount','dependentRouteCount','effectiveFrom','evidenceDocumentId'],
+    properties: { supplierRevisionId: { type: 'string', format: 'uuid' }, relationshipReference: { type: 'string', minLength: 1, maxLength: 120 },
+      materialOrService: { type: 'string', minLength: 1, maxLength: 240 }, procurementCategory: { type: 'string', minLength: 1, maxLength: 160 },
+      spendPercent: { type: 'number', minimum: 0, maximum: 100 }, productionDependencyPercent: { type: 'number', minimum: 0, maximum: 100 },
+      singleSource: { type: 'boolean' }, dependentSkuCount: { type: 'integer', minimum: 0 }, dependentRouteCount: { type: 'integer', minimum: 0 },
+      effectiveFrom: { type: 'string', format: 'date' }, effectiveTo: { type: 'string', format: 'date', nullable: true },
+      evidenceDocumentId: { type: 'string', format: 'uuid' } }, additionalProperties: false
+  },
+  'POST /supplier-network/climate-assessments': {
+    type: 'object', required: ['supplierRevisionId','siteRevisionId','hazardType','scenarioKind','scenarioReference','horizonStart','horizonEnd',
+      'sourceKind','sourceUrl','datasetIdentifier','datasetVersion','spatialResolution','temporalResolution','gridReference','spatialMatchNotes',
+      'hazardMetric','metricValue','metricUnit','uncertaintyNotes','exposureRating','vulnerabilityRating','priorityBand','ratingRationale','evidenceDocumentId'],
+    properties: { supplierRevisionId: { type: 'string', format: 'uuid' }, siteRevisionId: { type: 'string', format: 'uuid' },
+      hazardType: { type: 'string', enum: ['heat','drought','extreme_rainfall'] }, scenarioKind: { type: 'string', enum: ['historical','projection'] },
+      scenarioReference: { type: 'string', minLength: 1, maxLength: 120 }, horizonStart: { type: 'string', format: 'date' }, horizonEnd: { type: 'string', format: 'date' },
+      sourceKind: { type: 'string', enum: ['ERA5_LAND','CMIP6','OTHER'] }, sourceUrl: { type: 'string', format: 'uri', pattern: '^https://' },
+      datasetIdentifier: { type: 'string', minLength: 1, maxLength: 240 }, datasetVersion: { type: 'string', minLength: 1, maxLength: 120 },
+      spatialResolution: { type: 'string', minLength: 1, maxLength: 120 }, temporalResolution: { type: 'string', minLength: 1, maxLength: 120 },
+      gridReference: { type: 'string', minLength: 1, maxLength: 240 }, spatialMatchNotes: { type: 'string', minLength: 1, maxLength: 4000 },
+      modelName: { type: 'string', maxLength: 120, nullable: true }, scenarioName: { type: 'string', maxLength: 120, nullable: true },
+      hazardMetric: { type: 'string', minLength: 1, maxLength: 120 }, metricValue: { type: 'number' }, metricUnit: { type: 'string', minLength: 1, maxLength: 100 },
+      uncertaintyNotes: { type: 'string', minLength: 1, maxLength: 4000 }, exposureRating: { type: 'integer', minimum: 1, maximum: 5 },
+      vulnerabilityRating: { type: 'integer', minimum: 1, maximum: 5 }, priorityBand: { type: 'string', enum: ['low','medium','high'] },
+      ratingRationale: { type: 'string', minLength: 1, maxLength: 4000 }, evidenceDocumentId: { type: 'string', format: 'uuid' } }, additionalProperties: false
+  },
+  'POST /supplier-network/carbon-snapshots': {
+    type: 'object', required: ['subjectKind','reportingPeriodStart','reportingPeriodEnd','grossKgCo2e','boundary','methodologyReference','sourceKind','dataQualityLevel','evidenceDocumentId'],
+    properties: { subjectKind: { type: 'string', enum: ['facility','supplier'] }, facilityRevisionId: { type: 'string', format: 'uuid', nullable: true },
+      supplierRevisionId: { type: 'string', format: 'uuid', nullable: true }, reportingPeriodStart: { type: 'string', format: 'date' },
+      reportingPeriodEnd: { type: 'string', format: 'date' }, grossKgCo2e: { type: 'number', minimum: 0 },
+      activityQuantity: { type: 'number', minimum: 0, exclusiveMinimum: true, nullable: true }, activityUnit: { type: 'string', minLength: 1, maxLength: 100, nullable: true },
+      intensityKgCo2e: { type: 'number', minimum: 0, nullable: true }, boundary: { type: 'string', minLength: 1, maxLength: 4000 },
+      methodologyReference: { type: 'string', minLength: 1, maxLength: 500 }, sourceKind: { type: 'string', enum: ['supplier_specific','facility_inventory','estimated','proxy'] },
+      dataQualityLevel: { type: 'string', enum: ['L1','L2','L3','L4','L5'] }, evidenceDocumentId: { type: 'string', format: 'uuid' } }, additionalProperties: false
+  },
+  'POST /supplier-network/criticality-models': {
+    type: 'object', required: ['modelReference','carbonWeightPercent','climateWeightPercent','dependencyWeightPercent','mediumThreshold','highThreshold',
+      'normalizationPolicy','rationale','approvalStatus','evidenceDocumentId'],
+    properties: { modelReference: { type: 'string', minLength: 1, maxLength: 120 }, carbonWeightPercent: { type: 'number', minimum: 0, maximum: 100 },
+      climateWeightPercent: { type: 'number', minimum: 0, maximum: 100 }, dependencyWeightPercent: { type: 'number', minimum: 0, maximum: 100 },
+      mediumThreshold: { type: 'number', minimum: 0, maximum: 100 }, highThreshold: { type: 'number', minimum: 0, maximum: 100 },
+      normalizationPolicy: { type: 'string', minLength: 1, maxLength: 5000 }, rationale: { type: 'string', minLength: 1, maxLength: 5000 },
+      approvalStatus: { type: 'string', enum: ['draft','approved'] }, evidenceDocumentId: { type: 'string', format: 'uuid' } }, additionalProperties: false
+  },
+  'POST /supplier-network/criticality-snapshots': {
+    type: 'object', required: ['subjectKind','carbonSnapshotId','modelRevisionId','climateAssessmentIds','assessmentPeriodStart','assessmentPeriodEnd',
+      'normalizedCarbonScore','normalizedClimateScore','normalizedDependencyScore','carbonScoreRationale','climateScoreRationale','dependencyScoreRationale'],
+    properties: { subjectKind: { type: 'string', enum: ['facility','supplier'] }, facilityRevisionId: { type: 'string', format: 'uuid', nullable: true },
+      supplierRevisionId: { type: 'string', format: 'uuid', nullable: true }, relationshipRevisionId: { type: 'string', format: 'uuid', nullable: true },
+      carbonSnapshotId: { type: 'string', format: 'uuid' }, modelRevisionId: { type: 'string', format: 'uuid' },
+      climateAssessmentIds: { type: 'array', minItems: 1, maxItems: 3, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
+      assessmentPeriodStart: { type: 'string', format: 'date' }, assessmentPeriodEnd: { type: 'string', format: 'date' },
+      normalizedCarbonScore: { type: 'number', minimum: 0, maximum: 100 }, normalizedClimateScore: { type: 'number', minimum: 0, maximum: 100 },
+      normalizedDependencyScore: { type: 'number', minimum: 0, maximum: 100 }, carbonScoreRationale: { type: 'string', minLength: 1, maxLength: 4000 },
+      climateScoreRationale: { type: 'string', minLength: 1, maxLength: 4000 }, dependencyScoreRationale: { type: 'string', minLength: 1, maxLength: 4000 } },
+    additionalProperties: false
+  },
+  'POST /supplier-network/portfolios': {
+    type: 'object', required: ['portfolioReference','criticalitySnapshotIds','methodologyNotes'],
+    properties: { portfolioReference: { type: 'string', minLength: 1, maxLength: 120 },
+      criticalitySnapshotIds: { type: 'array', minItems: 2, maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
+      methodologyNotes: { type: 'string', minLength: 1, maxLength: 5000 } }, additionalProperties: false
+  },
   'POST /climate-risk/locations': {
     type: 'object', required: ['facilityRevisionId','latitude','longitude','precisionMeters','locationBasis','evidenceDocumentId'],
     properties: { facilityRevisionId: { type: 'string', format: 'uuid' }, latitude: { type: 'number', minimum: -90, maximum: 90 },

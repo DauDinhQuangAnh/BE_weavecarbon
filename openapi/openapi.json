@@ -23456,6 +23456,1403 @@
         ]
       }
     },
+    "/supplier-network/carbon-snapshots": {
+      "get": {
+        "operationId": "getSupplierNetworkCarbonSnapshots",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /supplier-network/carbon-snapshots",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      },
+      "post": {
+        "operationId": "postSupplierNetworkCarbonSnapshots",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "activityQuantity": {
+                    "exclusiveMinimum": true,
+                    "minimum": 0,
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "activityUnit": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "boundary": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "dataQualityLevel": {
+                    "enum": [
+                      "L1",
+                      "L2",
+                      "L3",
+                      "L4",
+                      "L5"
+                    ],
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "grossKgCo2e": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "intensityKgCo2e": {
+                    "minimum": 0,
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "methodologyReference": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reportingPeriodEnd": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "reportingPeriodStart": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "sourceKind": {
+                    "enum": [
+                      "supplier_specific",
+                      "facility_inventory",
+                      "estimated",
+                      "proxy"
+                    ],
+                    "type": "string"
+                  },
+                  "subjectKind": {
+                    "enum": [
+                      "facility",
+                      "supplier"
+                    ],
+                    "type": "string"
+                  },
+                  "supplierRevisionId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "subjectKind",
+                  "reportingPeriodStart",
+                  "reportingPeriodEnd",
+                  "grossKgCo2e",
+                  "boundary",
+                  "methodologyReference",
+                  "sourceKind",
+                  "dataQualityLevel",
+                  "evidenceDocumentId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /supplier-network/carbon-snapshots",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      }
+    },
+    "/supplier-network/climate-assessments": {
+      "get": {
+        "operationId": "getSupplierNetworkClimateAssessments",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /supplier-network/climate-assessments",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      },
+      "post": {
+        "operationId": "postSupplierNetworkClimateAssessments",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "datasetIdentifier": {
+                    "maxLength": 240,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "datasetVersion": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "exposureRating": {
+                    "maximum": 5,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "gridReference": {
+                    "maxLength": 240,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "hazardMetric": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "hazardType": {
+                    "enum": [
+                      "heat",
+                      "drought",
+                      "extreme_rainfall"
+                    ],
+                    "type": "string"
+                  },
+                  "horizonEnd": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "horizonStart": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "metricUnit": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "metricValue": {
+                    "type": "number"
+                  },
+                  "modelName": {
+                    "maxLength": 120,
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "priorityBand": {
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high"
+                    ],
+                    "type": "string"
+                  },
+                  "ratingRationale": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "scenarioKind": {
+                    "enum": [
+                      "historical",
+                      "projection"
+                    ],
+                    "type": "string"
+                  },
+                  "scenarioName": {
+                    "maxLength": 120,
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "scenarioReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "siteRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "sourceKind": {
+                    "enum": [
+                      "ERA5_LAND",
+                      "CMIP6",
+                      "OTHER"
+                    ],
+                    "type": "string"
+                  },
+                  "sourceUrl": {
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "type": "string"
+                  },
+                  "spatialMatchNotes": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "spatialResolution": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "supplierRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "temporalResolution": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "uncertaintyNotes": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "vulnerabilityRating": {
+                    "maximum": 5,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "supplierRevisionId",
+                  "siteRevisionId",
+                  "hazardType",
+                  "scenarioKind",
+                  "scenarioReference",
+                  "horizonStart",
+                  "horizonEnd",
+                  "sourceKind",
+                  "sourceUrl",
+                  "datasetIdentifier",
+                  "datasetVersion",
+                  "spatialResolution",
+                  "temporalResolution",
+                  "gridReference",
+                  "spatialMatchNotes",
+                  "hazardMetric",
+                  "metricValue",
+                  "metricUnit",
+                  "uncertaintyNotes",
+                  "exposureRating",
+                  "vulnerabilityRating",
+                  "priorityBand",
+                  "ratingRationale",
+                  "evidenceDocumentId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /supplier-network/climate-assessments",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      }
+    },
+    "/supplier-network/criticality-models": {
+      "get": {
+        "operationId": "getSupplierNetworkCriticalityModels",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /supplier-network/criticality-models",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      },
+      "post": {
+        "operationId": "postSupplierNetworkCriticalityModels",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "approvalStatus": {
+                    "enum": [
+                      "draft",
+                      "approved"
+                    ],
+                    "type": "string"
+                  },
+                  "carbonWeightPercent": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "climateWeightPercent": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "dependencyWeightPercent": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "highThreshold": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "mediumThreshold": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "modelReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "normalizationPolicy": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "rationale": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "modelReference",
+                  "carbonWeightPercent",
+                  "climateWeightPercent",
+                  "dependencyWeightPercent",
+                  "mediumThreshold",
+                  "highThreshold",
+                  "normalizationPolicy",
+                  "rationale",
+                  "approvalStatus",
+                  "evidenceDocumentId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /supplier-network/criticality-models",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      }
+    },
+    "/supplier-network/criticality-snapshots": {
+      "get": {
+        "operationId": "getSupplierNetworkCriticalitySnapshots",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /supplier-network/criticality-snapshots",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      },
+      "post": {
+        "operationId": "postSupplierNetworkCriticalitySnapshots",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "assessmentPeriodEnd": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "assessmentPeriodStart": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "carbonScoreRationale": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "carbonSnapshotId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "climateAssessmentIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "maxItems": 3,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "climateScoreRationale": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "dependencyScoreRationale": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "modelRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "normalizedCarbonScore": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "normalizedClimateScore": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "normalizedDependencyScore": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "relationshipRevisionId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "subjectKind": {
+                    "enum": [
+                      "facility",
+                      "supplier"
+                    ],
+                    "type": "string"
+                  },
+                  "supplierRevisionId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "subjectKind",
+                  "carbonSnapshotId",
+                  "modelRevisionId",
+                  "climateAssessmentIds",
+                  "assessmentPeriodStart",
+                  "assessmentPeriodEnd",
+                  "normalizedCarbonScore",
+                  "normalizedClimateScore",
+                  "normalizedDependencyScore",
+                  "carbonScoreRationale",
+                  "climateScoreRationale",
+                  "dependencyScoreRationale"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /supplier-network/criticality-snapshots",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      }
+    },
+    "/supplier-network/portfolios": {
+      "get": {
+        "operationId": "getSupplierNetworkPortfolios",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /supplier-network/portfolios",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      },
+      "post": {
+        "operationId": "postSupplierNetworkPortfolios",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "criticalitySnapshotIds": {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "minItems": 2,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "methodologyNotes": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "portfolioReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "portfolioReference",
+                  "criticalitySnapshotIds",
+                  "methodologyNotes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /supplier-network/portfolios",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      }
+    },
+    "/supplier-network/portfolios/{portfolioId}": {
+      "get": {
+        "operationId": "getSupplierNetworkPortfoliosByPortfolioId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "portfolioId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /supplier-network/portfolios/{portfolioId}",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      }
+    },
+    "/supplier-network/profiles": {
+      "get": {
+        "operationId": "getSupplierNetworkProfiles",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /supplier-network/profiles",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      },
+      "post": {
+        "operationId": "postSupplierNetworkProfiles",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "countryCode": {
+                    "pattern": "^[A-Za-z]{2}$",
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "legalName": {
+                    "maxLength": 240,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "lifecycleStatus": {
+                    "enum": [
+                      "prospective",
+                      "active",
+                      "inactive"
+                    ],
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "sector": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "supplierReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "supplierTier": {
+                    "maximum": 4,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "tradingName": {
+                    "maxLength": 240,
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "supplierReference",
+                  "legalName",
+                  "countryCode",
+                  "sector",
+                  "supplierTier",
+                  "lifecycleStatus",
+                  "evidenceDocumentId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /supplier-network/profiles",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      }
+    },
+    "/supplier-network/relationships": {
+      "get": {
+        "operationId": "getSupplierNetworkRelationships",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /supplier-network/relationships",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      },
+      "post": {
+        "operationId": "postSupplierNetworkRelationships",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "dependentRouteCount": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "dependentSkuCount": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "materialOrService": {
+                    "maxLength": 240,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "procurementCategory": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "productionDependencyPercent": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "relationshipReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "singleSource": {
+                    "type": "boolean"
+                  },
+                  "spendPercent": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "supplierRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "supplierRevisionId",
+                  "relationshipReference",
+                  "materialOrService",
+                  "procurementCategory",
+                  "spendPercent",
+                  "productionDependencyPercent",
+                  "singleSource",
+                  "dependentSkuCount",
+                  "dependentRouteCount",
+                  "effectiveFrom",
+                  "evidenceDocumentId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /supplier-network/relationships",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      }
+    },
+    "/supplier-network/sites": {
+      "get": {
+        "operationId": "getSupplierNetworkSites",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /supplier-network/sites",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      },
+      "post": {
+        "operationId": "postSupplierNetworkSites",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "countryCode": {
+                    "pattern": "^[A-Za-z]{2}$",
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "latitude": {
+                    "maximum": 90,
+                    "minimum": -90,
+                    "type": "number"
+                  },
+                  "locationBasis": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "longitude": {
+                    "maximum": 180,
+                    "minimum": -180,
+                    "type": "number"
+                  },
+                  "precisionMeters": {
+                    "maximum": 100000,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "siteName": {
+                    "maxLength": 240,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "siteReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "supplierRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "supplierRevisionId",
+                  "siteReference",
+                  "siteName",
+                  "countryCode",
+                  "latitude",
+                  "longitude",
+                  "precisionMeters",
+                  "locationBasis",
+                  "evidenceDocumentId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /supplier-network/sites",
+        "tags": [
+          "Supplier network and carbon-climate criticality"
+        ]
+      }
+    },
     "/suppliers": {
       "get": {
         "operationId": "getSuppliers",
@@ -25444,6 +26841,9 @@
     },
     {
       "name": "Dynamic industrial allocation"
+    },
+    {
+      "name": "Supplier network and carbon-climate criticality"
     },
     {
       "name": "Operations"

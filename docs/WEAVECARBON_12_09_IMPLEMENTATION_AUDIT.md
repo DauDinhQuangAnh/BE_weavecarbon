@@ -6,9 +6,9 @@ Implementation branch reviewed: `feat/g2-industrial-core-baseline`
 
 ## Audit conclusion
 
-The branch is moving in the right architectural direction, but it does not yet implement the complete vision in the 12 September document. The implemented work is a credible software baseline through G2-10: canonical industrial records, evidence lineage, data-quality and factor governance, domestic MRV preparation, mitigation and allowance references, steel/cement pilots, dynamic allocation, governed OCR review, operational WeaveNode controls and climate-risk screening.
+The branch is moving in the right architectural direction, but it does not yet implement the complete vision in the 12 September document. The implemented work is a credible software baseline through G2-11: canonical industrial records, evidence lineage, data-quality and factor governance, domestic MRV preparation, mitigation and allowance references, steel/cement pilots, dynamic allocation, governed OCR review, operational WeaveNode controls, climate-risk screening, supplier-network governance and transparent carbon-climate-dependency criticality.
 
-The remaining work is not a small polish pass. Controlled OCR-to-activity promotion, the wider Industry Pack set, supplier-network workflows, combined carbon-climate criticality, enterprise controls and real external acceptance evidence still require explicit delivery phases.
+The remaining work is not a small polish pass. Controlled OCR-to-activity promotion, the wider Industry Pack set, enterprise controls and real external acceptance evidence still require explicit delivery phases. G2-11 now supplies a governed software baseline, but it must not be represented as a validated physical-risk forecast or complete supplier coverage until the documented external gates pass.
 
 Production is also behind this branch. At the 2026-09-17 checkpoint, the production database stopped at migration `024`; migrations `038` through `048` and the G2 industrial-core, WeaveNode and climate-risk routes were absent from the running backend image.
 
@@ -28,7 +28,7 @@ Production is also behind this branch. At the 2026-09-17 checkpoint, the product
 | AI/OCR with human in the loop | Checksum-bound named review and immutable accepted/corrected field decisions keep extraction non-authoritative until confirmation | Partial | Semantic/anomaly suggestions and controlled promotion to authoritative activity data |
 | WeaveNode identity, buffering and calibration | Ed25519 v1/v2 identity, dual timestamps, signed packet/health ledgers, ordered replay, evidence-bound hierarchy reconciliation, release keys and staged update/rollback history | Implemented software baseline | Real connectivity adapter, gateway/network soak, mTLS and key custody, on-device signed OTA/rollback and site acceptance |
 | Industry Packs | Steel and cement pilot manifests and deterministic snapshots | Partial | Real expert/facility validation plus textile, aluminium, construction materials, fertiliser/chemicals and mining/minerals packs |
-| Climate-risk intelligence | Evidence-bound locations, hazard/exposure/vulnerability screening and multi-facility portfolio snapshots | Partial | Licensed/versioned data ingestion, calibrated hazards, supplier coverage and transparent carbon-climate-business criticality |
+| Climate-risk intelligence | Evidence-bound facility/supplier sites and hazard screening, immutable supplier dependency facts, approved weighted models, deterministic carbon-climate-dependency snapshots and coverage-explicit portfolios | Partial | Licensed/versioned data ingestion, calibrated hazards, climate-specialist validation and real facility/supplier acceptance evidence |
 | Security and data governance | RBAC, tenant-bound data access, TLS deployment, audit trails, backup/restore scripts and security tests | Partial | MFA for sensitive roles, SSO, at-rest encryption evidence, key lifecycle, incident-response exercise and enterprise SLA controls |
 | Commercial package boundaries | Pilot, core modules and add-on surfaces exist in code | Partial | Enforced Starter/Growth/Enterprise entitlements, SSO/API packaging and SLA instrumentation |
 
@@ -41,7 +41,7 @@ The existing G2-00 through G2-07 work remains valid. The following phases make t
 | G2-08 | Dynamic allocation and domestic-to-export lineage | Implemented software baseline | Versioned multi-level rules, deterministic reconciled runs, immutable line lineage, API/UI and tests; real-facility reproducibility and adapter acceptance remain |
 | G2-09 | Governed AI/OCR promotion | Implemented software baseline | Checksum-bound named human review and immutable field decisions implemented; semantic/anomaly suggestions and controlled activity promotion remain |
 | G2-10 | WeaveNode operational management | Implemented software baseline | Dual timestamps, health, immutable hierarchy/reconciliation and signed staged firmware/configuration update/rollback controls implemented; hardware/network/mTLS acceptance remains |
-| G2-11 | Supplier network and carbon-climate criticality | Planned | Tenant-safe supplier coverage plus transparent carbon, climate and dependency weighting |
+| G2-11 | Supplier network and carbon-climate criticality | Implemented software baseline | Immutable tenant-bound supplier/site/relationship records, evidence-backed climate/carbon inputs, approved transparent weights, deterministic snapshots and coverage-explicit portfolios; real supplier and specialist acceptance remain |
 | G2-12 | Industry Pack expansion | Planned | Textile, aluminium, construction materials, fertiliser/chemicals and mining/minerals packs with expert pilot evidence |
 | G2-13 | Enterprise security and production acceptance | Planned | MFA/SSO, key and incident controls, real-data pilot, CI/CD release gate, migration/rollback proof and production smoke tests |
 
