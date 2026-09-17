@@ -1,8 +1,12 @@
 # WeaveCarbon Industrial Platform Master Tracker
 
-Baseline date: 2026-09-15  
-Vision source: `WeaveCarbon Mới cập nhật 12.09.docx`  
+Baseline date: 2026-09-17
+
+Vision source: `WeaveCarbon Mới cập nhật 12.09.docx`
+
 Current implementation branch: `feat/g2-industrial-core-baseline`
+
+Detailed requirement and production audit: `docs/WEAVECARBON_12_09_IMPLEMENTATION_AUDIT.md`
 
 ## Product boundary
 
@@ -26,6 +30,12 @@ Capability labels are contractual:
 | G2-05 | Steel and cement Industry Packs | Partial | Versioned process taxonomy, required fields, governed-factor calculation, evidence checks and deterministic pilot fixtures implemented; independent sector-expert approval and real-facility pilot remain |
 | G2-06 | WeaveNode and industrial ingestion | Partial | Ed25519 device enrollment, signed packet buffer, sequence-safe replay and evidence-bound calibration software pilot implemented; real gateway/network soak, key custody and site calibration acceptance remain |
 | G2-07 | Climate risk, multi-facility and vertical scale | Partial | Evidence-bound facility location, author-assigned hazard/exposure/vulnerability screening and same-scenario multi-facility portfolio snapshots implemented; ERA5-Land/CMIP6 ingestion, calibrated hazards, carbon-climate criticality, specialist review, supplier coverage and vertical pilots remain |
+| G2-08 | Dynamic allocation and domestic-to-export lineage | Implemented software baseline | Versioned facility/process/batch/product allocation rules, deterministic reconciled runs, immutable line lineage, API/UI and tests; real-facility reproducibility and adapter acceptance remain |
+| G2-09 | Governed AI/OCR promotion | Planned | Field suggestions stay non-authoritative until a named human accepts/rejects them against an exact evidence checksum |
+| G2-10 | WeaveNode operational management | Planned | Meter hierarchy/reconciliation, dual timestamps, health, configuration audit and signed staged update controls |
+| G2-11 | Supplier network and carbon-climate criticality | Planned | Tenant-safe supplier coverage and transparent carbon + climate + business-dependency prioritization |
+| G2-12 | Industry Pack expansion | Planned | Textile, aluminium, construction materials, fertiliser/chemicals and mining/minerals packs with expert and real-facility evidence |
+| G2-13 | Enterprise security and production acceptance | Planned | MFA/SSO, incident/key controls, real-data pilot, CI/CD release gate, migration/rollback proof and production smoke tests |
 
 ## This baseline delivers
 

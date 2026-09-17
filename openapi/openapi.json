@@ -8232,6 +8232,374 @@
         ]
       }
     },
+    "/dynamic-allocation/rules": {
+      "get": {
+        "operationId": "getDynamicAllocationRules",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /dynamic-allocation/rules",
+        "tags": [
+          "Dynamic industrial allocation"
+        ]
+      },
+      "post": {
+        "operationId": "postDynamicAllocationRules",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "allocationMethod": {
+                    "enum": [
+                      "mass",
+                      "energy",
+                      "output",
+                      "machine_hour",
+                      "economic",
+                      "custom_driver"
+                    ],
+                    "type": "string"
+                  },
+                  "allocationReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "approvalStatus": {
+                    "enum": [
+                      "draft",
+                      "approved"
+                    ],
+                    "type": "string"
+                  },
+                  "driverUnit": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "methodologyReference": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "methodologyVersion": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "rationale": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sourceLevel": {
+                    "enum": [
+                      "facility",
+                      "process",
+                      "batch"
+                    ],
+                    "type": "string"
+                  },
+                  "targetLevel": {
+                    "enum": [
+                      "process",
+                      "batch",
+                      "product"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "allocationReference",
+                  "facilityRevisionId",
+                  "sourceLevel",
+                  "targetLevel",
+                  "allocationMethod",
+                  "driverUnit",
+                  "methodologyReference",
+                  "methodologyVersion",
+                  "rationale",
+                  "approvalStatus"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /dynamic-allocation/rules",
+        "tags": [
+          "Dynamic industrial allocation"
+        ]
+      }
+    },
+    "/dynamic-allocation/runs": {
+      "get": {
+        "operationId": "getDynamicAllocationRuns",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /dynamic-allocation/runs",
+        "tags": [
+          "Dynamic industrial allocation"
+        ]
+      },
+      "post": {
+        "operationId": "postDynamicAllocationRuns",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "ruleRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "sourceActivityId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "sourceAllocationLineId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "targets": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "driverValue": {
+                          "exclusiveMinimum": true,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "targetEntityId": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "targetEntityId",
+                        "driverValue"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 500,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "ruleRevisionId",
+                  "targets"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /dynamic-allocation/runs",
+        "tags": [
+          "Dynamic industrial allocation"
+        ]
+      }
+    },
+    "/dynamic-allocation/runs/{runId}": {
+      "get": {
+        "operationId": "getDynamicAllocationRunsByRunId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /dynamic-allocation/runs/{runId}",
+        "tags": [
+          "Dynamic industrial allocation"
+        ]
+      }
+    },
     "/electricity-invoices": {
       "get": {
         "operationId": "getElectricityInvoices",
@@ -24193,6 +24561,9 @@
     },
     {
       "name": "Climate risk screening pilot"
+    },
+    {
+      "name": "Dynamic industrial allocation"
     },
     {
       "name": "Operations"

@@ -73,6 +73,7 @@ const QUERY_PARAMETER_OVERRIDES = {
   'GET /chat/conversations': ['page', 'page_size'],
   'GET /company/members': ['status', 'role'],
   'GET /evidence': ['productId', 'page', 'page_size', 'status'],
+  'GET /dynamic-allocation/runs': ['limit'],
   'GET /export/markets': ['product_id'],
   'GET /logistics/shipments': ['search', 'status', 'page', 'page_size', 'sort_by', 'sort_order'],
   'GET /product-batches': ['search', 'status', 'page', 'page_size', 'sort_by', 'sort_order'],
@@ -950,6 +951,37 @@ const REQUEST_BODY_OVERRIDES = {
       reviewerRole: { type: 'string', enum: ['industrial_activity_reviewer'] },
       decision: { type: 'string', enum: ['approved', 'needs_information', 'rejected'] },
       notes: { type: 'string', minLength: 1, maxLength: 5000 }
+    }, additionalProperties: false
+  },
+  'POST /dynamic-allocation/rules': {
+    type: 'object',
+    required: ['allocationReference','facilityRevisionId','sourceLevel','targetLevel','allocationMethod','driverUnit',
+      'methodologyReference','methodologyVersion','rationale','approvalStatus'],
+    properties: {
+      allocationReference: { type: 'string', minLength: 1, maxLength: 120 },
+      facilityRevisionId: { type: 'string', format: 'uuid' },
+      sourceLevel: { type: 'string', enum: ['facility','process','batch'] },
+      targetLevel: { type: 'string', enum: ['process','batch','product'] },
+      allocationMethod: { type: 'string', enum: ['mass','energy','output','machine_hour','economic','custom_driver'] },
+      driverUnit: { type: 'string', minLength: 1, maxLength: 100 },
+      methodologyReference: { type: 'string', minLength: 1, maxLength: 500 },
+      methodologyVersion: { type: 'string', minLength: 1, maxLength: 120 },
+      rationale: { type: 'string', minLength: 1, maxLength: 5000 },
+      approvalStatus: { type: 'string', enum: ['draft','approved'] },
+      evidenceDocumentId: { type: 'string', format: 'uuid', nullable: true }
+    }, additionalProperties: false
+  },
+  'POST /dynamic-allocation/runs': {
+    type: 'object', required: ['ruleRevisionId','targets'], properties: {
+      ruleRevisionId: { type: 'string', format: 'uuid' },
+      sourceActivityId: { type: 'string', format: 'uuid', nullable: true },
+      sourceAllocationLineId: { type: 'string', format: 'uuid', nullable: true },
+      targets: { type: 'array', minItems: 1, maxItems: 500, items: {
+        type: 'object', required: ['targetEntityId','driverValue'], properties: {
+          targetEntityId: { type: 'string', format: 'uuid' },
+          driverValue: { type: 'number', minimum: 0, exclusiveMinimum: true }
+        }, additionalProperties: false
+      } }
     }, additionalProperties: false
   },
   'POST /weavenode/ingest': {

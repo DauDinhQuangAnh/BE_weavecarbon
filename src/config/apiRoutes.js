@@ -33,6 +33,7 @@ const mitigationOperationsRoutes = require('../routes/mitigationOperations');
 const industryPackRoutes = require('../routes/industryPacks');
 const weavenodeRoutes = require('../routes/weavenode');
 const climateRiskRoutes = require('../routes/climateRisk');
+const dynamicAllocationRoutes = require('../routes/dynamicAllocation');
 
 const apiRoutes = [
   { basePath: '/api/auth', tag: 'Auth', router: authRoutes },
@@ -69,6 +70,7 @@ const apiRoutes = [
   { basePath: '/api/industry-packs', tag: 'Steel and cement industry-pack pilots', router: industryPackRoutes },
   { basePath: '/api/weavenode', tag: 'WeaveNode signed ingestion pilot', router: weavenodeRoutes },
   { basePath: '/api/climate-risk', tag: 'Climate risk screening pilot', router: climateRiskRoutes },
+  { basePath: '/api/dynamic-allocation', tag: 'Dynamic industrial allocation', router: dynamicAllocationRoutes },
   { basePath: '/api/operations', tag: 'Operations', router: operationsRoutes }
 ];
 
