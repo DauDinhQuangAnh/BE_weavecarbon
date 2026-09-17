@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.17.4';
+const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.17.5';
 const STATUS = Object.freeze(['implemented', 'partial', 'planned']);
 
 const CAPABILITY_REGISTRY = Object.freeze({
@@ -11,7 +11,7 @@ const CAPABILITY_REGISTRY = Object.freeze({
   updatedOn: '2026-09-16',
   truthBoundary: 'Only capabilities marked implemented are operational. Partial and planned capabilities must not be presented as production-complete.',
   layers: Object.freeze([
-    { id: 'ingestion', label: 'Data ingestion', status: 'partial', evidence: ['manual-entry', 'invoice-upload', 'weavenode-signed-software-pilot'], nextGate: 'Real gateway/network soak, key custody and site calibration acceptance' },
+    { id: 'ingestion', label: 'Data ingestion', status: 'partial', evidence: ['manual-entry', 'invoice-upload', 'weavenode-signed-v2-pilot', 'dual-time-provenance', 'device-health-ledger', 'meter-hierarchy-reconciliation', 'signed-staged-update-ledger'], nextGate: 'Real gateway/network soak, mTLS/key custody, signed OTA rollback and site calibration acceptance' },
     { id: 'ai-assisted-ingestion', label: 'AI and OCR human-in-the-loop', status: 'partial', evidence: ['OCR field suggestions', 'checksum-bound named human review', 'immutable accepted/corrected field decisions', 'RAG evidence ingestion'], nextGate: 'governed semantic mapping, anomaly/evidence-match suggestions and controlled authoritative activity promotion' },
     { id: 'semantic', label: 'Semantic harmonization', status: 'implemented', evidence: ['canonical facility/process/measurement/activity schema', 'tenant-bound revision ledgers'], nextGate: 'extend taxonomy through industry packs' },
     { id: 'evidence', label: 'Evidence and provenance', status: 'implemented', evidence: ['evidence locker', 'activity lineage query', 'immutable review snapshots', 'audit trail'], nextGate: 'cross-workstream graph traversal' },

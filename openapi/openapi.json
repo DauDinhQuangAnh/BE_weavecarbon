@@ -24128,6 +24128,13 @@
                     "format": "uuid",
                     "type": "string"
                   },
+                  "protocolVersion": {
+                    "enum": [
+                      "weavenode-ed25519-v1",
+                      "weavenode-ed25519-v2"
+                    ],
+                    "type": "string"
+                  },
                   "publicKeyPem": {
                     "minLength": 1,
                     "type": "string"
@@ -24262,6 +24269,56 @@
           }
         ],
         "summary": "POST /weavenode/devices/{deviceId}/calibrations",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      }
+    },
+    "/weavenode/devices/{deviceId}/health": {
+      "get": {
+        "operationId": "getWeavenodeDevicesByDeviceIdHealth",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deviceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /weavenode/devices/{deviceId}/health",
         "tags": [
           "WeaveNode signed ingestion pilot"
         ]
@@ -24449,6 +24506,294 @@
         ]
       }
     },
+    "/weavenode/devices/{deviceId}/updates": {
+      "get": {
+        "operationId": "getWeavenodeDevicesByDeviceIdUpdates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deviceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /weavenode/devices/{deviceId}/updates",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      },
+      "post": {
+        "operationId": "postWeavenodeDevicesByDeviceIdUpdates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deviceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "artifactSha256": {
+                    "pattern": "^[a-fA-F0-9]{64}$",
+                    "type": "string"
+                  },
+                  "manifest": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "reason": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "rollbackOfUpdateId": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "rolloutStage": {
+                    "enum": [
+                      "staged",
+                      "canary",
+                      "production",
+                      "rollback"
+                    ],
+                    "type": "string"
+                  },
+                  "signatureBase64": {
+                    "maxLength": 88,
+                    "minLength": 88,
+                    "type": "string"
+                  },
+                  "signingKeyId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "targetVersion": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "updateKind": {
+                    "enum": [
+                      "firmware",
+                      "configuration"
+                    ],
+                    "type": "string"
+                  },
+                  "updateReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "updateReference",
+                  "updateKind",
+                  "targetVersion",
+                  "rolloutStage",
+                  "artifactSha256",
+                  "signingKeyId",
+                  "manifest",
+                  "signatureBase64",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /weavenode/devices/{deviceId}/updates",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      }
+    },
+    "/weavenode/health": {
+      "post": {
+        "operationId": "postWeavenodeHealth",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "bufferDepth": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "configVersion": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "deviceId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "faultCodes": {
+                    "items": {
+                      "maxLength": 120,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "firmwareVersion": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "gatewayReceivedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "recordedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "sensorStatus": {
+                    "enum": [
+                      "ok",
+                      "warning",
+                      "fault"
+                    ],
+                    "type": "string"
+                  },
+                  "sequenceNumber": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "signatureBase64": {
+                    "maxLength": 88,
+                    "minLength": 88,
+                    "type": "string"
+                  },
+                  "storageFreeBytes": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "deviceId",
+                  "sequenceNumber",
+                  "recordedAt",
+                  "gatewayReceivedAt",
+                  "firmwareVersion",
+                  "configVersion",
+                  "bufferDepth",
+                  "storageFreeBytes",
+                  "sensorStatus",
+                  "faultCodes",
+                  "signatureBase64"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [],
+        "summary": "POST /weavenode/health",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      }
+    },
     "/weavenode/ingest": {
       "post": {
         "operationId": "postWeavenodeIngest",
@@ -24463,12 +24808,23 @@
                     "format": "uuid",
                     "type": "string"
                   },
+                  "gatewayReceivedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
                   "periodEnd": {
                     "format": "date-time",
                     "type": "string"
                   },
                   "periodStart": {
                     "format": "date-time",
+                    "type": "string"
+                  },
+                  "protocol": {
+                    "enum": [
+                      "weavenode-ed25519-v1",
+                      "weavenode-ed25519-v2"
+                    ],
                     "type": "string"
                   },
                   "quantity": {
@@ -24533,6 +24889,439 @@
         },
         "security": [],
         "summary": "POST /weavenode/ingest",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      }
+    },
+    "/weavenode/meter-hierarchies": {
+      "get": {
+        "operationId": "getWeavenodeMeterHierarchies",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /weavenode/meter-hierarchies",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      },
+      "post": {
+        "operationId": "postWeavenodeMeterHierarchies",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "childMeasurementPointRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date-time",
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "facilityRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "hierarchyReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "parentMeasurementPointRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "relationKind": {
+                    "enum": [
+                      "sub_meter",
+                      "line_meter",
+                      "machine_meter"
+                    ],
+                    "type": "string"
+                  },
+                  "tolerancePercent": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "hierarchyReference",
+                  "facilityRevisionId",
+                  "parentMeasurementPointRevisionId",
+                  "childMeasurementPointRevisionId",
+                  "relationKind",
+                  "tolerancePercent",
+                  "effectiveFrom",
+                  "evidenceDocumentId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /weavenode/meter-hierarchies",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      }
+    },
+    "/weavenode/meter-reconciliations": {
+      "get": {
+        "operationId": "getWeavenodeMeterReconciliations",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /weavenode/meter-reconciliations",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      },
+      "post": {
+        "operationId": "postWeavenodeMeterReconciliations",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "parentMeasurementPointRevisionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "periodEnd": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "periodStart": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "parentMeasurementPointRevisionId",
+                  "periodStart",
+                  "periodEnd"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /weavenode/meter-reconciliations",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      }
+    },
+    "/weavenode/release-keys": {
+      "get": {
+        "operationId": "getWeavenodeReleaseKeys",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /weavenode/release-keys",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      },
+      "post": {
+        "operationId": "postWeavenodeReleaseKeys",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "keyReference": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "publicKeyPem": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "keyReference",
+                  "publicKeyPem"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /weavenode/release-keys",
+        "tags": [
+          "WeaveNode signed ingestion pilot"
+        ]
+      }
+    },
+    "/weavenode/release-keys/{keyId}/revoke": {
+      "post": {
+        "operationId": "postWeavenodeReleaseKeysByKeyIdRevoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "keyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /weavenode/release-keys/{keyId}/revoke",
         "tags": [
           "WeaveNode signed ingestion pilot"
         ]

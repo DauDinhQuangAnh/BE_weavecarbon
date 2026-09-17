@@ -32,7 +32,7 @@ Capability labels are contractual:
 | G2-07 | Climate risk, multi-facility and vertical scale | Partial | Evidence-bound facility location, author-assigned hazard/exposure/vulnerability screening and same-scenario multi-facility portfolio snapshots implemented; ERA5-Land/CMIP6 ingestion, calibrated hazards, carbon-climate criticality, specialist review, supplier coverage and vertical pilots remain |
 | G2-08 | Dynamic allocation and domestic-to-export lineage | Implemented software baseline | Versioned facility/process/batch/product allocation rules, deterministic reconciled runs, immutable line lineage, API/UI and tests; real-facility reproducibility and adapter acceptance remain |
 | G2-09 | Governed AI/OCR promotion | Implemented software baseline | OCR output stays non-authoritative until a named human confirms every field against the exact evidence and extraction checksums; semantic mapping/anomaly suggestions and controlled activity promotion remain |
-| G2-10 | WeaveNode operational management | Planned | Meter hierarchy/reconciliation, dual timestamps, health, configuration audit and signed staged update controls |
+| G2-10 | WeaveNode operational management | Implemented software baseline | Protocol-v2 source/gateway timestamps, device health, immutable meter hierarchy/reconciliation and signed staged firmware/configuration update ledgers implemented; real gateway, mTLS/key custody and OTA rollback acceptance remain |
 | G2-11 | Supplier network and carbon-climate criticality | Planned | Tenant-safe supplier coverage and transparent carbon + climate + business-dependency prioritization |
 | G2-12 | Industry Pack expansion | Planned | Textile, aluminium, construction materials, fertiliser/chemicals and mining/minerals packs with expert and real-facility evidence |
 | G2-13 | Enterprise security and production acceptance | Planned | MFA/SSO, incident/key controls, real-data pilot, CI/CD release gate, migration/rollback proof and production smoke tests |
@@ -45,5 +45,6 @@ Capability labels are contractual:
 - Authenticated capability, facility and activity APIs.
 - Process and measurement-point revision APIs, activity evidence lineage and immutable review decisions.
 - A UI workspace that clearly separates implemented, partial and planned capability.
+- Governed WeaveNode operations with dual-time provenance, signed health reports, evidence-bound meter hierarchy reconciliation and signed staged update/rollback history.
 
 This baseline does **not** claim authority submission, registry ownership/transfer/surrender, expert-approved Industry Packs, production-grade WeaveNode telemetry or validated physical climate-risk forecasts.

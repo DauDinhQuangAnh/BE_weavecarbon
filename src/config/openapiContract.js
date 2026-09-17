@@ -18,6 +18,7 @@ const PUBLIC_OPERATIONS = new Set([
   'POST /auth/verify-email/resend',
   'POST /contact/lead',
   'POST /weavenode/ingest',
+  'POST /weavenode/health',
   'GET /passport/{productId}',
   'GET /reports/v2/public/audit-pack-shares/{token}',
   'GET /reports/v2/public/audit-pack-shares/{token}/download',
@@ -998,16 +999,30 @@ const REQUEST_BODY_OVERRIDES = {
   },
   'POST /weavenode/ingest': {
     type: 'object', required: ['deviceId','sequenceNumber','recordedAt','periodStart','periodEnd','quantity','unit','signatureBase64'],
-    properties: { deviceId: { type: 'string', format: 'uuid' }, sequenceNumber: { type: 'integer', minimum: 1 },
+    properties: { protocol: { type: 'string', enum: ['weavenode-ed25519-v1','weavenode-ed25519-v2'] },
+      deviceId: { type: 'string', format: 'uuid' }, sequenceNumber: { type: 'integer', minimum: 1 },
       recordedAt: { type: 'string', format: 'date-time' }, periodStart: { type: 'string', format: 'date-time' },
+      gatewayReceivedAt: { type: 'string', format: 'date-time' },
       periodEnd: { type: 'string', format: 'date-time' }, quantity: { type: 'number', minimum: 0, maximum: 1000000000000 },
       unit: { type: 'string', minLength: 1, maxLength: 100 }, signatureBase64: { type: 'string', minLength: 88, maxLength: 88 } },
     additionalProperties: false
   },
+  'POST /weavenode/health': {
+    type: 'object', required: ['deviceId','sequenceNumber','recordedAt','gatewayReceivedAt','firmwareVersion','configVersion',
+      'bufferDepth','storageFreeBytes','sensorStatus','faultCodes','signatureBase64'],
+    properties: { deviceId: { type: 'string', format: 'uuid' }, sequenceNumber: { type: 'integer', minimum: 1 },
+      recordedAt: { type: 'string', format: 'date-time' }, gatewayReceivedAt: { type: 'string', format: 'date-time' },
+      firmwareVersion: { type: 'string', minLength: 1, maxLength: 120 }, configVersion: { type: 'string', minLength: 1, maxLength: 120 },
+      bufferDepth: { type: 'integer', minimum: 0 }, storageFreeBytes: { type: 'integer', minimum: 0 },
+      sensorStatus: { type: 'string', enum: ['ok','warning','fault'] },
+      faultCodes: { type: 'array', maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 120 } },
+      signatureBase64: { type: 'string', minLength: 88, maxLength: 88 } }, additionalProperties: false
+  },
   'POST /weavenode/devices': {
     type: 'object', required: ['measurementPointRevisionId','deviceReference','publicKeyPem'],
     properties: { measurementPointRevisionId: { type: 'string', format: 'uuid' }, deviceReference: { type: 'string', minLength: 1, maxLength: 120 },
-      publicKeyPem: { type: 'string', minLength: 1 } }, additionalProperties: false
+      publicKeyPem: { type: 'string', minLength: 1 },
+      protocolVersion: { type: 'string', enum: ['weavenode-ed25519-v1','weavenode-ed25519-v2'] } }, additionalProperties: false
   },
   'POST /weavenode/devices/{deviceId}/revoke': {
     type: 'object', required: ['reason'], properties: { reason: { type: 'string', minLength: 1, maxLength: 2000 } }, additionalProperties: false
@@ -1016,6 +1031,41 @@ const REQUEST_BODY_OVERRIDES = {
     type: 'object', required: ['validFrom','validTo','evidenceDocumentId','notes'],
     properties: { validFrom: { type: 'string', format: 'date-time' }, validTo: { type: 'string', format: 'date-time' },
       evidenceDocumentId: { type: 'string', format: 'uuid' }, notes: { type: 'string', minLength: 1, maxLength: 2000 } }, additionalProperties: false
+  },
+  'POST /weavenode/meter-hierarchies': {
+    type: 'object', required: ['hierarchyReference','facilityRevisionId','parentMeasurementPointRevisionId',
+      'childMeasurementPointRevisionId','relationKind','tolerancePercent','effectiveFrom','evidenceDocumentId'],
+    properties: { hierarchyReference: { type: 'string', minLength: 1, maxLength: 120 },
+      facilityRevisionId: { type: 'string', format: 'uuid' }, parentMeasurementPointRevisionId: { type: 'string', format: 'uuid' },
+      childMeasurementPointRevisionId: { type: 'string', format: 'uuid' },
+      relationKind: { type: 'string', enum: ['sub_meter','line_meter','machine_meter'] },
+      tolerancePercent: { type: 'number', minimum: 0, maximum: 100 }, effectiveFrom: { type: 'string', format: 'date-time' },
+      effectiveTo: { type: 'string', format: 'date-time', nullable: true }, evidenceDocumentId: { type: 'string', format: 'uuid' } },
+    additionalProperties: false
+  },
+  'POST /weavenode/meter-reconciliations': {
+    type: 'object', required: ['parentMeasurementPointRevisionId','periodStart','periodEnd'],
+    properties: { parentMeasurementPointRevisionId: { type: 'string', format: 'uuid' },
+      periodStart: { type: 'string', format: 'date-time' }, periodEnd: { type: 'string', format: 'date-time' } },
+    additionalProperties: false
+  },
+  'POST /weavenode/release-keys': {
+    type: 'object', required: ['keyReference','publicKeyPem'],
+    properties: { keyReference: { type: 'string', minLength: 1, maxLength: 120 }, publicKeyPem: { type: 'string', minLength: 1 } },
+    additionalProperties: false
+  },
+  'POST /weavenode/release-keys/{keyId}/revoke': {
+    type: 'object', required: ['reason'], properties: { reason: { type: 'string', minLength: 1, maxLength: 2000 } }, additionalProperties: false
+  },
+  'POST /weavenode/devices/{deviceId}/updates': {
+    type: 'object', required: ['updateReference','updateKind','targetVersion','rolloutStage','artifactSha256','signingKeyId','manifest','signatureBase64','reason'],
+    properties: { updateReference: { type: 'string', minLength: 1, maxLength: 120 },
+      updateKind: { type: 'string', enum: ['firmware','configuration'] }, targetVersion: { type: 'string', minLength: 1, maxLength: 120 },
+      rolloutStage: { type: 'string', enum: ['staged','canary','production','rollback'] },
+      artifactSha256: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' }, signingKeyId: { type: 'string', format: 'uuid' },
+      manifest: { type: 'object', additionalProperties: true }, signatureBase64: { type: 'string', minLength: 88, maxLength: 88 },
+      rollbackOfUpdateId: { type: 'string', format: 'uuid', nullable: true }, reason: { type: 'string', minLength: 1, maxLength: 2000 } },
+    additionalProperties: false
   },
   'POST /climate-risk/locations': {
     type: 'object', required: ['facilityRevisionId','latitude','longitude','precisionMeters','locationBasis','evidenceDocumentId'],
