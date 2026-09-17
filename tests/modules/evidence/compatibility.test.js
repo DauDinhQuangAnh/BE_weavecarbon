@@ -44,6 +44,7 @@ describe('evidence compatibility entrypoints', () => {
       'GET /:id/status',
       'GET /:id/fields',
       'POST /:id/confirm',
+      'GET /:id/extraction-reviews',
       'GET /product/:product_id',
       'DELETE /:id'
     ]);

@@ -179,6 +179,59 @@ function createEvidenceRepository({ database = pool } = {}) {
       return rows[0] || null;
     },
 
+    async getExtractionForReview({ evidenceId, companyId }, queryable = database) {
+      const { rows } = await queryable.query(
+        `SELECT id, document_name, status, checksum_sha256, file_size_bytes, extracted_json
+         FROM evidence_documents WHERE id = $1 AND company_id = $2 FOR SHARE`,
+        [evidenceId, companyId]
+      );
+      return rows[0] || null;
+    },
+
+    async getReviewer({ userId }, queryable = database) {
+      const { rows } = await queryable.query(
+        'SELECT id, email, full_name FROM users WHERE id = $1', [userId]
+      );
+      return rows[0] || null;
+    },
+
+    async createExtractionReview(values, queryable = database) {
+      const { rows } = await queryable.query(
+        `INSERT INTO evidence_ai_extraction_reviews
+          (company_id,evidence_document_id,evidence_checksum_sha256,extraction_sha256,extraction_snapshot,
+           reviewer_id,reviewer_name_snapshot,reviewer_role,decision,notes)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10) RETURNING *`,
+        [values.companyId, values.evidenceDocumentId, values.evidenceChecksumSha256, values.extractionSha256,
+          values.extractionSnapshot, values.reviewerId, values.reviewerName, values.reviewerRole,
+          values.decision, values.notes]
+      );
+      return rows[0];
+    },
+
+    async createExtractionFieldDecision(values, queryable = database) {
+      const { rows } = await queryable.query(
+        `INSERT INTO evidence_ai_field_decisions
+          (company_id,review_id,field_path,ai_value,decision,confirmed_value,canonical_field,field_sha256)
+         VALUES ($1,$2,$3,$4::jsonb,$5,$6::jsonb,$7,$8) RETURNING *`,
+        [values.companyId, values.reviewId, values.fieldPath, values.aiValue, values.decision,
+          values.confirmedValue, values.canonicalField, values.fieldSha256]
+      );
+      return rows[0];
+    },
+
+    async listExtractionReviews({ evidenceId, companyId }) {
+      const { rows } = await database.query(
+        `SELECT review.*,
+                COALESCE((SELECT jsonb_agg(to_jsonb(field) ORDER BY field.field_path)
+                  FROM evidence_ai_field_decisions field
+                  WHERE field.company_id=review.company_id AND field.review_id=review.id), '[]'::jsonb) AS fields
+         FROM evidence_ai_extraction_reviews review
+         WHERE review.evidence_document_id=$1 AND review.company_id=$2
+         ORDER BY review.created_at DESC, review.id DESC`, [evidenceId, companyId]
+      );
+      return rows;
+    },
+
     async getStoredFile({ evidenceId, companyId }, queryable = database) {
       const { rows } = await queryable.query(
         `SELECT storage_provider, storage_key, original_filename, document_name,

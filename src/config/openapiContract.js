@@ -916,6 +916,18 @@ const REQUEST_BODY_OVERRIDES = {
       boundaryNotes: { type: 'string', maxLength: 10000 }, metadata: { type: 'object' }
     }, additionalProperties: false
   },
+  'POST /evidence/{id}/confirm': {
+    type: 'object', required: ['fields'], properties: {
+      reviewerRole: { type: 'string', enum: ['evidence_ai_reviewer'] },
+      notes: { type: 'string', minLength: 1, maxLength: 5000 },
+      fields: { type: 'array', minItems: 1, maxItems: 500, uniqueItems: true, items: {
+        type: 'object', required: ['id','confirmed_value'], properties: {
+          id: { type: 'string', minLength: 1, maxLength: 500 },
+          confirmed_value: { type: 'string', maxLength: 100000 }
+        }, additionalProperties: false
+      } }
+    }, additionalProperties: false
+  },
   'POST /industrial-core/activities': {
     type: 'object', required: ['activityReference', 'facilityRevisionId', 'activityType', 'periodStart', 'periodEnd',
       'quantity', 'canonicalUnit', 'sourceKind', 'dataQualityLevel', 'sourceSha256'], properties: {

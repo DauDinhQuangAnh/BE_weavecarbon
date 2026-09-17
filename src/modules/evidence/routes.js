@@ -296,21 +296,25 @@ router.get('/:id/fields', asyncHandler(async (req, res) => {
   return sendSuccess(res, { data: fields });
 }));
 
-// POST /api/evidence/:id/confirm — mark evidence as reviewed
+// POST /api/evidence/:id/confirm — persist field-level human decisions, then lock evidence.
 router.post('/:id/confirm', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
 
-  const result = await evidenceService.lockEvidenceWithAudit(
-    companyId,
-    req.userId,
-    req.params.id,
-    'evidence.confirm'
-  );
+  const result = await evidenceService.confirmExtractionWithAudit(companyId, req.userId, req.params.id, req.body);
   if (!result) {
     return sendError(res, { status: 404, code: 'EVIDENCE_NOT_FOUND', message: 'Evidence document not found.' });
   }
-  return sendSuccess(res, { data: result });
+  if (result.error) {
+    return sendError(res, { status: 422, code: result.error, message: 'AI/OCR extraction review could not be recorded.' });
+  }
+  return sendSuccess(res, { data: result.data });
+}));
+
+router.get('/:id/extraction-reviews', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  return sendSuccess(res, { data: await evidenceService.listExtractionReviews(companyId, req.params.id) });
 }));
 
 router.get('/product/:product_id', asyncHandler(async (req, res) => {

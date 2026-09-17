@@ -27,6 +27,11 @@ function createDependencies() {
       exists: jest.fn(),
       getStatus: jest.fn(),
       getExtractedJson: jest.fn(),
+      getExtractionForReview: jest.fn(),
+      getReviewer: jest.fn(),
+      createExtractionReview: jest.fn(),
+      createExtractionFieldDecision: jest.fn(),
+      listExtractionReviews: jest.fn(),
       getStoredFile: jest.fn(),
       deleteLinkedInvoices: jest.fn(),
       deleteEvidence: jest.fn()
@@ -136,6 +141,34 @@ describe('EvidenceService', () => {
       { id: 'invoice_number', label: 'invoice_number', ai_value: '123', confirmed_value: null },
       { id: 'supplier', label: 'supplier', ai_value: '', confirmed_value: null }
     ]);
+  });
+
+  test('persists every human field decision before locking AI-extracted evidence', async () => {
+    const dependencies = createDependencies();
+    dependencies.repository.getExtractionForReview.mockResolvedValue({ id: 'evidence-1', status: 'ocr_parsed',
+      checksum_sha256: 'a'.repeat(64), file_size_bytes: 42, extracted_json: { invoice_number: 'INV-1', quantity: 10 } });
+    dependencies.repository.getReviewer.mockResolvedValue({ id: 'user-1', email: 'reviewer@example.com', full_name: 'Named Reviewer' });
+    dependencies.repository.createExtractionReview.mockResolvedValue({ id: 'review-1', evidence_document_id: 'evidence-1',
+      evidence_checksum_sha256: 'a'.repeat(64), extraction_sha256: 'b'.repeat(64), reviewer_id: 'user-1',
+      reviewer_name_snapshot: 'Named Reviewer', reviewer_role: 'evidence_ai_reviewer', decision: 'approved_for_mapping', notes: 'Checked.' });
+    dependencies.repository.createExtractionFieldDecision.mockImplementation(async (value) => ({ id: `field-${value.fieldPath}`,
+      field_path: value.fieldPath, ai_value: JSON.parse(value.aiValue), decision: value.decision,
+      confirmed_value: JSON.parse(value.confirmedValue), canonical_field: value.canonicalField, field_sha256: value.fieldSha256 }));
+    dependencies.repository.lock.mockResolvedValue({ id: 'evidence-1', company_id: COMPANY_ID, status: 'locked',
+      evidence_type: 'invoice', document_name: 'Invoice.pdf', checksum_sha256: 'a'.repeat(64) });
+    const service = createEvidenceService(dependencies);
+
+    const result = await service.confirmExtractionWithAudit(COMPANY_ID, 'user-1', 'evidence-1', { notes: 'Checked.', fields: [
+      { id: 'invoice_number', confirmed_value: 'INV-1' }, { id: 'quantity', confirmed_value: '11' }
+    ] });
+
+    expect(result.data.review.fields).toHaveLength(2);
+    expect(dependencies.repository.createExtractionFieldDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ fieldPath: 'invoice_number', decision: 'accepted' }), dependencies.transaction);
+    expect(dependencies.repository.createExtractionFieldDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ fieldPath: 'quantity', decision: 'corrected' }), dependencies.transaction);
+    expect(dependencies.repository.lock).toHaveBeenCalledWith(expect.objectContaining({ evidenceId: 'evidence-1' }), dependencies.transaction);
+    expect(dependencies.audit).toHaveBeenCalledWith(expect.objectContaining({ changedField: 'evidence.ai_extraction_reviewed' }));
   });
 
   test('deletes metadata and then removes a local file', async () => {

@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { evidenceRepository } = require('./repository');
 const fileStorage = require('./fileStorage');
 const logger = require('../shared/logger');
@@ -9,6 +10,10 @@ function toObject(value) {
 
 function toText(value) {
   return String(value ?? '').trim();
+}
+
+function sha256(value) {
+  return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
 function toDateOrNull(value) {
@@ -226,6 +231,78 @@ class EvidenceService {
       ai_value: String(value ?? ''),
       confirmed_value: null
     }));
+  }
+
+  async confirmExtractionWithAudit(companyId, userId, evidenceId, payload = {}) {
+    const requestedFields = Array.isArray(payload.fields) ? payload.fields : [];
+    const reviewerRole = toText(payload.reviewerRole || payload.reviewer_role) || 'evidence_ai_reviewer';
+    const notes = toText(payload.notes) || 'Human reviewed every extracted field in the evidence workspace.';
+    if (reviewerRole !== 'evidence_ai_reviewer') return { error: 'EVIDENCE_AI_REVIEW_ROLE_INVALID' };
+    if (!notes || notes.length > 5000) return { error: 'EVIDENCE_AI_REVIEW_NOTES_INVALID' };
+
+    return this.repository.withTransaction(async (client) => {
+      const evidence = await this.repository.getExtractionForReview({ companyId, evidenceId }, client);
+      if (!evidence) return null;
+      const extracted = toObject(evidence.extracted_json);
+      const fieldPaths = Object.keys(extracted).sort();
+      if (!fieldPaths.length) return { error: 'EVIDENCE_AI_FIELDS_REQUIRED' };
+      if (!/^[a-f0-9]{64}$/i.test(evidence.checksum_sha256 || '') || Number(evidence.file_size_bytes || 0) <= 0) {
+        return { error: 'EVIDENCE_AI_SOURCE_NOT_CONTROLLED' };
+      }
+      const decisionsByPath = new Map();
+      for (const item of requestedFields) {
+        const fieldPath = toText(item.id || item.fieldPath || item.field_path);
+        if (!fieldPath || decisionsByPath.has(fieldPath)) return { error: 'EVIDENCE_AI_FIELD_DECISIONS_INVALID' };
+        decisionsByPath.set(fieldPath, item);
+      }
+      if (decisionsByPath.size !== fieldPaths.length || fieldPaths.some((path) => !decisionsByPath.has(path))) {
+        return { error: 'EVIDENCE_AI_FIELD_COVERAGE_INCOMPLETE' };
+      }
+      const reviewer = await this.repository.getReviewer({ userId }, client);
+      if (!reviewer) return { error: 'EVIDENCE_AI_REVIEWER_NOT_FOUND' };
+      const extractionSha256 = sha256(extracted);
+      const review = await this.repository.createExtractionReview({ companyId, evidenceDocumentId: evidenceId,
+        evidenceChecksumSha256: evidence.checksum_sha256, extractionSha256,
+        extractionSnapshot: JSON.stringify(extracted), reviewerId: userId,
+        reviewerName: reviewer.full_name || reviewer.email, reviewerRole,
+        decision: 'approved_for_mapping', notes }, client);
+      const fields = [];
+      for (const fieldPath of fieldPaths) {
+        const aiValue = extracted[fieldPath];
+        const requested = decisionsByPath.get(fieldPath);
+        const requestedValue = requested.confirmed_value ?? requested.confirmedValue ?? '';
+        const decision = String(requestedValue) === String(aiValue ?? '') ? 'accepted' : 'corrected';
+        const confirmedValue = decision === 'accepted' ? aiValue : requestedValue;
+        const fieldPayload = { evidenceChecksumSha256: evidence.checksum_sha256, extractionSha256,
+          fieldPath, aiValue, decision, confirmedValue, canonicalField: fieldPath };
+        const saved = await this.repository.createExtractionFieldDecision({ companyId, reviewId: review.id,
+          fieldPath, aiValue: JSON.stringify(aiValue ?? null), decision,
+          confirmedValue: JSON.stringify(confirmedValue), canonicalField: fieldPath,
+          fieldSha256: sha256(fieldPayload) }, client);
+        fields.push(saved);
+      }
+      const locked = await this.repository.lock({ companyId, userId, evidenceId }, client);
+      await this.audit({ client, strict: true, companyId, userId, evidenceDocumentId: evidenceId,
+        dataGroup: 'evidence', changedField: 'evidence.ai_extraction_reviewed',
+        oldValue: evidence.status, newValue: 'locked', reason: 'evidence.ai_extraction_confirm',
+        notes: `Human-reviewed ${fields.length} AI/OCR field suggestions; review ${review.id}.` });
+      return { data: { evidence: this.formatEvidence(locked), review: this.formatExtractionReview({ ...review, fields }) } };
+    });
+  }
+
+  async listExtractionReviews(companyId, evidenceId) {
+    const rows = await this.repository.listExtractionReviews({ companyId, evidenceId });
+    return rows.map((row) => this.formatExtractionReview(row));
+  }
+
+  formatExtractionReview(row) {
+    return { id: row.id, evidenceDocumentId: row.evidence_document_id,
+      evidenceChecksumSha256: row.evidence_checksum_sha256, extractionSha256: row.extraction_sha256,
+      reviewerId: row.reviewer_id, reviewerName: row.reviewer_name_snapshot,
+      reviewerRole: row.reviewer_role, decision: row.decision, notes: row.notes,
+      fields: (row.fields || []).map((field) => ({ id: field.id, fieldPath: field.field_path,
+        aiValue: field.ai_value, decision: field.decision, confirmedValue: field.confirmed_value,
+        canonicalField: field.canonical_field, fieldSha256: field.field_sha256 })), createdAt: row.created_at };
   }
 
   async deleteEvidence(companyId, evidenceId) {

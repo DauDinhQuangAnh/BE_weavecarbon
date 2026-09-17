@@ -39,7 +39,7 @@ The existing G2-00 through G2-07 work remains valid. The following phases make t
 | Phase | Scope | Current state | Exit gate |
 |---|---|---|---|
 | G2-08 | Dynamic allocation and domestic-to-export lineage | Implemented software baseline | Versioned multi-level rules, deterministic reconciled runs, immutable line lineage, API/UI and tests; real-facility reproducibility and adapter acceptance remain |
-| G2-09 | Governed AI/OCR promotion | Planned | Suggestions never become authoritative without named human decisions and source checksum binding |
+| G2-09 | Governed AI/OCR promotion | Implemented software baseline | Checksum-bound named human review and immutable field decisions implemented; semantic/anomaly suggestions and controlled activity promotion remain |
 | G2-10 | WeaveNode operational management | Planned | Meter hierarchy/reconciliation, health, config audit, dual timestamps and signed staged update controls |
 | G2-11 | Supplier network and carbon-climate criticality | Planned | Tenant-safe supplier coverage plus transparent carbon, climate and dependency weighting |
 | G2-12 | Industry Pack expansion | Planned | Textile, aluminium, construction materials, fertiliser/chemicals and mining/minerals packs with expert pilot evidence |
