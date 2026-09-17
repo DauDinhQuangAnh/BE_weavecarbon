@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.18.6';
+const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.18.7';
 const STATUS = Object.freeze(['implemented', 'partial', 'planned']);
 
 const CAPABILITY_REGISTRY = Object.freeze({
@@ -20,7 +20,7 @@ const CAPABILITY_REGISTRY = Object.freeze({
     { id: 'export', label: 'Export and traceability adapters', status: 'implemented', evidence: ['R01-R20 export workstream'], nextGate: 'map canonical industrial records into adapters' },
     { id: 'data-quality', label: 'Data quality and factor governance', status: 'implemented', evidence: ['versioned DQL scoring', 'immutable factor proposals', 'evidence-gated reviews'], nextGate: 'apply DQL gates to domestic MRV filing packs' },
     { id: 'mitigation-allowance', label: 'Mitigation and allowance operations', status: 'implemented', evidence: ['initiative revisions', 'evidence-backed scenarios', 'allowance allocation references', 'gross-preserving position snapshots'], nextGate: 'specialist pilot and registry reconciliation connector' },
-    { id: 'industry-rules', label: 'Industry packs', status: 'partial', evidence: ['versioned steel/cement pilot manifests', 'factor-governed deterministic snapshots', 'pilot fixtures'], nextGate: 'independent sector-expert approval and real-facility pilot' },
+    { id: 'industry-rules', label: 'Industry packs', status: 'partial', evidence: ['seven versioned sector-pack manifests', 'pack-specific taxonomy/context/validation/allocation/evidence/target mappings', 'factor-governed deterministic snapshots', 'deterministic pilot fixtures'], nextGate: 'independent sector-expert approval and real-facility pilots for every pack' },
     { id: 'decision-intelligence', label: 'Climate risk and decision intelligence', status: 'partial', evidence: ['evidence-bound-facility-screening', 'scenario-scoped-portfolio-snapshot', 'tenant-bound-supplier-network', 'transparent-carbon-climate-dependency-criticality', 'immutable-criticality-portfolio'], nextGate: 'Licensed dataset ingestion, calibrated hazard metrics, climate-specialist validation and real facility/supplier acceptance pilots' }
   ]),
   entities: Object.freeze([

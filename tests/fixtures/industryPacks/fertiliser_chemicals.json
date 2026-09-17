@@ -1,0 +1,13 @@
+{
+  "packId": "fertiliser_chemicals", "facilityRevisionId": "10000000-0000-4000-8000-000000000001", "processRevisionId": "20000000-0000-4000-8000-000000000001",
+  "studyReference": "FERTILISER-AMMONIA-PILOT-1", "periodStart": "2026-01-01", "periodEnd": "2026-12-31", "outputTonnes": 100,
+  "productReference": "AMMONIA-1", "sectorContext": { "productOrIntermediate": "Ammonia intermediate", "feedstockBasis": "Natural-gas feedstock by mass balance", "processEmissionBasis": "Documented reaction balance and process meter" },
+  "allocation": { "method": "single_product", "share": 1 }, "methodology": { "boundary": "Ammonia process gate", "source": "Site engineering pilot method" },
+  "productionEvidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"],
+  "activityLines": [
+    { "category": "feedstock", "sourceReference": "FEEDSTOCK", "activityQuantity": 100, "activityUnit": "tonne", "factorProposalId": "40000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "process", "sourceReference": "PROCESS-EMISSIONS", "activityQuantity": 30, "activityUnit": "tonne", "factorProposalId": "50000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "steam", "sourceReference": "STEAM-METER", "activityQuantity": 40, "activityUnit": "tonne", "factorProposalId": "60000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "electricity", "sourceReference": "PLANT-METER", "activityQuantity": 500, "activityUnit": "kWh", "factorProposalId": "70000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] }
+  ]
+}

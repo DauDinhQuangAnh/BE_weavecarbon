@@ -1,0 +1,13 @@
+{
+  "packId": "mining_minerals", "facilityRevisionId": "10000000-0000-4000-8000-000000000001", "processRevisionId": "20000000-0000-4000-8000-000000000001",
+  "studyReference": "MINING-EXTRACTION-PILOT-1", "periodStart": "2026-01-01", "periodEnd": "2026-12-31", "outputTonnes": 200,
+  "productReference": "ORE-1", "sectorContext": { "mineralOrOre": "Iron ore", "extractionMethod": "Open-pit extraction", "logisticsBoundary": "Mine face to processing plant" },
+  "allocation": { "method": "single_product", "share": 1 }, "methodology": { "boundary": "Mine-to-plant gate", "source": "Site engineering pilot method" },
+  "productionEvidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"],
+  "activityLines": [
+    { "category": "process", "sourceReference": "EXTRACTION", "activityQuantity": 200, "activityUnit": "tonne", "factorProposalId": "40000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "fuel", "sourceReference": "MOBILE-DIESEL", "activityQuantity": 75, "activityUnit": "litre", "factorProposalId": "50000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "electricity", "sourceReference": "PROCESS-METER", "activityQuantity": 500, "activityUnit": "kWh", "factorProposalId": "60000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "transport", "sourceReference": "HAULAGE", "activityQuantity": 40, "activityUnit": "tkm", "factorProposalId": "70000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] }
+  ]
+}

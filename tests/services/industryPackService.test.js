@@ -7,7 +7,7 @@ function database({ stale = false, processType = 'eaf' } = {}) {
   const client = { query: jest.fn(async (sql) => {
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK' || sql.includes('pg_advisory_xact_lock')) return { rows: [] };
     if (sql.includes('MAX(revision)')) return { rows: [{ revision: 1 }] };
-    if (sql.includes('INSERT INTO industry_pack_pilot_snapshots')) return { rows: [{ id: '70000000-0000-4000-8000-000000000001', study_reference: steel.studyReference, revision: 1, pack_id: 'steel', pack_version: 'G2-STEEL-PILOT-1.0.0', pack_approval_status: 'expert_review_required', result_snapshot: { totals: { grossKgCo2e: 1550 } }, status: 'specialist_review_required' }] };
+    if (sql.includes('INSERT INTO industry_pack_pilot_snapshots')) return { rows: [{ id: '70000000-0000-4000-8000-000000000001', study_reference: steel.studyReference, revision: 1, pack_id: 'steel', pack_version: 'G2-STEEL-PILOT-1.1.0', pack_approval_status: 'expert_review_required', result_snapshot: { totals: { grossKgCo2e: 1550 } }, status: 'specialist_review_required' }] };
     throw new Error(`Unexpected transaction SQL: ${sql}`);
   }), release: jest.fn() };
   const query = jest.fn(async (sql) => {
@@ -19,6 +19,11 @@ function database({ stale = false, processType = 'eaf' } = {}) {
   return { query, connect: jest.fn(async () => client), client };
 }
 describe('G2-05 industry pack service', () => {
+  test('publishes all seven governed manifests with explicit configuration contracts', () => {
+    const manifests = new IndustryPackService(database()).listPacks();
+    expect(manifests.map((item) => item.id)).toEqual(['steel', 'cement', 'textile_apparel', 'aluminium', 'construction_materials', 'fertiliser_chemicals', 'mining_minerals']);
+    expect(manifests.every((item) => item.approvalStatus === 'expert_review_required' && item.allocationPolicy && item.validationRules.length)).toBe(true);
+  });
   test('writes an immutable pilot with governed factors and controlled evidence', async () => {
     const db = database(); const pilot = await new IndustryPackService(db).createPilot('90000000-0000-4000-8000-000000000001', '80000000-0000-4000-8000-000000000001', steel);
     expect(pilot.status).toBe('specialist_review_required'); expect(pilot.result.totals.grossKgCo2e).toBe(1550); expect(db.client.query).toHaveBeenCalledWith('COMMIT');

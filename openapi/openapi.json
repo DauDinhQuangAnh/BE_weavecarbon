@@ -18716,7 +18716,7 @@
         ],
         "summary": "GET /industry-packs/manifests",
         "tags": [
-          "Steel and cement industry-pack pilots"
+          "Governed multi-sector industry-pack pilots"
         ]
       }
     },
@@ -18757,7 +18757,7 @@
         ],
         "summary": "GET /industry-packs/pilots",
         "tags": [
-          "Steel and cement industry-pack pilots"
+          "Governed multi-sector industry-pack pilots"
         ]
       },
       "post": {
@@ -18778,6 +18778,7 @@
                           "type": "number"
                         },
                         "activityUnit": {
+                          "maxLength": 100,
                           "minLength": 1,
                           "type": "string"
                         },
@@ -18785,7 +18786,13 @@
                           "enum": [
                             "process",
                             "fuel",
-                            "electricity"
+                            "electricity",
+                            "material",
+                            "feedstock",
+                            "steam",
+                            "transport",
+                            "waste",
+                            "water"
                           ],
                           "type": "string"
                         },
@@ -18794,14 +18801,17 @@
                             "format": "uuid",
                             "type": "string"
                           },
+                          "maxItems": 100,
                           "minItems": 1,
-                          "type": "array"
+                          "type": "array",
+                          "uniqueItems": true
                         },
                         "factorProposalId": {
                           "format": "uuid",
                           "type": "string"
                         },
                         "sourceReference": {
+                          "maxLength": 240,
                           "minLength": 1,
                           "type": "string"
                         }
@@ -18816,6 +18826,7 @@
                       ],
                       "type": "object"
                     },
+                    "maxItems": 100,
                     "minItems": 3,
                     "type": "array"
                   },
@@ -18849,10 +18860,12 @@
                     "additionalProperties": false,
                     "properties": {
                       "boundary": {
+                        "maxLength": 4000,
                         "minLength": 1,
                         "type": "string"
                       },
                       "source": {
+                        "maxLength": 500,
                         "minLength": 1,
                         "type": "string"
                       }
@@ -18871,7 +18884,12 @@
                   "packId": {
                     "enum": [
                       "steel",
-                      "cement"
+                      "cement",
+                      "textile_apparel",
+                      "aluminium",
+                      "construction_materials",
+                      "fertiliser_chemicals",
+                      "mining_minerals"
                     ],
                     "type": "string"
                   },
@@ -18888,6 +18906,7 @@
                     "type": "string"
                   },
                   "productReference": {
+                    "maxLength": 240,
                     "minLength": 1,
                     "type": "string"
                   },
@@ -18896,9 +18915,15 @@
                       "format": "uuid",
                       "type": "string"
                     },
+                    "maxItems": 100,
                     "minItems": 1,
                     "type": "array",
                     "uniqueItems": true
+                  },
+                  "sectorContext": {
+                    "additionalProperties": true,
+                    "maxProperties": 3,
+                    "type": "object"
                   },
                   "studyReference": {
                     "maxLength": 120,
@@ -18959,7 +18984,7 @@
         ],
         "summary": "POST /industry-packs/pilots",
         "tags": [
-          "Steel and cement industry-pack pilots"
+          "Governed multi-sector industry-pack pilots"
         ]
       }
     },
@@ -26831,7 +26856,7 @@
       "name": "Mitigation and allowance operations"
     },
     {
-      "name": "Steel and cement industry-pack pilots"
+      "name": "Governed multi-sector industry-pack pilots"
     },
     {
       "name": "WeaveNode signed ingestion pilot"

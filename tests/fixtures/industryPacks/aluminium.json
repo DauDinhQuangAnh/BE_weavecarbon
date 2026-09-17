@@ -1,0 +1,12 @@
+{
+  "packId": "aluminium", "facilityRevisionId": "10000000-0000-4000-8000-000000000001", "processRevisionId": "20000000-0000-4000-8000-000000000001",
+  "studyReference": "ALUMINIUM-SMELTING-PILOT-1", "periodStart": "2026-01-01", "periodEnd": "2026-12-31", "outputTonnes": 100,
+  "productReference": "AL-INGOT-1", "sectorContext": { "inputMaterialBasis": "Documented alumina and recycled input", "recycledContentPercent": 20, "electricityBoundary": "Smelting meter through casting gate" },
+  "allocation": { "method": "single_product", "share": 1 }, "methodology": { "boundary": "Smelting and casting gate", "source": "Site engineering pilot method" },
+  "productionEvidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"],
+  "activityLines": [
+    { "category": "material", "sourceReference": "ALUMINA-INPUT", "activityQuantity": 100, "activityUnit": "tonne", "factorProposalId": "40000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "process", "sourceReference": "SMELTING-PROCESS", "activityQuantity": 20, "activityUnit": "tonne", "factorProposalId": "50000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "electricity", "sourceReference": "SMELTER-METER", "activityQuantity": 500, "activityUnit": "kWh", "factorProposalId": "60000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] }
+  ]
+}

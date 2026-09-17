@@ -1,0 +1,12 @@
+{
+  "packId": "textile_apparel", "facilityRevisionId": "10000000-0000-4000-8000-000000000001", "processRevisionId": "20000000-0000-4000-8000-000000000001",
+  "studyReference": "TEXTILE-DYEING-PILOT-1", "periodStart": "2026-01-01", "periodEnd": "2026-12-31", "outputTonnes": 100,
+  "productReference": "FABRIC-BATCH-1", "sectorContext": { "batchOrSkuReference": "BATCH-1", "materialOrBomReference": "BOM-1", "buyerOrProductBoundary": "Dyed fabric gate; buyer PCF candidate" },
+  "allocation": { "method": "single_product", "share": 1 }, "methodology": { "boundary": "Dyeing line gate only", "source": "Site engineering pilot method" },
+  "productionEvidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"],
+  "activityLines": [
+    { "category": "material", "sourceReference": "GREIGE-FABRIC", "activityQuantity": 100, "activityUnit": "tonne", "factorProposalId": "40000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "fuel", "sourceReference": "BOILER-GAS", "activityQuantity": 50, "activityUnit": "m3", "factorProposalId": "50000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] },
+    { "category": "electricity", "sourceReference": "DYEING-METER", "activityQuantity": 300, "activityUnit": "kWh", "factorProposalId": "60000000-0000-4000-8000-000000000001", "evidenceDocumentIds": ["30000000-0000-4000-8000-000000000001"] }
+  ]
+}

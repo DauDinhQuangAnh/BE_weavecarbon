@@ -68,7 +68,7 @@ const apiRoutes = [
   { basePath: '/api/data-governance', tag: 'Data quality and factor governance', router: dataQualityGovernanceRoutes },
   { basePath: '/api/vn-mrv', tag: 'Vietnam GHG and MRV preparation', router: vnMrvRoutes },
   { basePath: '/api/mitigation-operations', tag: 'Mitigation and allowance operations', router: mitigationOperationsRoutes },
-  { basePath: '/api/industry-packs', tag: 'Steel and cement industry-pack pilots', router: industryPackRoutes },
+  { basePath: '/api/industry-packs', tag: 'Governed multi-sector industry-pack pilots', router: industryPackRoutes },
   { basePath: '/api/weavenode', tag: 'WeaveNode signed ingestion pilot', router: weavenodeRoutes },
   { basePath: '/api/climate-risk', tag: 'Climate risk screening pilot', router: climateRiskRoutes },
   { basePath: '/api/dynamic-allocation', tag: 'Dynamic industrial allocation', router: dynamicAllocationRoutes },
