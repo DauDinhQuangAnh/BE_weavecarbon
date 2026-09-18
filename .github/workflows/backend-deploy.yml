@@ -280,8 +280,8 @@ jobs:
             if node scripts/verify-production-release.js \
               --base-url "${PUBLIC_BASE_URL%/}" \
               --expected-sha "${{ steps.release.outputs.sha }}" \
-              --expected-migration "051_g2_enterprise_security_acceptance.sql" \
-              --expected-capability "G2-INDUSTRIAL-CORE-2026.09.18.8" \
+              --expected-migration "052_g2_controlled_ai_activity_promotion.sql" \
+              --expected-capability "G2-INDUSTRIAL-CORE-2026.09.18.9" \
               --output production-smoke.json; then
               exit 0
             fi
