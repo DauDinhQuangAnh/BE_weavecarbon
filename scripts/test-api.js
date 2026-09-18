@@ -236,6 +236,7 @@ async function runEvidence() {
   if (!token) { console.log('  – skipped (no token)'); return; }
 
   let docId;
+  let evidenceFields = [];
 
   await test('GET /api/evidence', async () => {
     const r = await req('GET', '/api/evidence');
@@ -250,6 +251,8 @@ async function runEvidence() {
       evidence_type: 'document',
       document_name: `api-integration-${Date.now()}.txt`,
       storage_provider: 'local',
+      file_size_bytes: 1,
+      checksum_sha256: 'a'.repeat(64),
       extracted_json: { integration_fixture: true },
     });
     assert([201, 403].includes(r.status), `Got ${r.status}`, r.status);
@@ -281,12 +284,24 @@ async function runEvidence() {
     if (!docId) return 'skip';
     const r = await req('GET', `/api/evidence/${docId}/fields`);
     assert([200, 403, 404].includes(r.status), `Got ${r.status}`, r.status);
-    return { status: r.status };
+    if (r.status === 200) {
+      evidenceFields = Array.isArray(r.data?.data) ? r.data.data : [];
+      assert(evidenceFields.length > 0, 'Controlled evidence returned no reviewable fields', 'NO_FIELDS');
+    }
+    return { status: r.status, note: `fields=${evidenceFields.length}` };
   });
 
   await test('POST /api/evidence/:id/confirm', async () => {
     if (!docId) return 'skip';
-    const r = await req('POST', `/api/evidence/${docId}/confirm`, { fields: [] });
+    if (!evidenceFields.length) return 'skip';
+    const fields = evidenceFields.map((field) => ({
+      id: field.id,
+      confirmed_value: field.ai_value,
+    }));
+    const r = await req('POST', `/api/evidence/${docId}/confirm`, {
+      notes: 'API integration fixture review.',
+      fields,
+    });
     assert([200, 403, 404].includes(r.status), `Got ${r.status}`, r.status);
     return { status: r.status };
   });
@@ -297,12 +312,23 @@ async function runEvidence() {
     return { status: r.status };
   });
 
-  await test('DELETE /api/evidence/:id (integration fixture cleanup)', async () => {
+  await test('DELETE /api/evidence/:id (reviewed evidence retention)', async () => {
     if (!docId) return 'skip';
     const r = await req('DELETE', `/api/evidence/${docId}`);
-    assert([200, 403, 404].includes(r.status), `Got ${r.status}`, r.status);
+    assert([200, 400, 403, 404, 409].includes(r.status), `Got ${r.status}`, r.status);
+    if ([400, 409].includes(r.status)) {
+      const code = r.data?.error?.code;
+      assert(
+        ['INVALID_REFERENCE', 'EVIDENCE_REVIEW_IMMUTABLE'].includes(code),
+        `Unexpected retention response: ${JSON.stringify(r.data)}`,
+        r.status
+      );
+    }
     if (r.status === 200 || r.status === 404) docId = null;
-    return { status: r.status };
+    return {
+      status: r.status,
+      note: [400, 409].includes(r.status) ? 'retained by immutable review ledger' : '',
+    };
   });
 }
 
