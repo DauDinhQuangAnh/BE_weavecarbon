@@ -7,6 +7,7 @@ const tokens = require('./tokens');
 const analyticsService = require('../shared/analytics');
 const emailService = require('../shared/email');
 const logger = require('../shared/logger');
+const { mfaService } = require('./mfaService');
 
 const GOOGLE_OAUTH_CODE_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -16,6 +17,7 @@ function createGoogleOAuthFlowService({
   sessionContext = sessionContextService,
   verification = verificationService,
   refreshSessions = refreshSessionService,
+  mfa = mfaService,
   tokenService = tokens,
   analytics = analyticsService,
   email = emailService,
@@ -148,6 +150,13 @@ function createGoogleOAuthFlowService({
         return { kind: 'verification_required', ...common };
       }
 
+      const mfaState = await mfa.getChallengeState(user.id);
+      if (mfaState.enabled) {
+        const error = new Error('MFA-enabled accounts must complete password and MFA sign-in.');
+        error.code = 'MFA_PASSWORD_SIGNIN_REQUIRED';
+        throw error;
+      }
+
       const { companyIdForToken } = await sessionContext.resolve(user, {
         updateMembershipLogin: true
       });
@@ -176,9 +185,12 @@ function createGoogleOAuthFlowService({
         user.email,
         user.roles,
         companyIdForToken,
-        user.is_demo_user || false
+        user.is_demo_user || false,
+        { mfaVerified: false }
       );
-      const refreshToken = tokenService.generateRefreshToken(user.id, rememberMe);
+      const refreshToken = tokenService.generateRefreshToken(user.id, rememberMe, {
+        mfaVerified: false
+      });
       let persistedRefreshToken = refreshToken;
       try {
         await refreshSessions.store(refreshToken, user.id, requestMetadata);

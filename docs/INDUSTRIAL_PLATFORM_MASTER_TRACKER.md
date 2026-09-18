@@ -1,6 +1,6 @@
 # WeaveCarbon Industrial Platform Master Tracker
 
-Baseline date: 2026-09-17
+Baseline date: 2026-09-18
 
 Vision source: `WeaveCarbon Mới cập nhật 12.09.docx`
 
@@ -35,7 +35,7 @@ Capability labels are contractual:
 | G2-10 | WeaveNode operational management | Implemented software baseline | Protocol-v2 source/gateway timestamps, device health, immutable meter hierarchy/reconciliation and signed staged firmware/configuration update ledgers implemented; real gateway, mTLS/key custody and OTA rollback acceptance remain |
 | G2-11 | Supplier network and carbon-climate criticality | Implemented software baseline | Immutable tenant-bound supplier/site/relationship records, evidence-backed supplier climate and carbon inputs, approved weighted models, deterministic criticality snapshots and coverage-explicit portfolios implemented; real supplier data and climate-specialist acceptance remain |
 | G2-12 | Industry Pack expansion | Implemented software baseline | Textile/apparel, aluminium, construction materials, fertiliser/chemicals and mining/minerals now have versioned taxonomy, context fields, required activity categories, validation/evidence/allocation policies, target mappings and deterministic fixtures; expert and real-facility acceptance remains |
-| G2-13 | Enterprise security and production acceptance | Planned | MFA/SSO, incident/key controls, real-data pilot, CI/CD release gate, migration/rollback proof and production smoke tests |
+| G2-13 | Enterprise security and production acceptance | Implemented software baseline | TOTP MFA, MFA-bound sessions, evidence-backed OIDC configuration validation, key/incident ledgers, immutable acceptance decisions and exact-release smoke gates implemented; production deployment, external IdP acceptance, penetration test, incident exercise and real-data pilot remain |
 
 ## This baseline delivers
 
@@ -48,5 +48,6 @@ Capability labels are contractual:
 - Governed WeaveNode operations with dual-time provenance, signed health reports, evidence-bound meter hierarchy reconciliation and signed staged update/rollback history.
 - Governed supplier-network records and deterministic carbon + climate + business-dependency criticality snapshots with explicit selected-subject coverage.
 - Seven governed Industry Pack manifests and deterministic factor/evidence-bound pilot snapshots, including the five G2-12 expansion sectors.
+- Enterprise MFA and evidence-gated policy, OIDC configuration, key, incident and production-acceptance ledgers, with exact commit/migration/capability smoke verification.
 
-This baseline does **not** claim authority submission, registry ownership/transfer/surrender, expert-approved Industry Packs, production-grade WeaveNode telemetry or validated physical climate-risk forecasts.
+This baseline does **not** claim authority submission, registry ownership/transfer/surrender, expert-approved Industry Packs, production-grade WeaveNode telemetry, validated physical climate-risk forecasts, generic live SSO interoperability, penetration-test acceptance or production release acceptance.

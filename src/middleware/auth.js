@@ -4,6 +4,7 @@ const { enforceSubscriptionAccess } = require('./subscriptionAccess');
 const { sendError } = require('../utils/http');
 const logger = require('../utils/logger');
 const { enforceTenantMutationAccess } = require('./tenantAccess');
+const { mfaService } = require('../modules/auth');
 
 function hasAnyRole(userRoles, allowedRoles) {
   return Array.isArray(userRoles) && userRoles.some((role) => allowedRoles.includes(role));
@@ -143,6 +144,15 @@ const authenticate = async (req, res, next) => {
         status: 401,
         code: 'USER_NOT_FOUND',
         message: 'User not found'
+      });
+    }
+
+    const mfaState = await mfaService.getChallengeState(decoded.sub);
+    if (mfaState.enabled && decoded.mfa_verified !== true) {
+      return sendError(res, {
+        status: 401,
+        code: 'MFA_REAUTH_REQUIRED',
+        message: 'Multi-factor authentication is required. Please sign in again.'
       });
     }
 

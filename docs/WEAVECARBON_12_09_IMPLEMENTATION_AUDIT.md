@@ -1,16 +1,16 @@
 # WeaveCarbon 12 September Vision Implementation Audit
 
-Audit date: 2026-09-17  
+Audit date: 2026-09-18
 Source of truth: `WeaveCarbon Mới cập nhật 12.09.docx`  
 Implementation branch reviewed: `feat/g2-industrial-core-baseline`
 
 ## Audit conclusion
 
-The branch is moving in the right architectural direction, but it does not yet implement the complete vision in the 12 September document. The implemented work is a credible software baseline through G2-12: canonical industrial records, evidence lineage, data-quality and factor governance, domestic MRV preparation, mitigation and allowance references, seven governed Industry Pack pilots, dynamic allocation, governed OCR review, operational WeaveNode controls, climate-risk screening, supplier-network governance and transparent carbon-climate-dependency criticality.
+The branch is moving in the right architectural direction, but it does not yet implement the complete vision in the 12 September document. The implemented work is a credible software baseline through G2-13: canonical industrial records, evidence lineage, data-quality and factor governance, domestic MRV preparation, mitigation and allowance references, seven governed Industry Pack pilots, dynamic allocation, governed OCR review, operational WeaveNode controls, climate-risk screening, supplier-network governance, transparent carbon-climate-dependency criticality, MFA and governed enterprise-security/production-acceptance controls.
 
-The remaining work is not a small polish pass. Controlled OCR-to-activity promotion, enterprise controls and real external acceptance evidence still require explicit delivery phases. G2-11 and G2-12 now supply governed software baselines, but neither climate criticality nor sector packs may be represented as specialist-validated or real-facility accepted until their documented external gates pass.
+The remaining work is not a small polish pass. Controlled OCR-to-activity promotion and real external acceptance evidence still require explicit delivery phases. G2-11 through G2-13 supply governed software baselines, but climate criticality, sector packs, external SSO interoperability and production acceptance may not be represented as complete until their documented external gates pass.
 
-Production is also behind this branch. At the 2026-09-17 checkpoint, the production database stopped at migration `024`; migrations `038` through `048` and the G2 industrial-core, WeaveNode and climate-risk routes were absent from the running backend image.
+Production is also behind this branch. At the 2026-09-18 checkpoint, the production database stopped at migration `024`; migrations `038` through `051` and the G2 industrial-core, WeaveNode, climate-risk and enterprise-security routes were absent from the running backend image.
 
 ## Requirement-by-requirement status
 
@@ -29,7 +29,7 @@ Production is also behind this branch. At the 2026-09-17 checkpoint, the product
 | WeaveNode identity, buffering and calibration | Ed25519 v1/v2 identity, dual timestamps, signed packet/health ledgers, ordered replay, evidence-bound hierarchy reconciliation, release keys and staged update/rollback history | Implemented software baseline | Real connectivity adapter, gateway/network soak, mTLS and key custody, on-device signed OTA/rollback and site acceptance |
 | Industry Packs | Seven versioned manifests: steel, cement, textile/apparel, aluminium, construction materials, fertiliser/chemicals and mining/minerals; each defines taxonomy, context, activity requirements, evidence, validation, allocation and target mappings with deterministic fixtures | Partial | Independent sector-expert approval and real-facility validation for every pack; multi-product/co-product allocation remains governed by G2-08 rather than assumed by the pack pilot |
 | Climate-risk intelligence | Evidence-bound facility/supplier sites and hazard screening, immutable supplier dependency facts, approved weighted models, deterministic carbon-climate-dependency snapshots and coverage-explicit portfolios | Partial | Licensed/versioned data ingestion, calibrated hazards, climate-specialist validation and real facility/supplier acceptance evidence |
-| Security and data governance | RBAC, tenant-bound data access, TLS deployment, audit trails, backup/restore scripts and security tests | Partial | MFA for sensitive roles, SSO, at-rest encryption evidence, key lifecycle, incident-response exercise and enterprise SLA controls |
+| Security and data governance | RBAC, tenant-bound access, TOTP MFA with recovery and session binding, evidence-backed OIDC configuration validation, key/incident ledgers, TLS deployment, audit trails, backup/restore and exact-release smoke controls | Partial | Production administrator enrollment/key custody, external IdP interoperability, at-rest encryption evidence, penetration test, incident-response exercise and enterprise SLA acceptance |
 | Commercial package boundaries | Pilot, core modules and add-on surfaces exist in code | Partial | Enforced Starter/Growth/Enterprise entitlements, SSO/API packaging and SLA instrumentation |
 
 ## Corrected delivery phases
@@ -43,20 +43,24 @@ The existing G2-00 through G2-07 work remains valid. The following phases make t
 | G2-10 | WeaveNode operational management | Implemented software baseline | Dual timestamps, health, immutable hierarchy/reconciliation and signed staged firmware/configuration update/rollback controls implemented; hardware/network/mTLS acceptance remains |
 | G2-11 | Supplier network and carbon-climate criticality | Implemented software baseline | Immutable tenant-bound supplier/site/relationship records, evidence-backed climate/carbon inputs, approved transparent weights, deterministic snapshots and coverage-explicit portfolios; real supplier and specialist acceptance remain |
 | G2-12 | Industry Pack expansion | Implemented software baseline | Five expansion packs plus retained steel/cement define governed manifests and deterministic pilot snapshots; independent expert and real-facility acceptance remains |
-| G2-13 | Enterprise security and production acceptance | Planned | MFA/SSO, key and incident controls, real-data pilot, CI/CD release gate, migration/rollback proof and production smoke tests |
+| G2-13 | Enterprise security and production acceptance | Implemented software baseline | TOTP MFA, MFA-bound sessions, OIDC validation registry, key/incident ledgers, immutable acceptance records, migration 051 and exact-release smoke gates implemented; production deployment, real IdP/penetration/incident exercise and real-data acceptance remain |
 
 ## Production checkpoint
 
-Observed on 2026-09-17 using read-only checks:
+Observed on 2026-09-18 using read-only checks:
 
 - Backend repository: `main` at `51d568c2c765c59977b11066febe7ed4de27eef3`.
 - Frontend repository: `main` at `9bd4c58f58cfff8b32a2bea580675b170931c751`.
 - Backend, frontend, database, proxy and RAG containers were running with zero restarts; application containers reported healthy.
 - Database latest applied migration was `024_r03_carrier_document_controls.sql`.
-- G2 migrations `038` through `048` were not present in the host checkout.
-- Running backend did not contain the industrial-core, WeaveNode or climate-risk route modules.
-- Public site and `/health` returned HTTP 200, while G2 endpoints returned 404 as expected for the old release.
-- Frontend log errors were malformed Next.js Server Action probes. The sampled proxy errors targeted the unrelated `sslip.io`/Airweave virtual host and credential-file paths, not ordinary WeaveCarbon user traffic.
+- G2 migrations `038` through `051` were not present in the host checkout.
+- Running backend did not contain the industrial-core, WeaveNode, climate-risk or enterprise-security route modules.
+- Public site and `/health` returned HTTP 200. `/ready`, `/version` and the enterprise-security posture endpoint returned 404 because the deployed image and proxy predate G2-13.
+- The production proxy routes only `/api/*` and `/health` to the backend. The branch now adds `/ready` and `/version` to both production and staging Caddy routes and enforces those paths in CI.
+- Production `.env.vps` has no `MFA_ENCRYPTION_KEY`. The branch now requires a valid 32-byte hex/base64 key for backend/full deployments and passes it to the backend container; production deployment must not begin until operators generate and securely custody that key.
+- A no-stream resource sample showed approximately 80 MiB each for backend and frontend, 32 MiB for PostgreSQL and 17 MiB for Caddy, with negligible CPU. This supports current runtime stability but is not load-test or SLA evidence.
+- Frontend log errors were malformed Next.js Server Action probes. Sampled proxy errors targeted the unrelated `sslip.io`/Airweave virtual host, not ordinary WeaveCarbon traffic. Two defunct Node children remain under a separate long-running containerized Node process and require host-maintenance follow-up.
+- The OS reported 29 available updates and a required restart. No restart, package change, pull, push or deployment was performed during the audit.
 
 ## Release decision
 

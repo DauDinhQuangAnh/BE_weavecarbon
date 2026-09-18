@@ -237,6 +237,13 @@ jobs:
       - name: Verify M4 durable queue recovery and dead-job retention
         run: npm run test:m4-operations
 
+      - name: Verify G2-13 enterprise security ledgers and tenant controls
+        env:
+          ALLOW_ENTERPRISE_SECURITY_PILOT: "1"
+          ENTERPRISE_SECURITY_PILOT_CONFIRM: I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA
+          ENTERPRISE_SECURITY_PILOT_DATABASE: weavecarbon
+        run: npm run test:enterprise-security-pilot
+
       - name: Run isolated Audit Pack lifecycle pilot
         env:
           ALLOW_AUDIT_BUNDLE_PILOT: "1"

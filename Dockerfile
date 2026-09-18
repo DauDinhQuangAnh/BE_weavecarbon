@@ -9,8 +9,10 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --no-audit --no-fund
 
 FROM base AS runner
 WORKDIR /app
+ARG RELEASE_SHA=unknown
 ENV NODE_ENV=production
 ENV PORT=4000
+ENV RELEASE_SHA=$RELEASE_SHA
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./

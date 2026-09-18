@@ -35,6 +35,7 @@ const weavenodeRoutes = require('../routes/weavenode');
 const climateRiskRoutes = require('../routes/climateRisk');
 const dynamicAllocationRoutes = require('../routes/dynamicAllocation');
 const supplierNetworkRoutes = require('../routes/supplierNetwork');
+const enterpriseSecurityRoutes = require('../routes/enterpriseSecurity');
 
 const apiRoutes = [
   { basePath: '/api/auth', tag: 'Auth', router: authRoutes },
@@ -73,6 +74,7 @@ const apiRoutes = [
   { basePath: '/api/climate-risk', tag: 'Climate risk screening pilot', router: climateRiskRoutes },
   { basePath: '/api/dynamic-allocation', tag: 'Dynamic industrial allocation', router: dynamicAllocationRoutes },
   { basePath: '/api/supplier-network', tag: 'Supplier network and carbon-climate criticality', router: supplierNetworkRoutes },
+  { basePath: '/api/enterprise-security', tag: 'Enterprise security and production acceptance', router: enterpriseSecurityRoutes },
   { basePath: '/api/operations', tag: 'Operations', router: operationsRoutes }
 ];
 

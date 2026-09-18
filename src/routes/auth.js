@@ -6,6 +6,7 @@ const {
   googleOAuthFlowService,
   demoAccountService,
   authSessionService,
+  mfaService,
   http: {
     GOOGLE_AUTH_ERROR_MESSAGES,
     resolveEntryAccountType,
@@ -26,7 +27,10 @@ const {
     signinValidation,
     refreshValidation,
     verifyEmailValidation,
-    demoValidation
+    demoValidation,
+    mfaEnrollmentValidation,
+    mfaConfirmationValidation,
+    mfaDisableValidation
   }
 } = require('../modules/auth');
 const validate = require('../middleware/validator');
@@ -139,10 +143,11 @@ router.post('/signup', signupLimiter, signupValidation, validate, async (req, re
 // 2. SIGNIN
 router.post('/signin', signinLimiter, signinValidation, validate, async (req, res, next) => {
   try {
-    const { email, password, remember_me } = req.body;
+    const { email, password, totp_code, remember_me } = req.body;
     const result = await authSessionService.signIn({
       email,
       password,
+      totpCode: totp_code,
       rememberMe: remember_me !== false,
       metadata: resolveRequestMetadata(req)
     });
@@ -690,6 +695,115 @@ router.get('/check-company', authenticate, async (req, res, next) => {
   try {
     const data = await authSessionService.checkCompany(req.user.id);
     return res.json({ success: true, data });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /auth/mfa/status:
+ *   get:
+ *     summary: Read the authenticated user's MFA status
+ *     tags: [Auth]
+ *     responses:
+ *       200: { description: MFA status returned. }
+ */
+router.get('/mfa/status', authenticate, async (req, res, next) => {
+  try {
+    const data = await mfaService.getStatus(req.userId);
+    return res.json({ success: true, data });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /auth/mfa/enroll:
+ *   post:
+ *     summary: Begin or rotate TOTP MFA enrollment
+ *     tags: [Auth]
+ *     responses:
+ *       200: { description: Pending enrollment and authenticator URI returned. }
+ */
+router.post('/mfa/enroll', signinLimiter, authenticate, mfaEnrollmentValidation, validate, async (req, res, next) => {
+  try {
+    const data = await mfaService.beginEnrollment(
+      req.userId,
+      req.body.password,
+      req.body.current_code
+    );
+    if (data.blocked) {
+      return res.status(data.statusCode).json({
+        success: false,
+        error: { code: data.code, message: data.message }
+      });
+    }
+    return res.json({ success: true, data });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /auth/mfa/confirm:
+ *   post:
+ *     summary: Confirm pending TOTP enrollment and return one-time recovery codes
+ *     tags: [Auth]
+ *     responses:
+ *       200: { description: MFA enabled; all refresh sessions revoked. }
+ */
+router.post('/mfa/confirm', signinLimiter, authenticate, mfaConfirmationValidation, validate, async (req, res, next) => {
+  try {
+    const data = await mfaService.confirmEnrollment(req.userId, req.body.totp_code);
+    if (data.blocked) {
+      return res.status(data.statusCode).json({
+        success: false,
+        error: { code: data.code, message: data.message }
+      });
+    }
+    await authSessionService.signOut({ allDevices: true, accessToken: extractBearerAccessToken(req) });
+    clearRefreshTokenCookie(res);
+    return res.json({
+      success: true,
+      data: { ...data, reauthenticationRequired: true }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /auth/mfa/disable:
+ *   post:
+ *     summary: Disable MFA after password and MFA re-verification
+ *     tags: [Auth]
+ *     responses:
+ *       200: { description: MFA disabled; all refresh sessions revoked. }
+ */
+router.post('/mfa/disable', signinLimiter, authenticate, mfaDisableValidation, validate, async (req, res, next) => {
+  try {
+    const data = await mfaService.disable(
+      req.userId,
+      req.body.password,
+      req.body.mfa_code,
+      req.body.reason
+    );
+    if (data.blocked) {
+      return res.status(data.statusCode).json({
+        success: false,
+        error: { code: data.code, message: data.message }
+      });
+    }
+    await authSessionService.signOut({ allDevices: true, accessToken: extractBearerAccessToken(req) });
+    clearRefreshTokenCookie(res);
+    return res.json({
+      success: true,
+      data: { ...data, reauthenticationRequired: true }
+    });
   } catch (error) {
     return next(error);
   }

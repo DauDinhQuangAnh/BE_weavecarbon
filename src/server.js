@@ -17,6 +17,7 @@ const reportJobQueue = require('./services/reportJobQueue');
 const pool = require('./config/database');
 const swaggerSpec = require('./config/swagger');
 const apiRoutes = require('./config/apiRoutes');
+const { getCapabilityRegistry } = require('./services/industrialCoreControls');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -149,6 +150,24 @@ app.get('/ready', async (req, res) => {
     res.status(503).json({
       success: false,
       error: { code: 'SERVICE_NOT_READY', message: 'Database or background worker is not ready' }
+    });
+  }
+});
+
+app.get('/version', async (_req, res) => {
+  try {
+    const migration = await pool.query('SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1');
+    sendSuccess(res, {
+      data: {
+        releaseSha: process.env.RELEASE_SHA || 'unknown',
+        capabilityVersion: getCapabilityRegistry().platformVersion,
+        highestMigration: migration.rows[0]?.name || null
+      }
+    });
+  } catch {
+    res.status(503).json({
+      success: false,
+      error: { code: 'VERSION_EVIDENCE_UNAVAILABLE', message: 'Release evidence is unavailable' }
     });
   }
 });

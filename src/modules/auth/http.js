@@ -14,6 +14,7 @@ const GOOGLE_AUTH_ERROR_MESSAGES = {
   GOOGLE_EMAIL_ALREADY_REGISTERED: 'Email already exists. Please use Google sign in instead.',
   GOOGLE_TOKEN_EXCHANGE_FAILED: 'Unable to complete Google authentication. Please retry.',
   GOOGLE_USERINFO_FAILED: 'Unable to fetch Google profile. Please retry.',
+  MFA_PASSWORD_SIGNIN_REQUIRED: 'This account has MFA enabled. Sign in with email, password, and your MFA code.',
   GOOGLE_AUTH_FAILED: 'Google authentication failed. Please retry.'
 };
 

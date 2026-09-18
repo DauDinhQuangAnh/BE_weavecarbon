@@ -35,6 +35,7 @@ const {
   createAuthSessionService,
   authSessionService
 } = require('./authSessionService');
+const { createMfaService, mfaService } = require('./mfaService');
 
 module.exports = {
   tokens,
@@ -59,5 +60,7 @@ module.exports = {
   http,
   validation,
   createAuthSessionService,
-  authSessionService
+  authSessionService,
+  createMfaService,
+  mfaService
 };

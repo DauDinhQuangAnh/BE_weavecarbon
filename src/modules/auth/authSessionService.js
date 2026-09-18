@@ -4,6 +4,7 @@ const { refreshSessionService } = require('./refreshSessionService');
 const { accountProvisioningService } = require('./accountProvisioningService');
 const { sessionContextService } = require('./sessionContextService');
 const { verificationService } = require('./verificationService');
+const { mfaService } = require('./mfaService');
 const analyticsService = require('../shared/analytics');
 const logger = require('../shared/logger');
 
@@ -13,6 +14,7 @@ function createAuthSessionService({
   accounts = accountProvisioningService,
   sessionContext = sessionContextService,
   verification = verificationService,
+  mfa = mfaService,
   analytics = analyticsService,
   log = logger,
   httpSupport = http
@@ -51,7 +53,7 @@ function createAuthSessionService({
   };
 
   return {
-    async signIn({ email, password, rememberMe = true, metadata = {} }) {
+    async signIn({ email, password, totpCode = null, rememberMe = true, metadata = {} }) {
       const user = await accounts.getUserByEmail(email);
       if (!user || !user.password_hash) {
         return {
@@ -80,6 +82,25 @@ function createAuthSessionService({
         };
       }
 
+      const mfaState = await mfa.getChallengeState(user.id);
+      if (mfaState.enabled && !totpCode) {
+        return {
+          kind: 'error',
+          statusCode: 401,
+          code: 'MFA_REQUIRED',
+          message: 'A multi-factor authentication code is required.'
+        };
+      }
+      if (mfaState.enabled && !await mfa.verifyChallenge(user.id, totpCode)) {
+        return {
+          kind: 'error',
+          statusCode: 401,
+          code: 'MFA_CODE_INVALID',
+          message: 'The multi-factor authentication code is invalid.'
+        };
+      }
+      const mfaVerified = mfaState.enabled;
+
       const { company, companyMembership, companyIdForToken } =
         await sessionContext.resolve(user, { updateMembershipLogin: true });
       await verification.markUserLoggedIn(user.id);
@@ -89,9 +110,10 @@ function createAuthSessionService({
         user.email,
         user.roles,
         companyIdForToken,
-        user.is_demo_user
+        user.is_demo_user,
+        { mfaVerified }
       );
-      const refreshToken = tokenService.generateRefreshToken(user.id, rememberMe);
+      const refreshToken = tokenService.generateRefreshToken(user.id, rememberMe, { mfaVerified });
       await refreshSessions.store(refreshToken, user.id, metadata);
       await safeTrack({
         event_name: 'login',
@@ -133,10 +155,17 @@ function createAuthSessionService({
       }
 
       const rememberMe = decoded.remember_me !== false;
+      const mfaState = await mfa.getChallengeState(decoded.sub);
+      if (mfaState.enabled && decoded.mfa_verified !== true) {
+        await refreshSessions.revoke(refreshToken);
+        return expired('MFA_REAUTH_REQUIRED', 'Multi-factor authentication is required. Please sign in again.', true);
+      }
       let activeSession;
       let nextRefreshToken = refreshToken;
       if (rotate) {
-        nextRefreshToken = tokenService.generateRefreshToken(decoded.sub, rememberMe);
+        nextRefreshToken = tokenService.generateRefreshToken(decoded.sub, rememberMe, {
+          mfaVerified: decoded.mfa_verified === true
+        });
         activeSession = await refreshSessions.rotate(
           refreshToken,
           nextRefreshToken,
@@ -162,7 +191,8 @@ function createAuthSessionService({
         user.email,
         user.roles,
         companyIdForToken,
-        user.is_demo_user
+        user.is_demo_user,
+        { mfaVerified: decoded.mfa_verified === true }
       );
 
       return {
@@ -188,6 +218,11 @@ function createAuthSessionService({
       const user = await accounts.getUserById(decoded.sub);
       if (!user) {
         return expired('SESSION_USER_NOT_FOUND', 'Session user was not found.', true);
+      }
+
+      const mfaState = await mfa.getChallengeState(decoded.sub);
+      if (mfaState.enabled && decoded.mfa_verified !== true) {
+        return expired('MFA_REAUTH_REQUIRED', 'Multi-factor authentication is required. Please sign in again.', false);
       }
 
       const session = await buildSession(user, accessToken, { updateMembershipLogin });

@@ -88,6 +88,8 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: mode=max
           sbom: true
+          build-args: |
+            RELEASE_SHA=${{ steps.release.outputs.sha }}
 
       - name: Scan immutable backend image
         uses: aquasecurity/trivy-action@v0.36.0
@@ -213,6 +215,27 @@ jobs:
           git checkout main
           git pull --ff-only origin main
 
+          if ! grep -Eq '@backend path /api/\* /health /ready /version' deploy/Caddyfile; then
+            echo "[deploy] ERROR: frontend main does not yet expose /ready and /version to the backend. Merge the matching frontend release first."
+            exit 1
+          fi
+
+          MFA_KEY="$(grep -E '^[[:space:]]*MFA_ENCRYPTION_KEY=' .env.vps | tail -n 1 | cut -d= -f2- || true)"
+          MFA_KEY="${MFA_KEY%\"}"; MFA_KEY="${MFA_KEY#\"}"
+          MFA_KEY="${MFA_KEY%\'}"; MFA_KEY="${MFA_KEY#\'}"
+          if [[ -z "$MFA_KEY" || "$MFA_KEY" == change_me* ]]; then
+            echo "[deploy] ERROR: configure and securely custody MFA_ENCRYPTION_KEY before deploying G2-13."
+            exit 1
+          fi
+          if [[ ! "$MFA_KEY" =~ ^[[:xdigit:]]{64}$ ]]; then
+            MFA_KEY_BYTES="$(printf '%s' "$MFA_KEY" | base64 -d 2>/dev/null | wc -c | tr -d '[:space:]')"
+            if [[ "$MFA_KEY_BYTES" != "32" ]]; then
+              echo "[deploy] ERROR: MFA_ENCRYPTION_KEY must be 64 hexadecimal characters or base64 that decodes to 32 bytes."
+              exit 1
+            fi
+          fi
+          unset MFA_KEY MFA_KEY_BYTES
+
           for backend_dir in /opt/weavecarbon/BE_weavecarbon /opt/weavecarbon/BE_Carbon-main; do
             if [ -d "$backend_dir/.git" ]; then
               cd "$backend_dir"
@@ -254,10 +277,24 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in $(seq 1 12); do
-            if curl --fail --silent --show-error --max-time 15 "${PUBLIC_BASE_URL%/}/health"; then
+            if node scripts/verify-production-release.js \
+              --base-url "${PUBLIC_BASE_URL%/}" \
+              --expected-sha "${{ steps.release.outputs.sha }}" \
+              --expected-migration "051_g2_enterprise_security_acceptance.sql" \
+              --expected-capability "G2-INDUSTRIAL-CORE-2026.09.18.8" \
+              --output production-smoke.json; then
               exit 0
             fi
             sleep 5
           done
           echo "::error title=Public backend health failed::${PUBLIC_BASE_URL%/}/health did not return success after deploy."
           exit 1
+
+      - name: Upload production smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-production-smoke-${{ steps.release.outputs.sha }}
+          path: production-smoke.json
+          if-no-files-found: warn
+          retention-days: 90

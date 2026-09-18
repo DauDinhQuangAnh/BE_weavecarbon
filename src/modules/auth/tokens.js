@@ -38,14 +38,16 @@ const generateSystemPassword = (length = 20) => {
   return password.join('');
 };
 
-const generateAccessToken = (userId, email, roles, companyId = null, isDemo = false) => jwt.sign(
+const generateAccessToken = (userId, email, roles, companyId = null, isDemo = false, security = {}) => jwt.sign(
   {
     sub: userId,
     type: 'access',
     email,
     roles,
     is_demo: isDemo,
-    company_id: companyId
+    company_id: companyId,
+    mfa_verified: security.mfaVerified === true,
+    amr: security.mfaVerified === true ? ['pwd', 'otp'] : ['pwd']
   },
   jwtConfig.jwtSecret,
   {
@@ -55,8 +57,14 @@ const generateAccessToken = (userId, email, roles, companyId = null, isDemo = fa
   }
 );
 
-const generateRefreshToken = (userId, rememberMe = true) => jwt.sign(
-  { sub: userId, type: 'refresh', jti: uuidv4(), remember_me: rememberMe !== false },
+const generateRefreshToken = (userId, rememberMe = true, security = {}) => jwt.sign(
+  {
+    sub: userId,
+    type: 'refresh',
+    jti: uuidv4(),
+    remember_me: rememberMe !== false,
+    mfa_verified: security.mfaVerified === true
+  },
   jwtConfig.jwtRefreshSecret,
   {
     expiresIn: jwtConfig.jwtRefreshExpiresIn,

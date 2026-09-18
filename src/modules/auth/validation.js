@@ -79,7 +79,13 @@ const signinValidation = [
   body('remember_me')
     .optional()
     .isBoolean()
-    .withMessage('Remember me must be a boolean')
+    .withMessage('Remember me must be a boolean'),
+
+  body('totp_code')
+    .optional()
+    .trim()
+    .matches(/^(?:\d{6}|[A-HJ-NP-Z2-9]{4}(?:-[A-HJ-NP-Z2-9]{4}){3})$/i)
+    .withMessage('MFA code must be a 6-digit authenticator code or recovery code')
 ];
 
 const refreshValidation = [
@@ -112,12 +118,45 @@ const demoValidation = [
     .withMessage('Invalid demo scenario')
 ];
 
+const mfaCode = /^(?:\d{6}|[A-HJ-NP-Z2-9]{4}(?:-[A-HJ-NP-Z2-9]{4}){3})$/i;
+
+const mfaEnrollmentValidation = [
+  body('password').isString().notEmpty().withMessage('Current password is required'),
+  body('current_code')
+    .optional()
+    .trim()
+    .matches(mfaCode)
+    .withMessage('Current MFA code must be an authenticator or recovery code')
+];
+
+const mfaConfirmationValidation = [
+  body('totp_code')
+    .trim()
+    .matches(/^\d{6}$/)
+    .withMessage('A 6-digit authenticator code is required')
+];
+
+const mfaDisableValidation = [
+  body('password').isString().notEmpty().withMessage('Current password is required'),
+  body('mfa_code')
+    .trim()
+    .matches(mfaCode)
+    .withMessage('A valid authenticator or recovery code is required'),
+  body('reason')
+    .trim()
+    .isLength({ min: 1, max: 1000 })
+    .withMessage('A disable reason between 1 and 1000 characters is required')
+];
+
 module.exports = {
   signupValidation,
   signinValidation,
   refreshValidation,
   verifyEmailValidation,
-  demoValidation
+  demoValidation,
+  mfaEnrollmentValidation,
+  mfaConfirmationValidation,
+  mfaDisableValidation
 };
 
 

@@ -1,11 +1,15 @@
 jest.mock('../../src/services/authService');
 jest.mock('../../src/services/companyMembersService');
+jest.mock('../../src/modules/auth', () => ({
+    mfaService: { getChallengeState: jest.fn() }
+}));
 jest.mock('../../src/middleware/subscriptionAccess', () => ({
     enforceSubscriptionAccess: jest.fn((req, res, next) => next())
 }));
 
 const authService = require('../../src/services/authService');
 const { enforceSubscriptionAccess } = require('../../src/middleware/subscriptionAccess');
+const { mfaService } = require('../../src/modules/auth');
 const { authenticate } = require('../../src/middleware/auth');
 
 function createRes() {
@@ -20,6 +24,9 @@ function createReq(headers = {}) {
 }
 
 describe('authenticate', () => {
+    beforeEach(() => {
+        mfaService.getChallengeState.mockResolvedValue({ enabled: false });
+    });
     it('rejects requests without a bearer token', async () => {
         const req = createReq();
         const res = createRes();
@@ -102,6 +109,25 @@ describe('authenticate', () => {
         expect(req.companyId).toBeNull();
         expect(req.companyRole).toBeNull();
         expect(enforceSubscriptionAccess).toHaveBeenCalledWith(req, res, next);
+    });
+
+    it('rejects a pre-MFA access token after MFA is enabled', async () => {
+        authService.verifyAccessToken.mockReturnValue({
+            sub: 'user-1', company_id: null, mfa_verified: false
+        });
+        authService.getUserById.mockResolvedValue({ id: 'user-1', roles: ['b2c'] });
+        mfaService.getChallengeState.mockResolvedValue({ enabled: true });
+        const req = createReq({ authorization: 'Bearer legacy-token' });
+        const res = createRes();
+        const next = jest.fn();
+
+        await authenticate(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            error: expect.objectContaining({ code: 'MFA_REAUTH_REQUIRED' })
+        }));
+        expect(next).not.toHaveBeenCalled();
     });
 
     it('returns a 500 when an unexpected error is thrown', async () => {

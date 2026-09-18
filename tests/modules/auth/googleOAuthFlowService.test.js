@@ -53,6 +53,7 @@ describe('auth Google OAuth flow service', () => {
       generateRefreshToken: jest.fn().mockReturnValue('refresh-token')
     };
     const analytics = { trackEvent: jest.fn().mockResolvedValue() };
+    const mfa = { getChallengeState: jest.fn().mockResolvedValue({ enabled: false }) };
     const email = { sendVerificationEmail: jest.fn().mockResolvedValue(true) };
     const log = { error: jest.fn() };
     const codeCache = new Map();
@@ -64,6 +65,7 @@ describe('auth Google OAuth flow service', () => {
       refreshSessions,
       tokenService,
       analytics,
+      mfa,
       email,
       log,
       codeCache,
@@ -136,12 +138,25 @@ describe('auth Google OAuth flow service', () => {
     expect(refreshSessions.store)
       .toHaveBeenCalledWith('refresh-token', 'user-1', requestMetadata);
     expect(tokenService.generateAccessToken)
-      .toHaveBeenCalledWith('user-1', 'user@example.com', ['b2b'], 'company-1', false);
+      .toHaveBeenCalledWith(
+        'user-1', 'user@example.com', ['b2b'], 'company-1', false,
+        { mfaVerified: false }
+      );
     expect(analytics.trackEvent).toHaveBeenCalledWith(expect.objectContaining({
       event_name: 'login',
       user_id: 'user-1',
       company_id: 'company-1'
     }));
+  });
+
+  test('does not let Google OAuth bypass an enabled MFA factor', async () => {
+    const { service, tokenService, refreshSessions } = createFixture({
+      mfa: { getChallengeState: jest.fn().mockResolvedValue({ enabled: true }) }
+    });
+    await expect(service.authenticate({ code: 'oauth-code', state: 'signed-state' }))
+      .rejects.toMatchObject({ code: 'MFA_PASSWORD_SIGNIN_REQUIRED' });
+    expect(tokenService.generateAccessToken).not.toHaveBeenCalled();
+    expect(refreshSessions.store).not.toHaveBeenCalled();
   });
 
   test('keeps access-token login available when refresh persistence fails', async () => {

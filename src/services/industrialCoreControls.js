@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.18.7';
+const VERSION = 'G2-INDUSTRIAL-CORE-2026.09.18.8';
 const STATUS = Object.freeze(['implemented', 'partial', 'planned']);
 
 const CAPABILITY_REGISTRY = Object.freeze({
@@ -21,7 +21,8 @@ const CAPABILITY_REGISTRY = Object.freeze({
     { id: 'data-quality', label: 'Data quality and factor governance', status: 'implemented', evidence: ['versioned DQL scoring', 'immutable factor proposals', 'evidence-gated reviews'], nextGate: 'apply DQL gates to domestic MRV filing packs' },
     { id: 'mitigation-allowance', label: 'Mitigation and allowance operations', status: 'implemented', evidence: ['initiative revisions', 'evidence-backed scenarios', 'allowance allocation references', 'gross-preserving position snapshots'], nextGate: 'specialist pilot and registry reconciliation connector' },
     { id: 'industry-rules', label: 'Industry packs', status: 'partial', evidence: ['seven versioned sector-pack manifests', 'pack-specific taxonomy/context/validation/allocation/evidence/target mappings', 'factor-governed deterministic snapshots', 'deterministic pilot fixtures'], nextGate: 'independent sector-expert approval and real-facility pilots for every pack' },
-    { id: 'decision-intelligence', label: 'Climate risk and decision intelligence', status: 'partial', evidence: ['evidence-bound-facility-screening', 'scenario-scoped-portfolio-snapshot', 'tenant-bound-supplier-network', 'transparent-carbon-climate-dependency-criticality', 'immutable-criticality-portfolio'], nextGate: 'Licensed dataset ingestion, calibrated hazard metrics, climate-specialist validation and real facility/supplier acceptance pilots' }
+    { id: 'decision-intelligence', label: 'Climate risk and decision intelligence', status: 'partial', evidence: ['evidence-bound-facility-screening', 'scenario-scoped-portfolio-snapshot', 'tenant-bound-supplier-network', 'transparent-carbon-climate-dependency-criticality', 'immutable-criticality-portfolio'], nextGate: 'Licensed dataset ingestion, calibrated hazard metrics, climate-specialist validation and real facility/supplier acceptance pilots' },
+    { id: 'enterprise-security', label: 'Enterprise security and production acceptance', status: 'partial', evidence: ['TOTP MFA with one-time recovery codes', 'MFA-bound access and refresh sessions', 'OIDC configuration validation ledger', 'key and incident lifecycle ledgers', 'evidence-gated production acceptance'], nextGate: 'External IdP interoperability acceptance, live production release evidence, penetration test and incident exercise' }
   ]),
   entities: Object.freeze([
     { id: 'organization', status: 'implemented' }, { id: 'facility', status: 'implemented' },

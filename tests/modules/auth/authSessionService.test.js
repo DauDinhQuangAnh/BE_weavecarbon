@@ -48,6 +48,11 @@ function createFixture(overrides = {}) {
     ...overrides.sessionContext
   };
   const verification = { markUserLoggedIn: jest.fn().mockResolvedValue() };
+  const mfa = {
+    getChallengeState: jest.fn().mockResolvedValue({ enabled: false }),
+    verifyChallenge: jest.fn().mockResolvedValue(false),
+    ...overrides.mfa
+  };
   const analytics = { trackEvent: jest.fn().mockResolvedValue() };
   const log = { error: jest.fn() };
   const httpSupport = {
@@ -62,6 +67,7 @@ function createFixture(overrides = {}) {
     accounts,
     sessionContext,
     verification,
+    mfa,
     analytics,
     log,
     httpSupport
@@ -137,14 +143,65 @@ describe('auth session service', () => {
     );
     expect(fixture.verification.markUserLoggedIn).toHaveBeenCalledWith('user-1');
     expect(fixture.tokenService.generateAccessToken).toHaveBeenCalledWith(
-      'user-1', 'user@example.com', ['b2b'], 'company-1', false
+      'user-1', 'user@example.com', ['b2b'], 'company-1', false,
+      { mfaVerified: false }
     );
-    expect(fixture.tokenService.generateRefreshToken).toHaveBeenCalledWith('user-1', false);
+    expect(fixture.tokenService.generateRefreshToken)
+      .toHaveBeenCalledWith('user-1', false, { mfaVerified: false });
     expect(fixture.refreshSessions.store)
       .toHaveBeenCalledWith('next-refresh-token', 'user-1', metadata);
     expect(fixture.analytics.trackEvent).toHaveBeenCalledWith(expect.objectContaining({
       event_name: 'login', user_id: 'user-1', company_id: 'company-1'
     }));
+  });
+
+  test('requires and verifies an MFA challenge before issuing tokens', async () => {
+    const required = createFixture({
+      mfa: { getChallengeState: jest.fn().mockResolvedValue({ enabled: true }) }
+    });
+    await expect(required.service.signIn({
+      email: 'user@example.com', password: 'valid'
+    })).resolves.toMatchObject({ kind: 'error', code: 'MFA_REQUIRED', statusCode: 401 });
+    expect(required.tokenService.generateAccessToken).not.toHaveBeenCalled();
+
+    const invalid = createFixture({
+      mfa: {
+        getChallengeState: jest.fn().mockResolvedValue({ enabled: true }),
+        verifyChallenge: jest.fn().mockResolvedValue(false)
+      }
+    });
+    await expect(invalid.service.signIn({
+      email: 'user@example.com', password: 'valid', totpCode: '123456'
+    })).resolves.toMatchObject({ kind: 'error', code: 'MFA_CODE_INVALID' });
+
+    const valid = createFixture({
+      mfa: {
+        getChallengeState: jest.fn().mockResolvedValue({ enabled: true }),
+        verifyChallenge: jest.fn().mockResolvedValue(true)
+      }
+    });
+    await expect(valid.service.signIn({
+      email: 'user@example.com', password: 'valid', totpCode: '123456'
+    })).resolves.toMatchObject({ kind: 'authenticated' });
+    expect(valid.tokenService.generateAccessToken).toHaveBeenCalledWith(
+      'user-1', 'user@example.com', ['b2b'], 'company-1', false,
+      { mfaVerified: true }
+    );
+    expect(valid.tokenService.generateRefreshToken)
+      .toHaveBeenCalledWith('user-1', true, { mfaVerified: true });
+  });
+
+  test('revokes a legacy refresh session after MFA becomes enabled', async () => {
+    const fixture = createFixture({
+      mfa: { getChallengeState: jest.fn().mockResolvedValue({ enabled: true }) }
+    });
+    await expect(fixture.service.issueRefreshSession({
+      refreshToken: 'legacy-refresh-token'
+    })).resolves.toMatchObject({
+      kind: 'expired', code: 'MFA_REAUTH_REQUIRED', clearCookie: true
+    });
+    expect(fixture.refreshSessions.revoke).toHaveBeenCalledWith('legacy-refresh-token');
+    expect(fixture.refreshSessions.rotate).not.toHaveBeenCalled();
   });
 
   test('rejects invalid refresh tokens with the established error contract', async () => {
