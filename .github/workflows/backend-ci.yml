@@ -244,6 +244,22 @@ jobs:
           ENTERPRISE_SECURITY_PILOT_DATABASE: weavecarbon
         run: npm run test:enterprise-security-pilot
 
+      - name: Verify G2-14 controlled AI/OCR activity promotion
+        env:
+          ALLOW_AI_ACTIVITY_PROMOTION_PILOT: "1"
+          AI_ACTIVITY_PROMOTION_PILOT_CONFIRM: I_UNDERSTAND_THIS_WRITES_SYNTHETIC_DATA
+          AI_ACTIVITY_PROMOTION_PILOT_DATABASE: weavecarbon
+        run: npm run test:ai-activity-promotion-pilot
+
+      - name: Upload G2-14 AI/OCR promotion pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-activity-promotion-pilot-${{ github.run_id }}
+          path: artifacts/ai-activity-promotion-pilot/result.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Run isolated Audit Pack lifecycle pilot
         env:
           ALLOW_AUDIT_BUNDLE_PILOT: "1"

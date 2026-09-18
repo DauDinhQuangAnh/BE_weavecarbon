@@ -3,7 +3,8 @@ jest.mock('../../../src/modules/shared/database', () => (
 ));
 jest.mock('../../../src/modules/shared/security', () => ({
   authenticate: (_req, _res, next) => next(),
-  requireRole: () => (_req, _res, next) => next()
+  requireRole: () => (_req, _res, next) => next(),
+  requireCompanyAdmin: (_req, _res, next) => next()
 }));
 jest.mock('../../../src/modules/shared/rag', () => ({
   callGlobalRagEndpoint: jest.fn()
@@ -45,6 +46,10 @@ describe('evidence compatibility entrypoints', () => {
       'GET /:id/fields',
       'POST /:id/confirm',
       'GET /:id/extraction-reviews',
+      'GET /:id/extraction-reviews/:reviewId/activity-promotion-suggestions',
+      'POST /:id/extraction-reviews/:reviewId/activity-candidates',
+      'GET /:id/activity-candidates',
+      'POST /:id/activity-candidates/:candidateId/promote',
       'GET /product/:product_id',
       'DELETE /:id'
     ]);

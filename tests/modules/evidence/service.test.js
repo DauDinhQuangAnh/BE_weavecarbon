@@ -127,7 +127,7 @@ describe('EvidenceService', () => {
       extraction_error: 'failed'
     });
     dependencies.repository.getExtractedJson.mockResolvedValue({
-      extracted_json: { invoice_number: 123, supplier: null }
+      extracted_json: { auditClaims: { factorVersionIds: [] }, invoice_number: 123, supplier: null }
     });
     const service = createEvidenceService(dependencies);
 
@@ -141,6 +141,41 @@ describe('EvidenceService', () => {
       { id: 'invoice_number', label: 'invoice_number', ai_value: '123', confirmed_value: null },
       { id: 'supplier', label: 'supplier', ai_value: '', confirmed_value: null }
     ]);
+  });
+
+  test('blocks direct locking when AI/OCR fields have not received field decisions', async () => {
+    const dependencies = createDependencies();
+    dependencies.repository.getExtractionForReview.mockResolvedValue({
+      id: 'evidence-1',
+      extracted_json: { auditClaims: { factorVersionIds: [] }, invoice_number: 'INV-1' }
+    });
+    const service = createEvidenceService(dependencies);
+
+    await expect(service.lockEvidenceWithAudit(COMPANY_ID, 'user-1', 'evidence-1'))
+      .resolves.toEqual(expect.objectContaining({
+        blocked: true,
+        code: 'EVIDENCE_AI_FIELD_REVIEW_REQUIRED'
+      }));
+    expect(dependencies.repository.lock).not.toHaveBeenCalled();
+    expect(dependencies.audit).not.toHaveBeenCalled();
+  });
+
+  test('allows direct locking when extracted JSON only contains platform metadata', async () => {
+    const dependencies = createDependencies();
+    dependencies.repository.getExtractionForReview.mockResolvedValue({
+      id: 'evidence-1', extracted_json: { auditClaims: { factorVersionIds: [] } }
+    });
+    dependencies.repository.lock.mockResolvedValue({
+      id: 'evidence-1', company_id: COMPANY_ID, status: 'locked',
+      evidence_type: 'invoice', document_name: 'Invoice.pdf'
+    });
+    const service = createEvidenceService(dependencies);
+
+    await expect(service.lockEvidenceWithAudit(COMPANY_ID, 'user-1', 'evidence-1'))
+      .resolves.toEqual(expect.objectContaining({ id: 'evidence-1', status: 'locked' }));
+    expect(dependencies.repository.lock).toHaveBeenCalledWith(
+      expect.objectContaining({ evidenceId: 'evidence-1' }), dependencies.transaction
+    );
   });
 
   test('persists every human field decision before locking AI-extracted evidence', async () => {

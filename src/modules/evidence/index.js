@@ -22,5 +22,14 @@ module.exports = {
   },
   get evidenceRouter() {
     return require('./routes');
+  },
+  get aiActivityPromotionControls() {
+    return require('./aiActivityPromotionControls');
+  },
+  get AiActivityPromotionService() {
+    return require('./aiActivityPromotionService').AiActivityPromotionService;
+  },
+  get aiActivityPromotionService() {
+    return require('./aiActivityPromotionService').aiActivityPromotionService;
   }
 };

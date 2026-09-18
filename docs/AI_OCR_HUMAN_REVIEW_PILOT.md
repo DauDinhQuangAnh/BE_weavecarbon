@@ -21,6 +21,6 @@ The server snapshots the exact extraction, evidence checksum and extraction hash
 - `POST /api/evidence/{id}/confirm` stores the named field-by-field review and locks the evidence.
 - `GET /api/evidence/{id}/extraction-reviews` returns immutable review history and decisions.
 
-## Acceptance still required
+## G2-14 continuation
 
-Add governed raw-label to canonical-field mapping, anomaly and evidence-match suggestion ledgers, reviewer rejection/needs-correction UI, a controlled promotion workflow into canonical activity drafts, model/version provenance and evaluation on representative invoice, BOM, logistics, meter and calibration documents. AI must never choose official emission factors or modify locked calculation results.
+The governed raw-label mapping, anomaly/evidence-match decisions and controlled promotion workflow are implemented in G2-14; see `docs/CONTROLLED_AI_ACTIVITY_PROMOTION_PILOT.md`. Model/version acceptance and evaluation on representative invoice, BOM, logistics, meter and calibration documents remain external gates. AI must never choose official emission factors or modify locked calculation results.

@@ -10088,6 +10088,125 @@
         ]
       }
     },
+    "/evidence/{id}/activity-candidates": {
+      "get": {
+        "operationId": "getEvidenceByIdActivityCandidates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /evidence/{id}/activity-candidates",
+        "tags": [
+          "Evidence"
+        ]
+      }
+    },
+    "/evidence/{id}/activity-candidates/{candidateId}/promote": {
+      "post": {
+        "operationId": "postEvidenceByIdActivityCandidatesByCandidateIdPromote",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "candidateId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /evidence/{id}/activity-candidates/{candidateId}/promote",
+        "tags": [
+          "Evidence"
+        ]
+      }
+    },
     "/evidence/{id}/confirm": {
       "post": {
         "operationId": "postEvidenceByIdConfirm",
@@ -10235,6 +10354,133 @@
           }
         ],
         "summary": "GET /evidence/{id}/extraction-reviews",
+        "tags": [
+          "Evidence"
+        ]
+      }
+    },
+    "/evidence/{id}/extraction-reviews/{reviewId}/activity-candidates": {
+      "post": {
+        "operationId": "postEvidenceByIdExtractionReviewsByReviewIdActivityCandidates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "reviewId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /evidence/{id}/extraction-reviews/{reviewId}/activity-candidates",
+        "tags": [
+          "Evidence"
+        ]
+      }
+    },
+    "/evidence/{id}/extraction-reviews/{reviewId}/activity-promotion-suggestions": {
+      "get": {
+        "operationId": "getEvidenceByIdExtractionReviewsByReviewIdActivityPromotionSuggestions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "reviewId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "2XX": {
+            "$ref": "#/components/responses/GenericSuccess"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /evidence/{id}/extraction-reviews/{reviewId}/activity-promotion-suggestions",
         "tags": [
           "Evidence"
         ]

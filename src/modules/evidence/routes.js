@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const express = require('express');
 const multer = require('multer');
-const { authenticate, requireRole } = require('../shared/security');
+const { authenticate, requireRole, requireCompanyAdmin } = require('../shared/security');
 const { asyncHandler, sendError, sendNoCompany, sendSuccess } = require('../shared/http');
 const evidenceService = require('./service');
 const chatService = require('../shared/rag');
@@ -9,6 +9,7 @@ const logger = require('../shared/logger');
 const reportJobQueue = require('../shared/jobQueue');
 const { expensiveOperationLimiter } = require('../shared/rateLimiter');
 const { assertSafeEvidenceUpload } = require('./uploadPolicy');
+const { aiActivityPromotionService } = require('./aiActivityPromotionService');
 const {
   removeEvidenceFile,
   storeEvidenceFile,
@@ -59,6 +60,15 @@ function parseCalculationTermNumbers(value) {
   return normalized.length <= 1000 ? normalized : null;
 }
 
+function sendPromotionError(res, result) {
+  return sendError(res, {
+    status: result.status || 422,
+    code: result.code || 'AI_ACTIVITY_PROMOTION_BLOCKED',
+    message: result.message || 'The controlled AI/OCR promotion request is blocked.',
+    ...(result.details ? { details: result.details } : {})
+  });
+}
+
 // POST /api/evidence/:id/verify — mark evidence as verified (alias for lock)
 router.post('/:id/verify', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
@@ -72,6 +82,9 @@ router.post('/:id/verify', asyncHandler(async (req, res) => {
   );
   if (!result) {
     return sendError(res, { status: 404, code: 'EVIDENCE_NOT_FOUND', message: 'Evidence document not found.' });
+  }
+  if (result.blocked) {
+    return sendError(res, { status: 409, code: result.code, message: result.message });
   }
   return sendSuccess(res, { data: result });
 }));
@@ -266,6 +279,9 @@ router.post('/:id/lock', asyncHandler(async (req, res) => {
       message: 'Evidence document not found.'
     });
   }
+  if (evidence.blocked) {
+    return sendError(res, { status: 409, code: evidence.code, message: evidence.message });
+  }
   return sendSuccess(res, { data: evidence });
 }));
 
@@ -315,6 +331,62 @@ router.get('/:id/extraction-reviews', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
   return sendSuccess(res, { data: await evidenceService.listExtractionReviews(companyId, req.params.id) });
+}));
+
+// GET /api/evidence/:id/extraction-reviews/:reviewId/activity-promotion-suggestions
+// Returns deterministic, non-authoritative semantic mapping suggestions.
+router.get('/:id/extraction-reviews/:reviewId/activity-promotion-suggestions', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await aiActivityPromotionService.suggestions(
+    companyId, req.params.id, req.params.reviewId
+  );
+  if (!result) {
+    return sendError(res, { status: 404, code: 'AI_ACTIVITY_REVIEW_NOT_FOUND', message: 'Evidence extraction review not found.' });
+  }
+  if (result.blocked) return sendPromotionError(res, result);
+  return sendSuccess(res, { data: result });
+}));
+
+// POST /api/evidence/:id/extraction-reviews/:reviewId/activity-candidates
+// Persists an immutable human-reviewed candidate; it does not create activity data.
+router.post('/:id/extraction-reviews/:reviewId/activity-candidates', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await aiActivityPromotionService.createCandidate(
+    companyId, req.userId, req.params.id, req.params.reviewId, req.body || {}
+  );
+  if (!result) {
+    return sendError(res, { status: 404, code: 'AI_ACTIVITY_REVIEW_NOT_FOUND', message: 'Evidence extraction review not found.' });
+  }
+  if (result.blocked) return sendPromotionError(res, result);
+  return sendSuccess(res, { status: 201, data: result });
+}));
+
+// GET /api/evidence/:id/activity-candidates
+router.get('/:id/activity-candidates', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await aiActivityPromotionService.listCandidates(companyId, req.params.id);
+  if (!result) {
+    return sendError(res, { status: 404, code: 'EVIDENCE_NOT_FOUND', message: 'Evidence document not found.' });
+  }
+  return sendSuccess(res, { data: result });
+}));
+
+// POST /api/evidence/:id/activity-candidates/:candidateId/promote
+// The second explicit administrator action creates the authoritative activity row.
+router.post('/:id/activity-candidates/:candidateId/promote', requireCompanyAdmin, asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+  const result = await aiActivityPromotionService.promote(
+    companyId, req.userId, req.params.id, req.params.candidateId, req.body || {}
+  );
+  if (!result) {
+    return sendError(res, { status: 404, code: 'AI_ACTIVITY_CANDIDATE_NOT_FOUND', message: 'AI/OCR activity candidate not found.' });
+  }
+  if (result.blocked) return sendPromotionError(res, result);
+  return sendSuccess(res, { data: result });
 }));
 
 router.get('/product/:product_id', asyncHandler(async (req, res) => {

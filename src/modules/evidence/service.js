@@ -12,6 +12,15 @@ function toText(value) {
   return String(value ?? '').trim();
 }
 
+// auditClaims is platform-owned lineage metadata, not an AI/OCR field that a
+// reviewer should be asked to accept or correct. Keep it in the immutable
+// extraction snapshot, but exclude it from the human field-decision surface.
+function reviewableExtraction(value) {
+  return Object.fromEntries(
+    Object.entries(toObject(value)).filter(([fieldPath]) => fieldPath !== 'auditClaims')
+  );
+}
+
 function sha256(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
@@ -180,12 +189,20 @@ class EvidenceService {
   }
 
   async lockEvidence(companyId, userId, evidenceId) {
-    const row = await this.repository.lock({ companyId, userId, evidenceId });
-    return row ? this.formatEvidence(row) : null;
+    return this.lockEvidenceWithAudit(companyId, userId, evidenceId, 'evidence.lock');
   }
 
   async lockEvidenceWithAudit(companyId, userId, evidenceId, reason = 'evidence.lock') {
     return this.repository.withTransaction(async (client) => {
+      const current = await this.repository.getExtractionForReview({ companyId, evidenceId }, client);
+      if (!current) return null;
+      if (Object.keys(reviewableExtraction(current.extracted_json)).length) {
+        return {
+          blocked: true,
+          code: 'EVIDENCE_AI_FIELD_REVIEW_REQUIRED',
+          message: 'AI/OCR extracted evidence must be reviewed field by field before it can be locked.'
+        };
+      }
       const row = await this.repository.lock({ companyId, userId, evidenceId }, client);
       if (!row) return null;
       const evidence = this.formatEvidence(row);
@@ -224,7 +241,7 @@ class EvidenceService {
   async getEvidenceFields(companyId, evidenceId) {
     const row = await this.repository.getExtractedJson({ companyId, evidenceId });
     if (!row) return null;
-    const extracted = row.extracted_json ?? {};
+    const extracted = reviewableExtraction(row.extracted_json);
     return Object.entries(extracted).map(([key, value]) => ({
       id: key,
       label: key,
@@ -243,7 +260,8 @@ class EvidenceService {
     return this.repository.withTransaction(async (client) => {
       const evidence = await this.repository.getExtractionForReview({ companyId, evidenceId }, client);
       if (!evidence) return null;
-      const extracted = toObject(evidence.extracted_json);
+      const extractionSnapshot = toObject(evidence.extracted_json);
+      const extracted = reviewableExtraction(extractionSnapshot);
       const fieldPaths = Object.keys(extracted).sort();
       if (!fieldPaths.length) return { error: 'EVIDENCE_AI_FIELDS_REQUIRED' };
       if (!/^[a-f0-9]{64}$/i.test(evidence.checksum_sha256 || '') || Number(evidence.file_size_bytes || 0) <= 0) {
@@ -260,10 +278,10 @@ class EvidenceService {
       }
       const reviewer = await this.repository.getReviewer({ userId }, client);
       if (!reviewer) return { error: 'EVIDENCE_AI_REVIEWER_NOT_FOUND' };
-      const extractionSha256 = sha256(extracted);
+      const extractionSha256 = sha256(extractionSnapshot);
       const review = await this.repository.createExtractionReview({ companyId, evidenceDocumentId: evidenceId,
         evidenceChecksumSha256: evidence.checksum_sha256, extractionSha256,
-        extractionSnapshot: JSON.stringify(extracted), reviewerId: userId,
+        extractionSnapshot: JSON.stringify(extractionSnapshot), reviewerId: userId,
         reviewerName: reviewer.full_name || reviewer.email, reviewerRole,
         decision: 'approved_for_mapping', notes }, client);
       const fields = [];
