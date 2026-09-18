@@ -40,8 +40,13 @@ async function main() {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const migration = await client.query('SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1');
-    assert(migration.rows[0]?.name === '051_g2_enterprise_security_acceptance.sql', 'G2-13 migration is not current.');
+    const migration = await client.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM schema_migrations
+         WHERE name = '051_g2_enterprise_security_acceptance.sql'
+       ) AS applied`
+    );
+    assert(migration.rows[0]?.applied === true, 'G2-13 migration is not applied.');
     await client.query(
       `INSERT INTO companies(id,name,business_type) VALUES($1,'G2-13 Pilot','factory'),($2,'Other tenant','factory')`,
       [IDS.company, IDS.otherCompany]

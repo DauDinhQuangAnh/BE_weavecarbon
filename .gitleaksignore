@@ -1,3 +1,7 @@
-# False-positive synthetic carrier authentication reference in the original R03 test fixture.
-# The value was test-only and contained no credential; keep the exception pinned to this finding.
+# Verified false positives. Keep these fingerprint-specific so new findings in
+# the same files or commits still fail CI.
+3eb33ef53fff51261617c6dd61ac7294626d1943:.env.example:generic-api-key:15
+9e4a0b2ec1d9b536e1fdbef611faa9dcd8949522:.env.example:generic-api-key:58
+7941c675c9212775f0ec3bdffd28b9644db30e94:src/modules/reports/pdfService.js:generic-api-key:286
+4de7ca9057e62a8d65707f65e3b24023adc23fa2:src/services/pdfReportService.js:generic-api-key:242
 792b0564931218f05314de15a594367ca285bdbd:tests/services/carrierDocumentControls.test.js:generic-api-key:42
