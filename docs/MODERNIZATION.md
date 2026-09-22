@@ -2,6 +2,11 @@
 
 Backend modernization closed on 2026-09-05. Historical baseline and incremental work-package notes were removed from the active source tree; their commits remain available in Git history.
 
+This records the M1–M5 backend closeout, not completion of the later R01–R20
+report program or G2 industrial platform. See `EXPORT_REPORT_MASTER_TRACKER.md`
+and `INDUSTRIAL_PLATFORM_MASTER_TRACKER.md` for current capability and acceptance
+boundaries.
+
 ## Final status
 
 Status: **PASS**

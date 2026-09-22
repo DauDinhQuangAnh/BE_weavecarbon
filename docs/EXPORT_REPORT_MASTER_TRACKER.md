@@ -1,5 +1,11 @@
 # WeaveCarbon Export Report Master Tracker
 
+> Status note (2026-09-22): this is the detailed R01–R20 report and evidence
+> record. The dated branch-stack, deployment and implementation-order entries
+> below are historical snapshots, not instructions for the current `main` heads.
+> Verify current CI, migrations, staging and legal acceptance before relying on
+> a report in production. Do not delete the dated evidence or pilot runbooks.
+
 > Product rebaseline (2026-09-15): export reporting is now one adapter workstream inside the wider
 > Industrial Carbon & Climate Data Infrastructure roadmap. Use
 > [INDUSTRIAL_PLATFORM_MASTER_TRACKER.md](./INDUSTRIAL_PLATFORM_MASTER_TRACKER.md) for macro-phase status;
@@ -33,8 +39,8 @@ This tracker separates four facts that must never be conflated:
 | Backend repository | `https://github.com/DauDinhQuangAnh/BE_weavecarbon.git` |
 | Frontend repository | `https://github.com/DauDinhQuangAnh/weavecarbon.git` |
 | Current integration branch in both repositories | `main` |
-| Active R18 marketing-claim-containment branch in both repositories | `feat/r18-marketing-claim-containment` (local, stacked on the R18 public-passport increment while R04/R05 PRs remain open) |
-| Active R20 CITES/species-routing branch in both repositories | `feat/r20-cites-species-routing` (local, stacked on the R20 REACH-threshold increment) |
+| Historical R18 marketing-claim-containment branch | `feat/r18-marketing-claim-containment` (September implementation branch; not the current integration target) |
+| Historical R20 CITES/species-routing branch | `feat/r20-cites-species-routing` (September implementation branch; not the current integration target) |
 | Backend R01/R02 implementation commit | `32afddaeb088ffe2afab0af57bd0d238d849bd18` |
 | Frontend R01/R02 implementation commit | `4f51dc9e372fcbf31e8228174281d5efe53617b8` |
 | Frontend R14 safety commit | `af54d39040edb2f514a4b86fad1fc05e36aab9f6` |
@@ -84,8 +90,8 @@ This tracker separates four facts that must never be conflated:
 | Backend R01/R02 business-review commit | `241fd0f39f286b585589bc7e3543d832c4444d4f` |
 | Frontend R01/R02 business-review commit | `a74495460a9a37f6f63bc6ab577738f6b70be815` |
 | Frontend critical dependency patch commit | `6016c07605e3cab56cd5c40c02dbd46193b7f2b3` |
-| Backend latest application-bearing production commit | `51d568c2c765c59977b11066febe7ed4de27eef3` |
-| Frontend latest application-bearing production commit | `9bd4c58f58cfff8b32a2bea580675b170931c751` |
+| Backend application commit observed in production on 2026-09-13 | `51d568c2c765c59977b11066febe7ed4de27eef3` |
+| Frontend application commit observed in production on 2026-09-13 | `9bd4c58f58cfff8b32a2bea580675b170931c751` |
 | Production site | `https://weavecarbon.com` |
 | Production state verified at 2026-09-13 | Host `obk-vm-ext-1` responds on SSH/HTTPS; production DB/BE/RAG/FE containers are healthy with zero restarts, proxy is running, and `/health`, `/`, `/audit` and `/export` return HTTP 200. Backend application checkout is `51d568c2c765c59977b11066febe7ed4de27eef3`; remote `main` is one later documentation-only `[skip ci]` commit. Frontend checkout and remote `main` are `9bd4c58f58cfff8b32a2bea580675b170931c751`. No R04-R07/R20/R18 feature work is deployed. |
 | Host maintenance observation at 2026-09-13 | Root filesystem 31% used; 3.7 GiB memory available; no failed systemd unit and no WeaveCarbon error/fatal log in the sampled 30-minute window. The OS reports a required kernel/libc reboot, 27 available updates and two defunct child processes under the separate Airweave Node service. Schedule a controlled backup/maintenance window; do not reboot or kill processes as part of report implementation. |
@@ -103,23 +109,15 @@ git clone https://github.com/DauDinhQuangAnh/weavecarbon.git
 git -C weavecarbon switch main
 ```
 
-R06 is preserved locally at `feat/r06-ics2-filing-handoff`; R07 is stacked on it at
-`feat/r07-evfta-origin-handoff`; R20 is stacked on R07 at `feat/r20-applicability-core`; R18 is stacked on R20 at
-`feat/r18-environmental-claim-register`; R08 is stacked on R18 at `feat/r08-textile-fibre-label`; R10 is stacked on R08 at
-`feat/r10-gpsr-technical-file`; R11 is stacked on R10 at `feat/r11-reach-svhc-dossier`; R12 is stacked on R11 at
-`feat/r12-pcf-study-dossier`; R13 is stacked on R12 at `feat/r13-corporate-ghg-inventory`; R17 is stacked on R13 at
-`feat/r17-eu-epr-core`; the R18 public-surface increment is stacked on R17 at `feat/r18-public-claim-surfaces`, followed by
-`feat/r18-marketing-claim-containment`. All contain R05, which
-contains R04. Preserve that dependency order until the existing R04/R05 pull requests merge, and do not merge or deploy
-R06/R07/R20/R18/R08/R10/R11/R12/R13/R17 as a substitute for those reviews. After merge, rebase R06 onto `main`, then R07 onto R06,
-R20 onto R07, R18 onto R20, R08 onto R18, R10 onto R08, R11 onto R10, R12 onto R11, R13 onto R12, R17 onto R13 and
-the R18 public-surface increment onto R17 and the marketing-containment increment onto the public-surface increment;
-verify migrations and recorded commits stay ordered.
+The September branch stack and pull-request order above are historical. New work
+must start from the current `main` heads in both repositories, verify forward-only
+migrations and contracts, then pass current CI and isolated acceptance gates.
+Do not use the dated production observations in this section as current VPS state.
 
 Then give the next AI this instruction:
 
 > Read `BE_weavecarbon/docs/EXPORT_REPORT_MASTER_TRACKER.md` completely. Verify the two repository HEADs,
-> inspect current diffs, select the first applicable engineering gate in section 7, implement its Definition of Done,
+> inspect current diffs and the G2 tracker, select the next applicable engineering gate, implement its Definition of Done,
 > run the required tests, and update this tracker in the same commit. Do not merge or deploy until the release
 > gates in section 9 pass.
 
@@ -228,7 +226,7 @@ Known overall checks at the latest feature commits:
 | 11 | REACH/SVHC dossier | Conditional by substance/material/threshold | `PARTIAL` | Immutable article/component/material/substance dossiers, source snapshots, Article 33/7 and SCIP assessments, Annex XVII results, named review and obligation-event evidence | Import/maintain the complete current Candidate List and applicable restrictions; generate approved safe-use/response artifacts and complete a qualified real-product pilot |
 | 12 | Product Carbon Footprint/ISO 14067 support | Buyer/tender/claim dependent | `INTERNAL_ONLY` | Immutable study revisions bind goal/scope, functional/reference flow, boundary/process/cutoff/PCR/allocation/recycling, DQ/uncertainty, AD×EF reproduction, evidence and named internal practitioner review to an authoritative partial-PCF snapshot | Complete a qualified real-product study/full relevant life-cycle boundary and link authentic critical review/assurance before any external, comparative or verified claim |
 | 13 | Corporate/facility GHG report | Buyer/ESG/assurance dependent | `INTERNAL_ONLY` | Immutable organization-level revisions cover organizational/facility and operational boundaries, seven-gas decisions, base year/recalculation, reviewed AD×EF sources, factor provenance, dual Scope 2 gate, exclusions/quality/uncertainty, separate biogenic/removal/offset disclosure and named internal review | Load complete real facility/source data, validate material Scope 3 if claimed, and obtain authentic independent assurance before verified/external use |
-| 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Immutable ZIP, exact term/factor evidence coverage, append-only review/internal issue, and isolated PostgreSQL pilot gate | Run human real-evidence staging review; signed share link and external assurance |
+| 14 | Audit/evidence pack | Buyer or verifier dependent | `PARTIAL` | Immutable ZIP, exact term/factor evidence coverage, append-only review/internal issue, signed expiring share links and evidence-bound assurance records; technical staging gate passed | Complete named real-evidence review/issue and validate an authentic external assurance statement before any external-assurance claim |
 | 15 | Apparel & Footwear PEF/PEFCR | Voluntary or buyer-specific | `NOT_STARTED` | Climate-only partial PCF is not PEF | Full life cycle, EF datasets/impact categories and validation statement |
 | 16 | ESPR Digital Product Passport | When product delegated act applies | `BLOCKED_BY_LAW` | Guarded prototype only | Registry/service/access/version architecture; wait for final product schema |
 | 17 | Textile/footwear EPR reporting | EU framework plus Member-State implementation | `PARTIAL` | Immutable EU-core producer/PRO/register dossier, Annex-IVc scope, shipment quantity/weight reconciliation, named review and typed authority/PRO evidence events | Add reviewed Member-State adapters and complete real registration/reporting/fee pilots before the 17 April 2028 scheme deadline |
@@ -802,7 +800,7 @@ then run exact-head CI/staging and a named specialist pilot using real product/B
 **Definition of Done:** source-versioned rules return explainable applicable/not-applicable decisions and required evidence;
 specialist reviewer approves high-risk classifications. Never claim the list is universally complete.
 
-## 7. Remaining implementation order from 2026-09-13
+## 7. Historical implementation-order snapshot (2026-09-13)
 
 1. **The R18 production-copy containment, claim register, public-passport resolver/QR/landing containment, minimum R20
    applicability core and limited R08 textile-label control now exist locally.** Next, prevent future public label,

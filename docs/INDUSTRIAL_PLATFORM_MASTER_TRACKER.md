@@ -4,7 +4,7 @@ Baseline date: 2026-09-18
 
 Vision source: `WeaveCarbon Mới cập nhật 12.09.docx`
 
-Current implementation branch: `feat/g2-industrial-core-baseline`
+Current integration branch: `main` (G2 software baselines integrated by 2026-09-18)
 
 Detailed requirement and production audit: `docs/WEAVECARBON_12_09_IMPLEMENTATION_AUDIT.md`
 
