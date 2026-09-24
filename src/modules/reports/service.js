@@ -1779,7 +1779,9 @@ class ReportsService {
                         (SELECT COUNT(*)::int FROM carbon_calculations WHERE company_id = $1) AS activity,
                         (SELECT COUNT(*)::int FROM carbon_calculations WHERE company_id = $1 AND calculation_type = 'audit') AS audit,
                         (SELECT COUNT(*)::int FROM company_members WHERE company_id = $1) AS users,
-                        (SELECT COUNT(*)::int FROM reports WHERE company_id = $1) AS history
+                        (SELECT COUNT(*)::int FROM reports WHERE company_id = $1) AS history,
+                        (SELECT COUNT(*)::int FROM carbon_targets WHERE company_id = $1) AS analytics,
+                        1::int AS company
                 `,
                 [companyId]
             );
@@ -1789,7 +1791,9 @@ class ReportsService {
                 activity: Number(result.rows[0]?.activity || 0),
                 audit: Number(result.rows[0]?.audit || 0),
                 users: Number(result.rows[0]?.users || 0),
-                history: Number(result.rows[0]?.history || 0)
+                history: Number(result.rows[0]?.history || 0),
+                analytics: Number(result.rows[0]?.analytics || 0),
+                company: Number(result.rows[0]?.company || 0)
             };
         } finally {
             client.release();

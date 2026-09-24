@@ -307,6 +307,28 @@ async function getOverview(companyId, trendMonths) {
     LIMIT 5
   `;
 
+  const productEmissionsQuery = `
+    SELECT
+      id,
+      COALESCE(NULLIF(name, ''), NULLIF(sku, ''), id::text) AS name,
+      COALESCE(NULLIF(sku, ''), id::text) AS sku,
+      COALESCE(materials_co2e, 0) AS materials,
+      COALESCE(production_co2e, 0) AS production,
+      COALESCE(transport_co2e, 0) AS transport,
+      COALESCE(packaging_co2e, 0) AS packaging,
+      (
+        COALESCE(materials_co2e, 0) +
+        COALESCE(production_co2e, 0) +
+        COALESCE(transport_co2e, 0) +
+        COALESCE(packaging_co2e, 0)
+      ) AS total
+    FROM products
+    WHERE company_id = $1
+      AND status <> 'archived'
+    ORDER BY total DESC, updated_at DESC NULLS LAST, created_at DESC
+    LIMIT 12
+  `;
+
   const exportReadinessFromMarketReadinessQuery = `
     SELECT
       COUNT(*)::int AS total_markets,
@@ -381,13 +403,15 @@ async function getOverview(companyId, trendMonths) {
     trendResult,
     recommendationsResult,
     exportResult,
-    marketReadinessResult
+    marketReadinessResult,
+    productEmissionsResult
   ] = await Promise.all([
     pool.query(statsQuery, [companyId]),
     pool.query(carbonTrendQuery, [companyId, trendMonths]),
     pool.query(recommendationsQuery, [companyId]),
     exportReadinessPromise,
-    marketReadinessPromise
+    marketReadinessPromise,
+    pool.query(productEmissionsQuery, [companyId])
   ]);
 
   let exportReadinessRow = exportResult.rows?.[0] || { total_markets: 0, avg_export_readiness: 0 };
@@ -512,10 +536,22 @@ async function getOverview(companyId, trendMonths) {
     };
   });
 
+  const productEmissions = productEmissionsResult.rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    sku: row.sku,
+    materials: toNumber(row.materials),
+    production: toNumber(row.production),
+    transport: toNumber(row.transport),
+    packaging: toNumber(row.packaging),
+    total: toNumber(row.total)
+  }));
+
   const payload = {
     stats,
     carbonTrend,
     emissionBreakdown,
+    productEmissions,
     marketReadiness,
     marketReadinessPreview: marketReadinessDisplay.previewItems,
     marketReadinessRemainingCount: marketReadinessDisplay.remainingCount,
