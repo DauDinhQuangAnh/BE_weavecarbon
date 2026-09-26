@@ -243,6 +243,26 @@ model is explicitly required by the next two reports.
 
 ### R01 — Commercial Invoice
 
+**Local review (2026-09-26, uncommitted):** corrected missing consignee and linked packing/carrier/customs/delivery
+references in the PDF; aligned the XLSX references and printed Incoterms edition. The PDF now displays quantity to the
+stored four decimal places, unit price to six, and calculated amounts to at most ten, matching the existing unrounded
+snapshot/XLSX calculation rather than silently imposing two-decimal currency rounding. No financial calculation rule,
+database schema, review authority or immutable issue behavior was changed. A buyer-specific currency/rounding policy
+still needs business agreement before external issue.
+
+Party/address and metadata blocks now paginate using the rendered font; oversized goods descriptions continue on later
+pages with repeated document/table headers. Invoice XLSX has an explicit A4 landscape print area, repeating column
+headers, wrapped cells and merged metadata values. Excel's row-height limit still applies to exceptionally long cells;
+manual spreadsheet/print review remains required.
+
+Three PDF regression cases reproduced missing content, lost numeric precision and footer overflow before the fix. The
+focused PDF/shipment suite passes 38 tests, including an additional 25-line workbook/reference/print-layout regression.
+The final local backend gate passes syntax (288 files), OpenAPI/runtime/artifact checks, module boundaries, lint and all
+176 Jest suites / 953 tests. Frontend code is unchanged.
+PDF tests inspect PDFKit text calls/coordinates and generated PDF signatures; they do not replace a visual PDF or Excel
+acceptance check. This local review has not exercised the web UI, an isolated database pilot or real shipment data, and
+has not deployed changes. R01 remains `READY_TO_PILOT`; the external acceptance gate below is unchanged.
+
 **Applicability/authority/format:** exporter-issued for almost every sale shipment. EU has no single mandatory visual
 template; buyer, L/C, bank and destination practice may add requirements. XLSX/PDF layout must be printable and stable.
 

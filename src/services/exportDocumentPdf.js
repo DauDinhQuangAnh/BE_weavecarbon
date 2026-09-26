@@ -10,14 +10,17 @@ const DARK = '#142014';
 const MUTED = '#5f6c5c';
 const BORDER = '#cdd8c9';
 const PAGE_MARGIN = 36;
+const pageContexts = new WeakMap();
 
 function clean(value) {
   return String(value ?? '').trim();
 }
 
-function money(value, currency = '') {
+function money(value, currency = '', digits = 10) {
   const amount = Number(value || 0);
-  return `${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${currency ? ` ${currency}` : ''}`;
+  // Keep the stored precision: quantity (4 dp) x unit price (6 dp).
+  // Formatting must not introduce a currency-rounding policy absent from the snapshot/XLSX.
+  return `${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: digits })}${currency ? ` ${currency}` : ''}`;
 }
 
 function quantity(value, digits = 3) {
@@ -50,45 +53,57 @@ function addKeyValues(doc, entries, columns = 3) {
   const gap = 10;
   const width = doc.page.width - PAGE_MARGIN * 2;
   const colWidth = (width - gap * (columns - 1)) / columns;
-  const startY = doc.y;
-  const groups = Array.from({ length: columns }, () => []);
-  entries.forEach((entry, index) => groups[index % columns].push(entry));
-  let maxBottom = startY;
-  groups.forEach((group, column) => {
-    let y = startY;
-    const x = PAGE_MARGIN + column * (colWidth + gap);
-    group.forEach(([label, value]) => {
-      doc.fillColor(MUTED).font('Bold').fontSize(6.8).text(label.toUpperCase(), x, y, { width: colWidth });
-      const display = clean(value) || '-';
-      const height = Math.max(11, doc.heightOfString(display, { width: colWidth }));
-      doc.fillColor(DARK).font('Regular').fontSize(8.5).text(display, x, y + 9, { width: colWidth });
-      y += height + 15;
-    });
-    maxBottom = Math.max(maxBottom, y);
-  });
-  doc.y = maxBottom + 2;
+  for (let index = 0; index < entries.length; index += columns) {
+    doc.font('Regular').fontSize(8.5);
+    const group = entries.slice(index, index + columns).map(([label, value]) => ({
+      label, lines: wrappedLines(doc, value, colWidth)
+    }));
+    let offset = 0;
+    const lineCount = Math.max(...group.map((item) => item.lines.length));
+    while (offset < lineCount) {
+      ensureVerticalSpace(doc, 30);
+      const y = doc.y;
+      const count = Math.min(lineCount - offset, Math.max(1, Math.floor((doc.page.height - 72 - y - 18) / 11)));
+      group.forEach((item, column) => {
+        const x = PAGE_MARGIN + column * (colWidth + gap);
+        doc.fillColor(MUTED).font('Bold').fontSize(6.8).text(item.label.toUpperCase(), x, y, { width: colWidth, lineBreak: false });
+        doc.fillColor(DARK).font('Regular').fontSize(8.5);
+        item.lines.slice(offset, offset + count).forEach((line, lineIndex) => {
+          doc.text(line, x, y + 10 + lineIndex * 11, { width: colWidth, lineBreak: false });
+        });
+      });
+      doc.y = y + 18 + count * 11;
+      offset += count;
+      if (offset < lineCount) addContentPage(doc);
+    }
+  }
 }
 
 function addPartyBoxes(doc, leftTitle, leftParty, rightTitle, rightParty) {
   const gap = 12;
   const width = (doc.page.width - PAGE_MARGIN * 2 - gap) / 2;
-  const linesLeft = partyLines(leftParty);
-  const linesRight = partyLines(rightParty);
-  const textHeight = Math.max(
-    doc.heightOfString(linesLeft.join('\n') || '-', { width: width - 16 }),
-    doc.heightOfString(linesRight.join('\n') || '-', { width: width - 16 })
-  );
-  const height = Math.max(58, textHeight + 30);
-  const startY = doc.y;
-  [[leftTitle, linesLeft, PAGE_MARGIN], [rightTitle, linesRight, PAGE_MARGIN + width + gap]].forEach(([title, lines, x]) => {
-    doc.roundedRect(x, startY, width, height, 4).fillAndStroke(LIGHT_GREEN, BORDER);
-    doc.fillColor(GREEN).font('Bold').fontSize(7.5).text(title, x + 8, startY + 7, { width: width - 16, lineBreak: false });
-    doc.fillColor(DARK).font('Regular').fontSize(8.2).text(lines.join('\n') || '-', x + 8, startY + 21, {
-      width: width - 16,
-      lineGap: 1
+  doc.font('Regular').fontSize(8.2);
+  const linesLeft = wrappedLines(doc, partyLines(leftParty).join('\n'), width - 16);
+  const linesRight = wrappedLines(doc, partyLines(rightParty).join('\n'), width - 16);
+  const lineCount = Math.max(linesLeft.length, linesRight.length);
+  let offset = 0;
+  while (offset < lineCount) {
+    ensureVerticalSpace(doc, 65);
+    const startY = doc.y;
+    const count = Math.min(lineCount - offset, Math.max(1, Math.floor((doc.page.height - 82 - startY - 30) / 11)));
+    const height = Math.max(58, count * 11 + 30);
+    [[leftTitle, linesLeft, PAGE_MARGIN], [rightTitle, linesRight, PAGE_MARGIN + width + gap]].forEach(([title, lines, x]) => {
+      doc.roundedRect(x, startY, width, height, 4).fillAndStroke(LIGHT_GREEN, BORDER);
+      doc.fillColor(GREEN).font('Bold').fontSize(7.5).text(title, x + 8, startY + 7, { width: width - 16, lineBreak: false });
+      doc.fillColor(DARK).font('Regular').fontSize(8.2);
+      lines.slice(offset, offset + count).forEach((line, lineIndex) => {
+        doc.text(line, x + 8, startY + 21 + lineIndex * 11, { width: width - 16, lineBreak: false });
+      });
     });
-  });
-  doc.y = startY + height + 10;
+    doc.y = startY + height + 10;
+    offset += count;
+    if (offset < lineCount) addContentPage(doc);
+  }
 }
 
 function wrappedLines(doc, value, width) {
@@ -119,10 +134,6 @@ function wrappedLines(doc, value, width) {
   return lines;
 }
 
-function tableRowHeight(doc, columns, row) {
-  return Math.max(18, ...columns.map((column) => wrappedLines(doc, row[column.key], column.width - 8).length * 9 + 8));
-}
-
 function drawTableHeader(doc, columns, y) {
   let x = PAGE_MARGIN;
   const totalWidth = columns.reduce((sum, column) => sum + column.width, 0);
@@ -139,43 +150,56 @@ function drawTableHeader(doc, columns, y) {
   return y + 28;
 }
 
-function drawTable(doc, title, columns, rows, pageTitle, reference, issued) {
+function drawTable(doc, title, columns, rows) {
+  ensureVerticalSpace(doc, 70);
   doc.fillColor(GREEN).font('Bold').fontSize(10).text(title, PAGE_MARGIN, doc.y);
   let y = doc.y + 16;
   y = drawTableHeader(doc, columns, y);
   rows.forEach((row, index) => {
     doc.font('Regular').fontSize(7.2);
-    const rowHeight = tableRowHeight(doc, columns, row);
-    if (y + rowHeight > doc.page.height - 72) {
-      doc.addPage();
-      addBrandHeader(doc, pageTitle, reference, issued);
-      y = drawTableHeader(doc, columns, doc.y);
-    }
-    const background = index % 2 ? '#f8faf7' : '#ffffff';
-    const totalWidth = columns.reduce((sum, column) => sum + column.width, 0);
-    doc.save();
-    doc.rect(PAGE_MARGIN, y, totalWidth, rowHeight).fillAndStroke(background, BORDER);
-    let x = PAGE_MARGIN;
-    columns.forEach((column) => {
-      const value = clean(row[column.key]) || '-';
-      doc.fillColor(DARK).font('Regular').fontSize(7.2);
-      wrappedLines(doc, value, column.width - 8).forEach((line, lineIndex) => {
-        doc.text(line, x + 4, y + 4 + lineIndex * 9, { width: column.width - 8, align: column.align || 'left', lineBreak: false });
+    const cells = columns.map((column) => wrappedLines(doc, row[column.key], column.width - 8));
+    const lineCount = Math.max(...cells.map((lines) => lines.length));
+    let offset = 0;
+    while (offset < lineCount) {
+      const remainingHeight = (lineCount - offset) * 9 + 8;
+      const fitsFreshPage = remainingHeight <= doc.page.height - 72 - 104;
+      if (y + 18 > doc.page.height - 72 || (fitsFreshPage && y + remainingHeight > doc.page.height - 72)) {
+        addContentPage(doc);
+        y = drawTableHeader(doc, columns, doc.y);
+      }
+      const count = Math.min(lineCount - offset, Math.max(1, Math.floor((doc.page.height - 72 - y - 8) / 9)));
+      const rowHeight = Math.max(18, count * 9 + 8);
+      const background = index % 2 ? '#f8faf7' : '#ffffff';
+      const totalWidth = columns.reduce((sum, column) => sum + column.width, 0);
+      doc.save();
+      doc.rect(PAGE_MARGIN, y, totalWidth, rowHeight).fillAndStroke(background, BORDER);
+      let x = PAGE_MARGIN;
+      columns.forEach((column, columnIndex) => {
+        doc.fillColor(DARK).font('Regular').fontSize(7.2);
+        cells[columnIndex].slice(offset, offset + count).forEach((line, lineIndex) => {
+          doc.text(line, x + 4, y + 4 + lineIndex * 9, { width: column.width - 8, align: column.align || 'left', lineBreak: false });
+        });
+        x += column.width;
       });
-      x += column.width;
-    });
-    doc.restore();
-    y += rowHeight;
-    doc.x = PAGE_MARGIN;
-    doc.y = y;
+      doc.restore();
+      y += rowHeight;
+      doc.x = PAGE_MARGIN;
+      doc.y = y;
+      offset += count;
+    }
   });
   doc.y = y + 10;
 }
 
-function ensureVerticalSpace(doc, requiredHeight, pageTitle, reference, issued) {
-  if (doc.y + requiredHeight <= doc.page.height - 62) return;
+function addContentPage(doc) {
+  const { title, reference, issued } = pageContexts.get(doc);
   doc.addPage();
-  addBrandHeader(doc, pageTitle, reference, issued);
+  addBrandHeader(doc, title, reference, issued);
+}
+
+function ensureVerticalSpace(doc, requiredHeight) {
+  if (doc.y + requiredHeight <= doc.page.height - 72) return;
+  addContentPage(doc);
 }
 
 function leafPackages(payload) {
@@ -196,9 +220,9 @@ function invoiceRows(payload) {
     hs: line.hsCode,
     hsBasis: [line.hsCodeSource, line.hsCodeRuleset, line.hsCodeEffectiveDate].filter(Boolean).join(' | '),
     origin: line.originCountry,
-    quantity: quantity(line.quantity),
+    quantity: quantity(line.quantity, 4),
     unit: line.unit,
-    price: money(line.unitPrice, currency),
+    price: money(line.unitPrice, currency, 6),
     value: money(Number(line.quantity || 0) * Number(line.unitPrice || 0), currency)
   }));
 }
@@ -297,6 +321,7 @@ async function buildExportDocumentPdf(type, payload, issued = false) {
   const shipmentRef = payload.shipment?.referenceNumber || payload.shipment?.id || '';
   const title = type === 'commercial_invoice' ? 'COMMERCIAL INVOICE' : 'PACKING LIST';
   const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: PAGE_MARGIN, bufferPages: true, compress: true });
+  pageContexts.set(doc, { title, reference: `Shipment ${shipmentRef} | Version ${payload.documentVersion || '-'}`, issued });
   doc.registerFont('Regular', FONT_REGULAR);
   doc.registerFont('Bold', FONT_BOLD);
   doc.font('Regular');
@@ -314,9 +339,13 @@ async function buildExportDocumentPdf(type, payload, issued = false) {
       ['Invoice number', profile.invoiceNumber], ['Invoice date', profile.invoiceDate], ['Issue place', profile.invoiceIssuePlace],
       ['PO / Contract', profile.poContractId], ['Payment terms', profile.paymentTerms], ['Exporter tax ID', profile.exporterTaxId],
       ['Importer EORI / VAT', [profile.importerEori, profile.importerVatId].filter(Boolean).join(' / ')],
-      ['Incoterm', `${profile.incotermCode || ''} ${profile.incotermLocation || ''}`], ['Currency', profile.currency],
+      ['Incoterm', `${profile.incotermCode || ''} ${profile.incotermLocation || ''} (${profile.incotermVersion || 'Incoterms 2020'})`], ['Currency', profile.currency],
       ['Customs value / basis', `${money(profile.customsValueAmount, profile.currency)} | ${profile.customsValueBasis || ''}`],
-      ['Transport', `${profile.transportMode || ''} | ${profile.portOfLoading || ''} -> ${profile.portOfDischarge || ''}`]
+      ['Transport', `${profile.transportMode || ''} | ${profile.portOfLoading || ''} -> ${profile.portOfDischarge || ''}`],
+      ['Consignee', partyLines(profile.consignee).join('\n')], ['Place of delivery', profile.placeOfDelivery],
+      ['Packing list', profile.packingListNumber], ['Carrier document', profile.billOfLadingNo],
+      ['Customs declaration', profile.customsDeclarationNo], ['Carrier', profile.carrierName],
+      ['Vessel / flight and voyage', [profile.vesselName, profile.voyageNumber].filter(Boolean).join(' / ')]
     ]);
     drawTable(doc, 'GOODS', [
       { key: 'line', label: '#', width: 25, align: 'right' }, { key: 'sku', label: 'SKU', width: 66 },
@@ -325,8 +354,8 @@ async function buildExportDocumentPdf(type, payload, issued = false) {
       { key: 'origin', label: 'ORIGIN', width: 40 },
       { key: 'quantity', label: 'QTY', width: 45, align: 'right' }, { key: 'unit', label: 'UNIT', width: 38 },
       { key: 'price', label: 'UNIT PRICE', width: 86, align: 'right' }, { key: 'value', label: 'LINE VALUE', width: 90, align: 'right' }
-    ], invoiceRows(payload), title, shipmentRef, issued);
-    ensureVerticalSpace(doc, 92, title, shipmentRef, issued);
+    ], invoiceRows(payload));
+    ensureVerticalSpace(doc, 92);
     addInvoiceTotals(doc, payload);
   } else {
     addPartyBoxes(doc, 'EXPORTER', profile.exporter, 'CONSIGNEE', profile.consignee);
@@ -345,12 +374,12 @@ async function buildExportDocumentPdf(type, payload, issued = false) {
       { key: 'gross', label: 'GROSS KG TOTAL', width: 49, align: 'right' }, { key: 'dimensionBasis', label: 'DIM BASIS', width: 45 },
       { key: 'dimensions', label: 'L X W X H CM', width: 66 },
       { key: 'cbm', label: 'CBM TOTAL', width: 40, align: 'right' }, { key: 'contents', label: 'CONTENTS', width: 66 }
-    ], packingRows(payload), title, shipmentRef, issued);
-    ensureVerticalSpace(doc, 72, title, shipmentRef, issued);
+    ], packingRows(payload));
+    ensureVerticalSpace(doc, 72);
     addPackingTotals(doc, payload);
   }
 
-  ensureVerticalSpace(doc, 12, title, shipmentRef, issued);
+  ensureVerticalSpace(doc, 30);
   doc.fillColor(MUTED).font('Regular').fontSize(7.5)
     .text('Document control: values come from an immutable shipment snapshot. Review and issue status are controlled in WeaveCarbon; carrier records remain authoritative.', PAGE_MARGIN, doc.y, { width: doc.page.width - PAGE_MARGIN * 2 });
   addFootersAndWatermarks(doc, issued);

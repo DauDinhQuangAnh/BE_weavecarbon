@@ -227,6 +227,25 @@ describe('shipment export readiness', () => {
 });
 
 describe('simple XLSX export', () => {
+  test('keeps invoice references and precision with a bounded landscape print area', async () => {
+    const snapshot = readySnapshot(25);
+    Object.assign(snapshot.profile, {
+      placeOfDelivery: 'Receiving warehouse', customsDeclarationNo: 'CUSTOMS-REVIEW',
+      vesselName: 'Review Vessel', voyageNumber: 'VOY-REVIEW'
+    });
+    Object.assign(snapshot.lines[0], { quantity: 1.2345, unitPrice: 0.123456 });
+    const service = createExportShipmentService({ database: {} });
+    const zip = await JSZip.loadAsync(await service._buildDocumentBuffer('commercial_invoice', snapshot, false));
+    const xml = await zip.file('xl/worksheets/sheet1.xml').async('string');
+    const workbook = await zip.file('xl/workbook.xml').async('string');
+    for (const value of ['Receiving warehouse', 'CUSTOMS-REVIEW', 'Review Vessel', 'VOY-REVIEW',
+      'PL-1', 'BL-1', 'Consignee', 'SKU-25', '<v>1.2345</v>', '<v>0.123456</v>']) expect(xml).toContain(value);
+    expect(xml).toContain('orientation="landscape" fitToWidth="1" fitToHeight="0"');
+    expect(xml).toContain('<mergeCell ref="B3:O3"/>');
+    expect(workbook).toContain('_xlnm.Print_Titles');
+    expect(workbook).toMatch(/\$A\$1:\$O\$\d+/);
+  });
+
   test('writes every row and an explicit non-issued watermark', async () => {
     const rows = Array.from({ length: 25 }, (_, index) => ({ sku: `SKU-${index + 1}` }));
     const buffer = await buildSimpleXlsx({

@@ -3876,6 +3876,9 @@ class ExportShipmentService {
         'Incoterm': `${p.incotermCode || ''} ${p.incotermLocation || ''} (${p.incotermVersion || 'Incoterms 2020'})`.trim(),
         'Payment terms': p.paymentTerms || '', 'Transport mode': p.transportMode || '',
         'Loading / discharge': `${p.portOfLoading || ''} / ${p.portOfDischarge || ''}`,
+        'Place of delivery': p.placeOfDelivery || '', 'Packing list number': p.packingListNumber || '',
+        'Carrier document no.': p.billOfLadingNo || '', 'Customs declaration no.': p.customsDeclarationNo || '',
+        'Carrier': p.carrierName || '', 'Vessel / flight': p.vesselName || '', 'Voyage': p.voyageNumber || '',
         'Currency': p.currency || '', 'Goods total': goodsTotal, 'Discount': discount,
         'Surcharge': surcharge, 'Freight': freight, 'Insurance': insurance,
         'Invoice total': goodsTotal + freight + insurance + surcharge - discount,
@@ -4022,7 +4025,9 @@ class ExportShipmentService {
     return buildSimpleXlsx({
       title: type.replace(/_/g, ' ').toUpperCase(), sheetName: type,
       metadata, columns: columnsByType[type].map(([key, label]) => ({ key, label })), rows,
-      watermark: 'CONTROLLED COPY - VERIFY STATUS IN WEAVECARBON'
+      watermark: 'CONTROLLED COPY - VERIFY STATUS IN WEAVECARBON',
+      printLayout: type === 'commercial_invoice'
+        ? { widths: [22, 16, 12, 8, 10, 12, 32, 14, 24, 10, 14, 10, 16, 10, 20] } : null
     });
   }
 
