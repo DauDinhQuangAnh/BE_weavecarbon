@@ -14,6 +14,7 @@ const {
   removeEvidenceFile,
   storeEvidenceFile,
 } = require('./fileStorage');
+const aiExtractor = require('./aiExtractor');
 
 // Multer buffers the request so the route can hash it and atomically persist the
 // original file before creating its database record. The durable copy lives in
@@ -183,6 +184,32 @@ router.post('/upload', expensiveOperationLimiter, upload.single('file'), asyncHa
   });
 
   return sendSuccess(res, { status: 201, data: result.data });
+}));
+
+// POST /api/evidence/analyze-file — direct AI OCR/vision analysis of an evidence file before upload
+router.post('/analyze-file', expensiveOperationLimiter, upload.single('file'), asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+
+  const file = req.file;
+  if (!file) {
+    return sendError(res, { status: 400, code: 'FILE_REQUIRED', message: 'No file provided.' });
+  }
+
+  const safeUpload = await assertSafeEvidenceUpload(file);
+  file.originalname = safeUpload.filename;
+  file.mimetype = safeUpload.mime;
+
+  const hintKind = req.body?.hintKind || req.body?.kind || req.body?.evidence_type || null;
+
+  const result = await aiExtractor.analyzeEvidenceFile({
+    buffer: file.buffer,
+    mimeType: file.mimetype,
+    filename: file.originalname,
+    hintKind
+  });
+
+  return sendSuccess(res, { data: result });
 }));
 
 router.post('/:id/rag-ingest', expensiveOperationLimiter, upload.single('file'), asyncHandler(async (req, res) => {

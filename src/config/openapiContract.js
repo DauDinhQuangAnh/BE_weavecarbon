@@ -31,6 +31,7 @@ const PUBLIC_OPERATIONS = new Set([
 const MULTIPART_OPERATIONS = new Set([
   'POST /ai-config/rag/ingest',
   'POST /b2c/analyze-donation-image',
+  'POST /evidence/analyze-file',
   'POST /evidence/upload',
   'POST /evidence/{id}/rag-ingest',
   'POST /export/markets/{market_code}/documents/{document_id}/upload',

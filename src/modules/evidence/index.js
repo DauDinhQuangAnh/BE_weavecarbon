@@ -31,5 +31,8 @@ module.exports = {
   },
   get aiActivityPromotionService() {
     return require('./aiActivityPromotionService').aiActivityPromotionService;
+  },
+  get aiExtractor() {
+    return require('./aiExtractor');
   }
 };

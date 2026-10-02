@@ -38,6 +38,7 @@ describe('evidence compatibility entrypoints', () => {
     expect(operations).toEqual([
       'POST /:id/verify',
       'POST /upload',
+      'POST /analyze-file',
       'POST /:id/rag-ingest',
       'GET /',
       'POST /',
