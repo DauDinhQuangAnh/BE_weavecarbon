@@ -60,10 +60,17 @@ Hãy phân loại trường "detected_kind" thành MỘT trong các giá trị s
 - methodology: Hướng dẫn / phương pháp tính toán phát thải
 - other: Các loại tài liệu khác
 
+Quy tắc trích xuất quan trọng:
+1. "document_title": Phải là tên chi tiết, chuẩn mực của chứng từ (ví dụ: "Hóa đơn GTGT tiền điện EVN Vĩnh Long", "Hóa đơn xăng dầu Petrolimex"). TUYỆT ĐỐI KHÔNG ghi chữ "Chứng từ" chung chung.
+2. "period_start" & "period_end": BẮT BUỘC định dạng chuẩn ISO YYYY-MM-DD (ví dụ: "2018-09-26", "2018-10-19"). Nếu trên hóa đơn ghi dạng ngày Việt Nam "26/09/2018" thì phải đổi sang "2018-09-26".
+3. "billing_period": BẮT BUỘC định dạng YYYY-MM (ví dụ: "2018-10", "2024-05") hoặc null. KHÔNG được cắt ngắn thành "26/09/2".
+4. "kwh_total": Trích xuất chính xác tổng số kWh điện tiêu thụ.
+5. "supplier_name": Ghi đầy đủ tên đơn vị phát hành hoặc công ty điện lực / xăng dầu.
+
 Trả về định dạng JSON thuần túy (không bọc trong markdown, không thêm lời dẫn giải):
 {
   "detected_kind": "loại chứng từ theo danh sách trên",
-  "document_title": "tên tiêu đề chứng từ nhận diện được",
+  "document_title": "tên chi tiết của chứng từ nhận diện được",
   "supplier_name": "tên công ty / đơn vị phát hành hoặc bán hàng (hoặc null)",
   "period_start": "YYYY-MM-DD hoặc null",
   "period_end": "YYYY-MM-DD hoặc null",
@@ -119,16 +126,69 @@ function extractJsonFromText(rawText) {
 }
 
 /**
+ * Normalizes date string into ISO YYYY-MM-DD format.
+ * Handles: DD/MM/YYYY, DD-MM-YYYY, YYYY/MM/DD, YYYY-MM-DD.
+ */
+function normalizeIsoDate(val) {
+  if (!val || typeof val !== 'string') return null;
+  const s = val.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const dmyMatch = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  const ymdMatch = s.match(/^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})$/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = ymdMatch[2].padStart(2, '0');
+    const day = ymdMatch[3].padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return null;
+}
+
+/**
+ * Normalizes billing period into YYYY-MM or YYYY-QX.
+ */
+function normalizeBillingPeriod(val, periodStart) {
+  if (val && typeof val === 'string') {
+    const s = val.trim();
+    if (/^\d{4}-\d{2}$/.test(s)) return s;
+    if (/^\d{4}-Q[1-4]$/i.test(s)) return s.toUpperCase();
+    const myMatch = s.match(/^(\d{1,2})[/.-](\d{4})$/);
+    if (myMatch) {
+      return `${myMatch[2]}-${myMatch[1].padStart(2, '0')}`;
+    }
+    const dmyMatch = s.match(/^\d{1,2}[/.-](\d{1,2})[/.-](\d{4})$/);
+    if (dmyMatch) {
+      return `${dmyMatch[2]}-${dmyMatch[1].padStart(2, '0')}`;
+    }
+  }
+  if (periodStart) {
+    const iso = normalizeIsoDate(periodStart);
+    if (iso) return iso.slice(0, 7);
+  }
+  return null;
+}
+
+const DEFAULT_GEMINI_KEY = 'AIzaSyA5G3BE3y6KeMKB6l-Gv7si9cNM3VDlZJo';
+
+/**
  * Direct Gemini Vision extraction via Google Generative Language REST API.
  */
 async function callGeminiDirect({ buffer, mimeType, filename }) {
-  const apiKey = process.env.GEMINI_API_KEY || (process.env.NODE_ENV === 'test' ? 'test-mock-gemini-key' : '');
+  const apiKey = process.env.GEMINI_API_KEY || (process.env.NODE_ENV === 'test' ? 'test-mock-gemini-key' : DEFAULT_GEMINI_KEY);
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not configured on the server.');
   }
 
-  const model = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview';
+  const modelsToTry = [primaryModel];
+  if (!modelsToTry.includes('gemini-2.5-flash')) modelsToTry.push('gemini-2.5-flash');
+  if (!modelsToTry.includes('gemini-1.5-flash')) modelsToTry.push('gemini-1.5-flash');
 
   const isImage = (mimeType || '').startsWith('image/');
   const isPdf = (mimeType || '').includes('pdf') || (filename || '').toLowerCase().endsWith('.pdf');
@@ -160,27 +220,39 @@ async function callGeminiDirect({ buffer, mimeType, filename }) {
 
   parts.push({ text: PROMPT_TEMPLATE });
 
-  const response = await axios.post(
-    url,
-    {
-      contents: [{ parts }],
-      generationConfig: {
-        temperature: 0.1,
-        responseMimeType: 'application/json'
+  let lastError = null;
+  for (const model of modelsToTry) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const response = await axios.post(
+        url,
+        {
+          contents: [{ parts }],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json'
+          }
+        },
+        { timeout: 35000 }
+      );
+
+      const candidate = response.data?.candidates?.[0];
+      const responseText = candidate?.content?.parts?.[0]?.text;
+      const parsed = extractJsonFromText(responseText);
+
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
       }
-    },
-    { timeout: 35000 }
-  );
-
-  const candidate = response.data?.candidates?.[0];
-  const responseText = candidate?.content?.parts?.[0]?.text;
-  const parsed = extractJsonFromText(responseText);
-
-  if (!parsed || typeof parsed !== 'object') {
-    throw new Error('Gemini API did not return a valid JSON object.');
+    } catch (err) {
+      lastError = err;
+      logger.warn({ model, err: err.message }, '[aiExtractor] Gemini model attempt failed, trying fallback model');
+      if (process.env.NODE_ENV === 'test') {
+        break;
+      }
+    }
   }
 
-  return parsed;
+  throw lastError || new Error('All Gemini Vision model attempts failed to produce valid JSON.');
 }
 
 /**
@@ -261,7 +333,7 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
   let source = 'gemini-vision';
 
   // 1. First attempt: Direct Gemini Vision REST API
-  const geminiApiKey = process.env.GEMINI_API_KEY || (process.env.NODE_ENV === 'test' ? 'test-mock-gemini-key' : '');
+  const geminiApiKey = process.env.GEMINI_API_KEY || (process.env.NODE_ENV === 'test' ? 'test-mock-gemini-key' : DEFAULT_GEMINI_KEY);
   if (geminiApiKey) {
     try {
       rawResult = await callGeminiDirect({ buffer, mimeType, filename });
@@ -317,7 +389,13 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
 
   // Standardize the final payload
   const finalKind = normalizeKind(rawResult.detected_kind || hintKind);
-  const displayTitle = rawResult.document_title || KIND_DISPLAY_NAMES[finalKind] || 'Chứng từ thẩm định';
+  const displayTitle = (rawResult.document_title && rawResult.document_title !== 'Chứng từ')
+    ? rawResult.document_title
+    : (KIND_DISPLAY_NAMES[finalKind] || 'Chứng từ thẩm định');
+
+  const normalizedStart = normalizeIsoDate(rawResult.period_start);
+  const normalizedEnd = normalizeIsoDate(rawResult.period_end);
+  const normalizedBilling = normalizeBillingPeriod(rawResult.billing_period, normalizedStart);
 
   return {
     success: true,
@@ -325,9 +403,9 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
     detected_kind: finalKind,
     document_title: displayTitle,
     supplier_name: rawResult.supplier_name || null,
-    period_start: rawResult.period_start || null,
-    period_end: rawResult.period_end || null,
-    billing_period: rawResult.billing_period || (rawResult.period_start ? String(rawResult.period_start).slice(0, 7) : null),
+    period_start: normalizedStart,
+    period_end: normalizedEnd,
+    billing_period: normalizedBilling,
     facility_name: rawResult.facility_name || 'Main Facility',
     kwh_total: rawResult.kwh_total != null ? Number(rawResult.kwh_total) : null,
     fuel_type: rawResult.fuel_type || 'diesel',
