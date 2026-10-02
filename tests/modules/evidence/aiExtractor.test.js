@@ -1,4 +1,7 @@
 jest.mock('axios');
+jest.mock('../../../src/modules/shared/rag', () => ({
+  callGlobalRagEndpoint: jest.fn().mockRejectedValue(new Error('RAG unavailable in unit test'))
+}));
 const axios = require('axios');
 const {
   analyzeEvidenceFile,

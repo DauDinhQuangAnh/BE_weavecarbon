@@ -122,7 +122,7 @@ function extractJsonFromText(rawText) {
  * Direct Gemini Vision extraction via Google Generative Language REST API.
  */
 async function callGeminiDirect({ buffer, mimeType, filename }) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || (process.env.NODE_ENV === 'test' ? 'test-mock-gemini-key' : '');
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not configured on the server.');
   }
@@ -261,7 +261,8 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
   let source = 'gemini-vision';
 
   // 1. First attempt: Direct Gemini Vision REST API
-  if (process.env.GEMINI_API_KEY) {
+  const geminiApiKey = process.env.GEMINI_API_KEY || (process.env.NODE_ENV === 'test' ? 'test-mock-gemini-key' : '');
+  if (geminiApiKey) {
     try {
       rawResult = await callGeminiDirect({ buffer, mimeType, filename });
       logger.info({ filename, kind: rawResult?.detected_kind }, '[aiExtractor] Direct Gemini Vision analysis succeeded');
