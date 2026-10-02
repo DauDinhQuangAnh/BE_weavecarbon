@@ -10,7 +10,6 @@ const assert = require('assert/strict');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const JSZip = require('jszip');
 
 const { buildExportDocumentPdf } = require('../src/services/exportDocumentPdf');
 const { buildSimpleXlsx } = require('../src/utils/simpleXlsx');
