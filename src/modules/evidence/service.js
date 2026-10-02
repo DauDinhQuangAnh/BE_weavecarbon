@@ -343,6 +343,25 @@ class EvidenceService {
     return true;
   }
 
+  async getEvidenceFile(companyId, evidenceId) {
+    const fileRecord = await this.repository.getStoredFile({ companyId, evidenceId });
+    if (!fileRecord) return null;
+    if (fileRecord.storage_provider === 'local' && fileRecord.storage_key) {
+      try {
+        const filePath = this.storage.resolveStoragePath(fileRecord.storage_key);
+        return {
+          filePath,
+          filename: fileRecord.original_filename || fileRecord.document_name || 'evidence-file',
+          mimeType: fileRecord.mime_type || 'application/octet-stream'
+        };
+      } catch (err) {
+        this.log.warn({ err, evidenceId }, '[evidence] storage path resolution failed');
+        return null;
+      }
+    }
+    return null;
+  }
+
   statusToVerificationLevel(status) {
     const map = {
       uploaded: 0, pending: 0,

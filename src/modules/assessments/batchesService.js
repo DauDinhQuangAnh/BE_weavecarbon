@@ -272,6 +272,10 @@ class BatchesService {
       return null;
     }
 
+    if (checkResult.rows[0].status !== 'draft') {
+      throw new Error('BATCH_NOT_EDITABLE');
+    }
+
     const updates = [];
     const params = [];
     let paramIndex = 1;
@@ -326,11 +330,15 @@ class BatchesService {
     const query = `
       UPDATE product_batches
       SET ${updates.join(', ')}
-      WHERE id = $${paramIndex} AND company_id = $${paramIndex + 1}
+      WHERE id = $${paramIndex} AND company_id = $${paramIndex + 1} AND status = 'draft'
       RETURNING id, status, updated_at
     `;
 
     const result = await this.database.query(query, params);
+
+    if (result.rows.length === 0) {
+      throw new Error('BATCH_NOT_EDITABLE');
+    }
 
     return {
       id: result.rows[0].id,
@@ -374,8 +382,8 @@ class BatchesService {
         throw new Error('BATCH_NOT_FOUND');
       }
 
-      if (batchCheck.rows[0].status === 'published') {
-        throw new Error('BATCH_ALREADY_PUBLISHED');
+      if (batchCheck.rows[0].status !== 'draft') {
+        throw new Error('BATCH_NOT_EDITABLE');
       }
 
       // Check product exists and belongs to company
@@ -438,12 +446,16 @@ class BatchesService {
 
       // Check batch belongs to company
       const batchCheck = await client.query(
-        'SELECT id FROM product_batches WHERE id = $1 AND company_id = $2',
+        'SELECT id, status FROM product_batches WHERE id = $1 AND company_id = $2',
         [batchId, companyId]
       );
 
       if (batchCheck.rows.length === 0) {
         throw new Error('BATCH_NOT_FOUND');
+      }
+
+      if (batchCheck.rows[0].status !== 'draft') {
+        throw new Error('BATCH_NOT_EDITABLE');
       }
 
       // Update item
@@ -514,12 +526,16 @@ class BatchesService {
 
       // Check batch belongs to company
       const batchCheck = await client.query(
-        'SELECT id FROM product_batches WHERE id = $1 AND company_id = $2',
+        'SELECT id, status FROM product_batches WHERE id = $1 AND company_id = $2',
         [batchId, companyId]
       );
 
       if (batchCheck.rows.length === 0) {
         throw new Error('BATCH_NOT_FOUND');
+      }
+
+      if (batchCheck.rows[0].status !== 'draft') {
+        throw new Error('BATCH_NOT_EDITABLE');
       }
 
       // Delete item

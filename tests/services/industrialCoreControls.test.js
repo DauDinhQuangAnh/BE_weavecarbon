@@ -16,6 +16,11 @@ describe('G2 industrial core controls', () => {
     expect(result.value).toMatchObject({ facilityReference: 'FAC-01', countryCode: 'VN', lifecycleStatus: 'active' });
   });
 
+  test('rejects an invalid IANA facility timezone', () => {
+    const result = validateFacilityInput({ facilityReference: 'FAC-01', name: 'Plant One', countryCode: 'VN', timezone: 'Mars/Olympus' });
+    expect(result.errors).toContain('timezone must be a valid IANA time zone.');
+  });
+
   test('rejects activity records without tenant-safe references and provenance', () => {
     const result = validateActivityInput({ activityReference: 'A-1', quantity: 10, sourceKind: 'manual', dataQualityLevel: 'L2' });
     expect(result.errors).toEqual(expect.arrayContaining([

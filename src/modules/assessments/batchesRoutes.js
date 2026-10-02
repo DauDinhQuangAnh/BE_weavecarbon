@@ -57,6 +57,11 @@ function handleBatchError(res, error) {
       code: 'INVALID_BATCH_STATUS_TRANSITION',
       message: 'Cannot add items to published batch'
     },
+    BATCH_NOT_EDITABLE: {
+      status: 409,
+      code: 'BATCH_NOT_EDITABLE',
+      message: 'Only draft batches can be changed'
+    },
     BATCH_EMPTY: {
       status: 400,
       code: 'BATCH_EMPTY',

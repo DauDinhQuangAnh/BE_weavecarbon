@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const pool = require('../config/database');
 const { getCapabilityRegistry, validateFacilityInput, validateActivityInput, validateProcessInput,
   validateMeasurementPointInput, validateActivityReviewInput } = require('./industrialCoreControls');
@@ -5,6 +6,21 @@ const { getCapabilityRegistry, validateFacilityInput, validateActivityInput, val
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function dateTime(value) { return value instanceof Date ? value.toISOString() : value; }
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') {
+    return Object.keys(value).sort().reduce((result, key) => {
+      result[key] = canonicalize(value[key]);
+      return result;
+    }, {});
+  }
+  return value;
+}
+
+function sha256CanonicalJson(value) {
+  return crypto.createHash('sha256').update(JSON.stringify(canonicalize(value))).digest('hex');
+}
 
 class IndustrialCoreService {
   constructor(database = pool) { this.database = database; }
@@ -132,15 +148,28 @@ class IndustrialCoreService {
     if (!(await this._companyExists(companyId))) return null;
     const { value, errors } = validateActivityInput(input);
     if (errors.length) return { blocked: true, code: 'INDUSTRIAL_ACTIVITY_INVALID', message: errors.join(' '), details: errors };
+    if (value.rawPayload.entryMode === 'carbon_operations_manual'
+      && (!value.rawPayload.provenance
+        || sha256CanonicalJson(value.rawPayload.provenance) !== value.sourceSha256)) {
+      return { blocked: true, code: 'INDUSTRIAL_ACTIVITY_PROVENANCE_MISMATCH', message: 'Manual activity provenance does not match sourceSha256.' };
+    }
     const evidenceIds = value.evidenceDocumentIds;
     const references = await Promise.all([
       this.database.query('SELECT id FROM industrial_facility_revisions WHERE id=$1 AND company_id=$2', [value.facilityRevisionId, companyId]),
-      value.processRevisionId ? this.database.query('SELECT id FROM industrial_process_revisions WHERE id=$1 AND company_id=$2', [value.processRevisionId, companyId]) : Promise.resolve({ rows: [{}] }),
-      value.measurementPointRevisionId ? this.database.query('SELECT id FROM industrial_measurement_point_revisions WHERE id=$1 AND company_id=$2', [value.measurementPointRevisionId, companyId]) : Promise.resolve({ rows: [{}] }),
+      value.processRevisionId ? this.database.query('SELECT id,facility_revision_id FROM industrial_process_revisions WHERE id=$1 AND company_id=$2', [value.processRevisionId, companyId]) : Promise.resolve({ rows: [{}] }),
+      value.measurementPointRevisionId ? this.database.query('SELECT id,facility_revision_id,process_revision_id FROM industrial_measurement_point_revisions WHERE id=$1 AND company_id=$2', [value.measurementPointRevisionId, companyId]) : Promise.resolve({ rows: [{}] }),
       evidenceIds.length ? this.database.query('SELECT id FROM evidence_documents WHERE company_id=$1 AND id=ANY($2::uuid[])', [companyId, evidenceIds]) : Promise.resolve({ rows: [] })
     ]);
     if (!references[0].rows[0] || !references[1].rows[0] || !references[2].rows[0] || references[3].rows.length !== evidenceIds.length) {
       return { blocked: true, code: 'INDUSTRIAL_ACTIVITY_REFERENCE_INVALID', message: 'Every facility, process, measurement point and evidence reference must belong to the active company.' };
+    }
+    const process = references[1].rows[0];
+    const point = references[2].rows[0];
+    if ((value.processRevisionId && process.facility_revision_id !== value.facilityRevisionId)
+      || (value.measurementPointRevisionId && point.facility_revision_id !== value.facilityRevisionId)
+      || (value.measurementPointRevisionId
+        && (point.process_revision_id || null) !== (value.processRevisionId || null))) {
+      return { blocked: true, code: 'INDUSTRIAL_ACTIVITY_REFERENCE_MISMATCH', message: 'Process and measurement point must belong to the selected facility and process revision.' };
     }
     const client = await this.database.connect();
     try {
@@ -194,8 +223,11 @@ class IndustrialCoreService {
     const { value, errors } = validateActivityReviewInput(input);
     if (errors.length) return { blocked: true, code: 'INDUSTRIAL_ACTIVITY_REVIEW_INVALID', message: errors.join(' '), details: errors };
     const lineage = await this.getActivityLineage(companyId, activityId); if (!lineage) return null;
-    if (value.decision === 'approved' && (!lineage.evidence.length || lineage.evidence.some((item) => !['locked', 'third_party_verified'].includes(item.status)))) {
-      return { blocked: true, code: 'INDUSTRIAL_ACTIVITY_EVIDENCE_NOT_LOCKED', message: 'Approval requires at least one locked or third-party-verified evidence document.' };
+    if (value.decision === 'approved' && (!lineage.evidence.length || lineage.evidence.some((item) => (
+      !['locked', 'third_party_verified'].includes(item.status)
+      || !/^[a-f0-9]{64}$/i.test(String(item.checksumSha256 || ''))
+    )))) {
+      return { blocked: true, code: 'INDUSTRIAL_ACTIVITY_EVIDENCE_NOT_LOCKED', message: 'Approval requires controlled evidence with a valid SHA-256 checksum.' };
     }
     const reviewerResult = await this.database.query('SELECT id, email, full_name FROM users WHERE id=$1', [userId]);
     const reviewer = reviewerResult.rows[0]; if (!reviewer) return { blocked: true, code: 'INDUSTRIAL_ACTIVITY_REVIEWER_NOT_FOUND', message: 'Named reviewer identity is required.' };

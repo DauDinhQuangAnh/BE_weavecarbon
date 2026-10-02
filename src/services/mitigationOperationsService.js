@@ -44,6 +44,67 @@ class MitigationOperationsService {
       await client.query('COMMIT'); return this.formatInitiative(inserted.rows[0]);
     } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; } finally { client.release(); }
   }
+  async transitionInitiativeLifecycle(companyId, userId, initiativeId, input = {}) {
+    if (!UUID.test(String(initiativeId || ''))) return null;
+    const { lifecycleStatus, reason, notes } = input;
+    const allowed = ['proposed', 'approved_internal', 'in_progress', 'completed', 'cancelled'];
+    if (!allowed.includes(lifecycleStatus)) {
+      return { blocked: true, code: 'MITIGATION_LIFECYCLE_INVALID', message: `lifecycleStatus must be one of: ${allowed.join(', ')}` };
+    }
+    const found = await this.database.query('SELECT * FROM mitigation_initiative_revisions WHERE id=$1 AND company_id=$2', [initiativeId, companyId]);
+    const initiative = found.rows[0];
+    if (!initiative) return null;
+
+    const client = await this.database.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`${companyId}:mitigation:${initiative.initiative_reference}`]);
+      const next = await client.query('SELECT COALESCE(MAX(revision),0)+1 AS revision FROM mitigation_initiative_revisions WHERE company_id=$1 AND initiative_reference=$2', [companyId, initiative.initiative_reference]);
+      const nextRev = Number(next.rows[0].revision);
+
+      const assumptions = { ...(initiative.assumptions || {}), transitionReason: reason || null, transitionNotes: notes || null };
+      const evidence = initiative.evidence_snapshot || [];
+      const toDateStr = (d) => {
+        if (!d) return '';
+        if (typeof d === 'string') return d.slice(0, 10);
+        if (d.toISOString) return d.toISOString().split('T')[0];
+        return String(d).slice(0, 10);
+      };
+      const updatedPayload = {
+        initiativeReference: initiative.initiative_reference,
+        facilityRevisionId: initiative.facility_revision_id,
+        title: initiative.title,
+        lifecycleStatus,
+        ownerName: initiative.owner_name,
+        baselineYear: Number(initiative.baseline_year),
+        baselineInventoryId: initiative.baseline_inventory_id,
+        targetReductionTco2e: Number(initiative.target_reduction_tco2e),
+        plannedStart: toDateStr(initiative.planned_start),
+        plannedEnd: toDateStr(initiative.planned_end),
+        methodology: initiative.methodology,
+        assumptions,
+        evidenceDocumentIds: evidence.map((e) => e.id),
+        evidenceRole: 'methodology'
+      };
+      const newSha256 = sha(updatedPayload);
+
+      const inserted = await client.query(`INSERT INTO mitigation_initiative_revisions
+        (company_id,facility_revision_id,initiative_reference,revision,title,lifecycle_status,owner_name,baseline_year,baseline_inventory_id,target_reduction_tco2e,planned_start,planned_end,methodology,assumptions,evidence_snapshot,initiative_sha256,created_by)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17) RETURNING *`,
+        [companyId, initiative.facility_revision_id, initiative.initiative_reference, nextRev, initiative.title, lifecycleStatus, initiative.owner_name, initiative.baseline_year, initiative.baseline_inventory_id, initiative.target_reduction_tco2e, initiative.planned_start, initiative.planned_end, JSON.stringify(initiative.methodology), JSON.stringify(assumptions), JSON.stringify(evidence), newSha256, userId]);
+
+      for (const item of evidence) {
+        await client.query(`INSERT INTO mitigation_initiative_evidence (company_id,initiative_id,evidence_document_id,evidence_role,created_by) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`, [companyId, inserted.rows[0].id, item.id, 'methodology', userId]);
+      }
+      await client.query('COMMIT');
+      return this.formatInitiative(inserted.rows[0]);
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
   async listScenarios(companyId) {
     if (!(await this.companyExists(companyId))) return null;
     const result = await this.database.query(`SELECT s.*, i.initiative_reference, i.title AS initiative_title FROM mitigation_scenario_revisions s

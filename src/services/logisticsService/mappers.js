@@ -33,6 +33,7 @@ const mapShipmentSummaryRow = (row) => ({
   actualArrivalAt: row.actual_arrival_at,
   pendingUntil: row.pending_until,
   simulationEnabled: row.simulation_enabled === true,
+  primaryTransportMode: row.primary_transport_mode || null,
   legsCount: Number.parseInt(row.legs_count || 0, 10),
   productsCount: Number.parseInt(row.products_count || 0, 10),
   createdAt: row.created_at,

@@ -15,4 +15,34 @@ describe('G2-04 mitigation operations service',()=>{
     const result=await new MitigationOperationsService(database).createPosition(id(7),id(8),{facilityRevisionId:facilityId,corporateInventoryId:inventoryId,reportingYear:2026,allocationIds:[allocationId],scenarioIds:[scenarioId]});
     expect(insertValues[6]).toBe(1);expect(result.grossEmissionsTco2e).toBe(1);expect(result.projectedPositionTco2e).toBe(0.4);expect(result.readinessStatus).toBe('ready_for_internal_review');
   });
+
+  test('transitions initiative lifecycle creating a new revision', async () => {
+    const initId = id(1), companyId = id(2), userId = id(3), facId = id(4);
+    const mockClient = {
+      query: jest.fn(async (sql) => {
+        if (sql === 'BEGIN' || sql.includes('pg_advisory_xact_lock') || sql === 'COMMIT') return {};
+        if (sql.includes('SELECT COALESCE(MAX(revision),0)+1')) return { rows: [{ revision: 2 }] };
+        if (sql.includes('INSERT INTO mitigation_initiative_revisions')) {
+          return { rows: [{ id: id(9), facility_revision_id: facId, initiative_reference: 'INIT-1', revision: 2, title: 'Energy Efficiency', lifecycle_status: 'in_progress', owner_name: 'Lead', baseline_year: 2025, target_reduction_tco2e: 10, planned_start: '2026-01-01', planned_end: '2027-12-31', methodology: {}, assumptions: {}, evidence_snapshot: [], initiative_sha256: 'b'.repeat(64), created_at: new Date().toISOString() }] };
+        }
+        if (sql.includes('INSERT INTO mitigation_initiative_evidence')) return {};
+        throw new Error(`Unexpected client SQL: ${sql}`);
+      }),
+      release: jest.fn()
+    };
+    const database = {
+      query: jest.fn(async (sql) => {
+        if (sql.includes('FROM mitigation_initiative_revisions WHERE id=$1')) {
+          return { rows: [{ id: initId, company_id: companyId, facility_revision_id: facId, initiative_reference: 'INIT-1', revision: 1, title: 'Energy Efficiency', lifecycle_status: 'proposed', owner_name: 'Lead', baseline_year: 2025, target_reduction_tco2e: 10, planned_start: '2026-01-01', planned_end: '2027-12-31', methodology: {}, assumptions: {}, evidence_snapshot: [] }] };
+        }
+        throw new Error(`Unexpected SQL: ${sql}`);
+      }),
+      connect: jest.fn(async () => mockClient)
+    };
+    const service = new MitigationOperationsService(database);
+    const result = await service.transitionInitiativeLifecycle(companyId, userId, initId, { lifecycleStatus: 'in_progress', reason: 'Project started', notes: 'Stage 1 rollout' });
+    expect(result.lifecycleStatus).toBe('in_progress');
+    expect(result.revision).toBe(2);
+    expect(mockClient.release).toHaveBeenCalled();
+  });
 });

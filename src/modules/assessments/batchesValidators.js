@@ -16,8 +16,8 @@ const listBatchesValidation = [
 
   query('status')
     .optional()
-    .isIn(['draft', 'active', 'archived', 'all'])
-    .withMessage('Status must be draft, active, archived, or all'),
+    .isIn(['draft', 'published', 'archived', 'all'])
+    .withMessage('Status must be draft, published, archived, or all'),
 
   query('page')
     .optional()

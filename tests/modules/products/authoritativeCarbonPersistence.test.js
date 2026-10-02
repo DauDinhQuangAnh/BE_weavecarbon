@@ -189,6 +189,11 @@ describe('product assessment authoritative carbon persistence', () => {
       String(sql).includes('SET total_co2e = $1')
     );
     expect(carbonUpdate[1].slice(0, 6)).toEqual([4.577, 2.864, 1.591, 0.106, 0.017, 77]);
+    const statusUpdate = client.query.mock.calls.find(([sql]) =>
+      String(sql).includes('SET status = $1')
+    );
+    expect(statusUpdate[0]).toContain('company_id = $3');
+    expect(statusUpdate[1]).toEqual(['active', 'product-1', 'company-1']);
     expect(response.data.carbonResults).toEqual(authoritativeResult);
     expect(response.data.shipmentCreationSkipped).toBe(true);
     expect(client.query).toHaveBeenCalledWith('COMMIT');

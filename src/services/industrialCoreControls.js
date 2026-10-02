@@ -42,6 +42,15 @@ const CAPABILITY_REGISTRY = Object.freeze({
 function text(value) { return String(value ?? '').trim(); }
 function sha256(value) { return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
 
+function isValidTimezone(value) {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).format();
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
 function getCapabilityRegistry() {
   return { ...CAPABILITY_REGISTRY, manifestSha256: sha256(CAPABILITY_REGISTRY) };
 }
@@ -59,6 +68,7 @@ function validateFacilityInput(input = {}) {
   if (!value.facilityReference || value.facilityReference.length > 120) errors.push('facilityReference is required and must not exceed 120 characters.');
   if (!value.name || value.name.length > 240) errors.push('name is required and must not exceed 240 characters.');
   if (!/^[A-Z]{2}$/.test(value.countryCode)) errors.push('countryCode must be a two-letter uppercase ISO code.');
+  if (!isValidTimezone(value.timezone)) errors.push('timezone must be a valid IANA time zone.');
   if (!['planned', 'active', 'inactive'].includes(value.lifecycleStatus)) errors.push('lifecycleStatus is invalid.');
   return { value, errors };
 }

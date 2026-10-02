@@ -48,6 +48,15 @@ function handleLogisticsError(res, error) {
     return true;
   }
 
+  if (error.code === 'SHIPMENT_NOT_EDITABLE' || error.code === 'SHIPMENT_STATUS_CONFLICT') {
+    sendError(res, {
+      status: error.statusCode || 409,
+      code: error.code,
+      message: error.message
+    });
+    return true;
+  }
+
   const mappedError = {
     PRODUCT_NOT_IN_COMPANY: {
       status: 400,
@@ -180,28 +189,35 @@ router.patch('/shipments/:id', updateShipmentValidation, validate, asyncHandler(
     return;
   }
 
-  const result = await logisticsService.updateShipment(req.params.id, companyId, req.body);
-  if (!result) {
-    return sendError(res, {
-      status: 404,
-      code: 'SHIPMENT_NOT_FOUND',
-      message: 'Shipment not found'
+  try {
+    const result = await logisticsService.updateShipment(req.params.id, companyId, req.body);
+    if (!result) {
+      return sendError(res, {
+        status: 404,
+        code: 'SHIPMENT_NOT_FOUND',
+        message: 'Shipment not found'
+      });
+    }
+    await logAuditTrail({
+      companyId,
+      userId: req.userId,
+      dataGroup: 'logistics',
+      changedField: 'shipment.updated',
+      oldValue: req.params.id,
+      newValue: result?.id || req.params.id,
+      reason: 'shipment.update',
+      notes: `Updated shipment ${result?.referenceNumber || result?.reference_number || req.params.id}`
     });
-  }
-  await logAuditTrail({
-    companyId,
-    userId: req.userId,
-    dataGroup: 'logistics',
-    changedField: 'shipment.updated',
-    oldValue: req.params.id,
-    newValue: result?.id || req.params.id,
-    reason: 'shipment.update',
-    notes: `Updated shipment ${result?.referenceNumber || result?.reference_number || req.params.id}`
-  });
 
-  return sendSuccess(res, {
-    data: result
-  });
+    return sendSuccess(res, {
+      data: result
+    });
+  } catch (error) {
+    if (handleLogisticsError(res, error)) {
+      return;
+    }
+    throw error;
+  }
 }));
 
 router.patch(

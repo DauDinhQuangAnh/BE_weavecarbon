@@ -890,11 +890,15 @@ class ProductsService {
             const updateQuery = `
                 UPDATE products
                 SET status = $1, updated_at = NOW()
-                WHERE id = $2
+                WHERE id = $2 AND company_id = $3
                 RETURNING status, updated_at
             `;
 
-            const updateResult = await client.query(updateQuery, [dbNewStatus, productId]);
+            const updateResult = await client.query(updateQuery, [dbNewStatus, productId, companyId]);
+
+            if (updateResult.rows.length === 0) {
+                throw new Error('PRODUCT_NOT_FOUND');
+            }
 
             // Auto-create shipment when publishing product
             let shipmentMeta = {

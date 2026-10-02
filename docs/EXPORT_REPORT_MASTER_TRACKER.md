@@ -285,6 +285,10 @@ specific optional signature and instruction rules; staging review against one ac
 totals and currency reconcile; no placeholder; shipment over 20 lines works; a trade operator manually signs off one
 real VN-to-EU pilot; only then mark `READY_TO_ISSUE`.
 
+**Workspace recheck (2026-09-29, no deployment):** the controlled R01 path is `ShipmentExportPortal` -> `POST /api/export/shipments/{shipmentId}/documents/commercial_invoice/generate` -> named company-admin review -> immutable issue -> report download. Focused backend tests `exportShipmentService.test.js` and `exportDocumentPdf.test.js` passed 38/38; focused frontend `shipmentExportApi.test.ts` passed 1/1. This proves the source-level controlled path, not a browser, database, staging or real-invoice acceptance.
+
+The older `ExportConfigurationPortalV2` still has a separate configuration-card path: it generates XLSX in the browser and, in demo mode, downloads CSV sample data; outside demo it calls retired legacy document endpoints. Do not treat this path as R01 issuance. Product owners need to decide whether it remains an explicitly labelled demo preview or redirects users to the controlled shipment path before a real operator pilot.
+
 ### R02 — Packing List
 
 **Applicability/format:** commonly required with invoice and transport documents; no single EU visual template.

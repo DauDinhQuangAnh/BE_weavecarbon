@@ -51,6 +51,7 @@ describe('evidence compatibility entrypoints', () => {
       'GET /:id/activity-candidates',
       'POST /:id/activity-candidates/:candidateId/promote',
       'GET /product/:product_id',
+      'GET /:id/download',
       'DELETE /:id'
     ]);
   });

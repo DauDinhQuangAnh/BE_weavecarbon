@@ -406,10 +406,31 @@ router.get('/product/:product_id', asyncHandler(async (req, res) => {
   return sendSuccess(res, { data: { items: result.items, total: result.total } });
 }));
 
+// GET /api/evidence/:id/download — download the stored original binary file
+router.get('/:id/download', asyncHandler(async (req, res) => {
+  const companyId = requireCompany(req, res);
+  if (!companyId) return;
+
+  const fileInfo = await evidenceService.getEvidenceFile(companyId, req.params.id);
+  if (!fileInfo) {
+    return sendError(res, { status: 404, code: 'FILE_NOT_FOUND', message: 'Evidence file not found.' });
+  }
+
+  return res.download(fileInfo.filePath, fileInfo.filename);
+}));
+
 // DELETE /api/evidence/:id — cascade deletes linked electricity & fuel invoices
 router.delete('/:id', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
+
+  if (req.companyRole === 'viewer') {
+    return sendError(res, {
+      status: 403,
+      code: 'FORBIDDEN',
+      message: 'Viewers are not permitted to delete evidence documents.'
+    });
+  }
 
   const deleted = await evidenceService.deleteEvidence(companyId, req.params.id);
   if (!deleted) {

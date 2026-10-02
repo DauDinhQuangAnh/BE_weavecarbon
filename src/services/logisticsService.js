@@ -119,6 +119,16 @@ const getShipmentForUpdate = async (client, shipmentId, companyId) => {
   return result.rows[0] || null;
 };
 
+const assertShipmentEditable = (shipment) => {
+  if (shipment.status !== 'pending') {
+    throw createBusinessError(
+      'SHIPMENT_NOT_EDITABLE',
+      'Only pending shipments can be changed.',
+      409
+    );
+  }
+};
+
 /**
  * List shipments for a company with filters
  */
@@ -167,7 +177,9 @@ async function listShipments(companyId, filters = {}) {
         s.created_at,
         s.updated_at,
         COUNT(DISTINCT sl.id) AS legs_count,
-        COUNT(DISTINCT sp.id) AS products_count
+        COUNT(DISTINCT sp.id) AS products_count,
+        (ARRAY_AGG(sl.transport_mode ORDER BY sl.leg_order)
+          FILTER (WHERE sl.id IS NOT NULL))[1] AS primary_transport_mode
       FROM shipments s
       LEFT JOIN shipment_legs sl ON s.id = sl.shipment_id
       LEFT JOIN shipment_products sp ON s.id = sp.shipment_id
@@ -580,6 +592,8 @@ async function updateShipment(shipmentId, companyId, updates) {
       return null;
     }
 
+    assertShipmentEditable(shipment);
+
     const setClauses = [];
     const params = [shipmentId, companyId];
     let paramIndex = 3;
@@ -812,7 +826,7 @@ async function updateShipmentStatus(shipmentId, companyId, newStatus, actualArri
           SET
             status = 'cancelled',
             updated_at = NOW()
-        WHERE id = $1 AND company_id = $2
+        WHERE id = $1 AND company_id = $2 AND status = 'pending'
         RETURNING
           id,
           reference_number,
@@ -828,6 +842,14 @@ async function updateShipmentStatus(shipmentId, companyId, newStatus, actualArri
         `,
         [shipmentId, companyId]
       );
+
+      if (cancelledResult.rows.length === 0) {
+        throw createBusinessError(
+          'SHIPMENT_STATUS_CONFLICT',
+          'Shipment status changed before this request completed.',
+          409
+        );
+      }
 
       return mapShipmentMutationRow(cancelledResult.rows[0]);
     }
@@ -861,7 +883,7 @@ async function updateShipmentStatus(shipmentId, companyId, newStatus, actualArri
           actual_arrival = $2,
           actual_arrival_at = $3,
           updated_at = NOW()
-        WHERE id = $4 AND company_id = $5
+        WHERE id = $4 AND company_id = $5 AND status = $6
         RETURNING
           id,
           reference_number,
@@ -880,9 +902,18 @@ async function updateShipmentStatus(shipmentId, companyId, newStatus, actualArri
         resolvedActualArrival,
         resolvedActualArrivalAt,
         shipmentId,
-        companyId
+        companyId,
+        currentStatus
       ]
     );
+
+    if (result.rows.length === 0) {
+      throw createBusinessError(
+        'SHIPMENT_STATUS_CONFLICT',
+        'Shipment status changed before this request completed.',
+        409
+      );
+    }
 
     return mapShipmentMutationRow(result.rows[0]);
   } catch (error) {
@@ -906,6 +937,8 @@ async function replaceShipmentLegs(shipmentId, companyId, legs) {
     if (!shipment) {
       throw new Error('SHIPMENT_NOT_FOUND');
     }
+
+    assertShipmentEditable(shipment);
 
     const legOrders = legs.map((leg) => leg.leg_order).sort((a, b) => a - b);
     for (let index = 0; index < legOrders.length; index += 1) {
@@ -985,7 +1018,7 @@ async function replaceShipmentLegs(shipmentId, companyId, legs) {
           estimated_arrival_at = $5,
           estimated_arrival = $6,
           updated_at = NOW()
-        WHERE id = $7
+        WHERE id = $7 AND company_id = $8
         RETURNING
           id,
           reference_number,
@@ -1008,7 +1041,8 @@ async function replaceShipmentLegs(shipmentId, companyId, legs) {
         simulation.pending_until,
         simulation.estimated_arrival_at,
         simulation.simulation_enabled ? simulation.estimated_arrival : null,
-        shipmentId
+        shipmentId,
+        companyId
       ]
     );
 
@@ -1046,14 +1080,13 @@ async function replaceShipmentProducts(shipmentId, companyId, products) {
   try {
     await client.query('BEGIN');
 
-    const shipmentCheck = await client.query(
-      'SELECT id FROM shipments WHERE id = $1 AND company_id = $2',
-      [shipmentId, companyId]
-    );
+    const shipment = await getShipmentForUpdate(client, shipmentId, companyId);
 
-    if (shipmentCheck.rows.length === 0) {
+    if (!shipment) {
       throw new Error('SHIPMENT_NOT_FOUND');
     }
+
+    assertShipmentEditable(shipment);
 
     const productIds = products.map((product) => product.product_id);
     const productCheck = await client.query(
@@ -1104,7 +1137,7 @@ async function replaceShipmentProducts(shipmentId, companyId, products) {
           total_weight_kg = $1,
           total_co2e = $2,
           updated_at = NOW()
-        WHERE id = $3
+        WHERE id = $3 AND company_id = $4
         RETURNING
           id,
           reference_number,
@@ -1120,7 +1153,7 @@ async function replaceShipmentProducts(shipmentId, companyId, products) {
           total_weight_kg,
           total_co2e
       `,
-      [totalWeightKg, totalCo2e, shipmentId]
+      [totalWeightKg, totalCo2e, shipmentId, companyId]
     );
 
     await client.query('COMMIT');
@@ -1156,7 +1189,7 @@ async function getLogisticsOverview(companyId) {
           COUNT(*) FILTER (WHERE status = 'in_transit') AS in_transit,
           COUNT(*) FILTER (WHERE status = 'delivered') AS delivered,
           COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled,
-          COALESCE(SUM(total_co2e), 0) AS total_co2e
+          COALESCE(SUM(total_co2e) FILTER (WHERE status <> 'cancelled'), 0) AS total_co2e
         FROM shipments
         WHERE company_id = $1
       `,

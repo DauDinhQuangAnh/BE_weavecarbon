@@ -52,6 +52,7 @@ describe('mapShipmentSummaryRow', () => {
             actual_arrival_at: null,
             pending_until: null,
             simulation_enabled: true,
+            primary_transport_mode: 'sea',
             legs_count: '2',
             products_count: '1',
             created_at: '2026-01-01',
@@ -65,6 +66,7 @@ describe('mapShipmentSummaryRow', () => {
         expect(result.totalWeightKg).toBe(500);
         expect(result.totalCo2e).toBe(120.5);
         expect(result.simulationEnabled).toBe(true);
+        expect(result.primaryTransportMode).toBe('sea');
         expect(result.legsCount).toBe(2);
         expect(result.productsCount).toBe(1);
     });

@@ -112,6 +112,70 @@ describe('BatchesService', () => {
     expect(dependencies.client.release).toHaveBeenCalledTimes(1);
   });
 
+  test.each(['published', 'archived'])(
+    'rejects adding products to a %s batch',
+    async (status) => {
+      const dependencies = createDependencies();
+      dependencies.client.query.mockImplementation(async (sql) => {
+        if (String(sql).includes('SELECT id, status FROM product_batches')) {
+          return { rows: [{ id: 'batch-1', status }] };
+        }
+        return { rows: [] };
+      });
+      const service = createBatchesService(dependencies);
+
+      await expect(service.addBatchItem('batch-1', 'company-1', {
+        product_id: 'product-1',
+        quantity: 1
+      })).rejects.toThrow('BATCH_NOT_EDITABLE');
+
+      expect(dependencies.client.query).toHaveBeenCalledWith('ROLLBACK');
+      expect(dependencies.client.query).not.toHaveBeenCalledWith('COMMIT');
+      expect(dependencies.client.release).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test.each([
+    ['update', (service) => service.updateBatchItem(
+      'batch-1',
+      'company-1',
+      'product-1',
+      { quantity: 2 }
+    )],
+    ['remove', (service) => service.deleteBatchItem(
+      'batch-1',
+      'company-1',
+      'product-1'
+    )]
+  ])('rejects attempts to %s items in a published batch', async (_operation, execute) => {
+    const dependencies = createDependencies();
+    dependencies.client.query.mockImplementation(async (sql) => {
+      if (String(sql).includes('SELECT id, status FROM product_batches')) {
+        return { rows: [{ id: 'batch-1', status: 'published' }] };
+      }
+      return { rows: [] };
+    });
+    const service = createBatchesService(dependencies);
+
+    await expect(execute(service)).rejects.toThrow('BATCH_NOT_EDITABLE');
+    expect(dependencies.client.query).toHaveBeenCalledWith('ROLLBACK');
+    expect(dependencies.client.query).not.toHaveBeenCalledWith('COMMIT');
+    expect(dependencies.client.release).toHaveBeenCalledTimes(1);
+  });
+
+  test('rejects metadata changes after a batch leaves draft state', async () => {
+    const dependencies = createDependencies();
+    dependencies.database.query.mockResolvedValueOnce({
+      rows: [{ id: 'batch-1', status: 'published' }]
+    });
+    const service = createBatchesService(dependencies);
+
+    await expect(service.updateBatch('batch-1', 'company-1', {
+      name: 'Changed name'
+    })).rejects.toThrow('BATCH_NOT_EDITABLE');
+    expect(dependencies.database.query).toHaveBeenCalledTimes(1);
+  });
+
   test('rolls back publish when domestic compliance rejects a product', async () => {
     const dependencies = createDependencies();
     const complianceError = Object.assign(new Error('Missing documents'), {
