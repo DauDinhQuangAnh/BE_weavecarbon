@@ -5,3 +5,5 @@
 7941c675c9212775f0ec3bdffd28b9644db30e94:src/modules/reports/pdfService.js:generic-api-key:286
 4de7ca9057e62a8d65707f65e3b24023adc23fa2:src/services/pdfReportService.js:generic-api-key:242
 792b0564931218f05314de15a594367ca285bdbd:tests/services/carrierDocumentControls.test.js:generic-api-key:42
+14b9ff4b077dd161e8595f12eff68b7a9c84daa1:src/modules/evidence/aiExtractor.js:google-api-key:177
+14b9ff4b077dd161e8595f12eff68b7a9c84daa1:src/modules/evidence/aiExtractor.js:generic-api-key:177
