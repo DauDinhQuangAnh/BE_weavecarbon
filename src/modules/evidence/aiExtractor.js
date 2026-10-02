@@ -331,8 +331,16 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
     kwh_total: rawResult.kwh_total != null ? Number(rawResult.kwh_total) : null,
     fuel_type: rawResult.fuel_type || 'diesel',
     fuel_liters: rawResult.fuel_liters != null ? Number(rawResult.fuel_liters) : null,
-    emission_factor: rawResult.emission_factor != null ? Number(rawResult.emission_factor) : (finalKind === 'electricity_bill' ? 0.4290 : null),
-    emission_factor_source: rawResult.emission_factor_source || (finalKind === 'electricity_bill' ? 'VN Ministry of Natural Resources 2024' : null),
+    emission_factor: rawResult.emission_factor != null
+      ? Number(rawResult.emission_factor)
+      : (finalKind === 'electricity_bill'
+          ? 0.4290
+          : (finalKind === 'fuel_receipt'
+              ? (rawResult.fuel_type === 'petrol' ? 2.352 : (rawResult.fuel_type === 'lpg' ? 1.629 : 2.688))
+              : null)),
+    emission_factor_source: rawResult.emission_factor_source || (finalKind === 'electricity_bill'
+      ? 'VN Ministry of Natural Resources 2024'
+      : (finalKind === 'fuel_receipt' ? 'IPCC 2006 / Vietnam Technical Guidelines' : null)),
     total_amount: rawResult.total_amount != null ? Number(rawResult.total_amount) : null,
     currency: rawResult.currency || 'VND',
     meter_number: rawResult.meter_number || null,
