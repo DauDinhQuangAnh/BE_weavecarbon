@@ -1,0 +1,60 @@
+TỔNG CÔNG TY ĐIỆN LỰC MIỀN BẮC
+CÔNG TY ĐIỆN LỰC BẮC NINH
+Địa chỉ: Số 1 đường Lý Thái Tổ, TP Bắc Ninh, Tỉnh Bắc Ninh
+Mã số thuế: 0100100417-024
+Điện thoại hỗ trợ: 19006769
+
+HÓA ĐƠN GIÁ TRỊ GIA TĂNG (TIỀN ĐIỆN)
+(Hóa đơn điện tử theo Thông tư 78/2021/TT-BTC)
+Ký hiệu: 1C23TMB
+Số hóa đơn: 0048291
+Ngày lập: 05/11/2023
+
+Tên khách hàng: CÔNG TY TNHH DỆT MAY WEAVECARBON VIỆT NAM
+Địa chỉ: Lô CN-08, KCN Quế Võ, TP Bắc Ninh
+Mã số thuế: 2300987123
+Mã khách hàng: PD08000291024
+Mã trạm biến áp: TBA-QUEVO-04
+Số công tơ: EM-8923014-BN
+Cấp điện áp: Trung thế 22kV - Mục đích: Sản xuất công nghiệp (3 giá)
+
+Kỳ hóa đơn: Tháng 10 năm 2023
+Thời gian sử dụng: Từ ngày 01/10/2023 đến ngày 31/10/2023
+
+CHI TIẾT ĐIỆN NĂNG TIÊU THỤ:
+1. Điện năng giờ Bình thường (BT):
+   - Chỉ số mới: 148.250 kWh
+   - Chỉ số cũ: 122.850 kWh
+   - Hệ số nhân: 1.0
+   - Sản lượng tiêu thụ: 25.400 kWh
+   - Đơn giá: 1.685 đ/kWh
+   - Thành tiền: 42.799.000 đ
+
+2. Điện năng giờ Cao điểm (CĐ):
+   - Chỉ số mới: 45.100 kWh
+   - Chỉ số cũ: 38.300 kWh
+   - Hệ số nhân: 1.0
+   - Sản lượng tiêu thụ: 6.800 kWh
+   - Đơn giá: 3.072 đ/kWh
+   - Thành tiền: 20.889.600 đ
+
+3. Điện năng giờ Thấp điểm (TĐ):
+   - Chỉ số mới: 78.900 kWh
+   - Chỉ số cũ: 66.600 kWh
+   - Hệ số nhân: 1.0
+   - Sản lượng tiêu thụ: 12.300 kWh
+   - Đơn giá: 1.100 đ/kWh
+   - Thành tiền: 13.530.000 đ
+
+4. Điện năng phản kháng (kvarh): 8.450 kvarh (Cos φ = 0.94 - Không phạt công suất vô công)
+
+TỔNG HỢP TIÊU THỤ VÀ THANH TOÁN:
+- Tổng sản lượng điện năng hữu công: 44.500 kWh
+- Tiền điện chưa có thuế GTGT: 77.218.600 đ
+- Thuế suất GTGT: 8%
+- Tiền thuế GTGT: 6.177.488 đ
+- Tổng cộng tiền thanh toán (đã bao gồm thuế): 83.396.088 đ
+(Bằng chữ: Tám mươi ba triệu ba trăm chín mươi sáu nghìn không trăm tám mươi tám đồng)
+
+Người ký: Công ty Điện lực Bắc Ninh
+Mã tra cứu hóa đơn: EVN-BN-2023-1C23TMB-0048291

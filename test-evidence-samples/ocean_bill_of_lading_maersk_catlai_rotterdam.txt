@@ -1,0 +1,54 @@
+MAERSK LINE - OCEAN BILL OF LADING FOR MULTIMODAL TRANSPORT
+B/L Number: MSK98234120
+Booking Reference: BKG-SGN-2024-88910
+Carrier: Maersk Line A/S (Copenhagen, Denmark)
+Carrier Agent: Maersk Direct Vietnam Ltd, Bitexco Financial Tower, Ho Chi Minh City, Vietnam
+
+SHIPPER / EXPORTER:
+WEAVECARBON TEXTILE & GARMENT CORPORATION
+Lot 4, Tan Binh Industrial Park, Tan Phu District, Ho Chi Minh City, Vietnam
+Tax ID: 0312456789
+
+CONSIGNEE:
+EURO-NORDIC APPAREL LOGISTICS B.V.
+Maasvlakte West 402, 3199 LK Rotterdam, The Netherlands
+EORI Number: NL820491823B01
+
+NOTIFY PARTY:
+SCHENKER LOGISTICS ROTTERDAM PORT TERMINAL
+Haven 9800, Rotterdam Port, The Netherlands
+
+VESSEL & VOYAGE:
+Vessel Name: MAERSK MC-KINNEY MOLLER
+Voyage Number: 2403W
+Flag: Denmark | IMO Number: 9619907
+
+ROUTING & PORTS:
+Port of Loading (POL): Cat Lai Port Terminal, Ho Chi Minh City, Vietnam (VNCLI)
+Port of Discharge (POD): Port of Rotterdam, APM Terminals Maasvlakte II, Netherlands (NLRTM)
+Place of Delivery: Rotterdam Central Distribution Hub
+Estimated Departure Date: 2024-03-20
+Estimated Arrival Date: 2024-04-18
+Estimated Transit Distance: 8,950 Nautical Miles (16,575 km)
+
+PARTICULARS FURNISHED BY SHIPPER:
+Container Number: MSKU9023412
+Seal Number: ML-VN984120
+Container Type: 1 x 40' High Cube Dry Van (40'HC - 2.0 TEU)
+Description of Goods:
+550 Master Cartons containing 27,500 pcs Finished Polo Shirts & Knit Garments
+Harmonized Tariff System Code (HS Code): 6109.10.00
+Gross Weight: 18,450.00 KGS (18.45 Metric Tons)
+Net Weight: 16,800.00 KGS
+Measurement / Volume: 68.50 CBM (Cubic Meters)
+Temperature / Ventilation: Ambient / Closed
+
+FREIGHT & EMISSION DISCLOSURE:
+Freight Term: Freight Prepaid
+Clean On Board Date: 2024-03-20
+Maritime Emission Category: Ocean Freight Scope 3 Category 4 (GLEC Framework / IMO DCS)
+Fuel Consumed Type: VLSFO / Bio-LNG dual fuel blend
+Calculated Logistics Footprint: 2.18 tCO2e (0.118 kgCO2e/ton-km)
+
+Signed for the Carrier:
+MAERSK VIETNAM AS AGENT FOR MAERSK A/S

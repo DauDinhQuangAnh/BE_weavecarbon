@@ -1,0 +1,26 @@
+BOM Specification Sheet - Bill of Materials (Dệt may xuất khẩu WeaveCarbon)
+Document Type: Bill of Materials (BOM)
+Style Number: POLO-MEN-SS2024-ORGANIC
+Product Name: Áo thun Polo Nam Cotton Organic Pique 220gsm
+Buyer / Brand: Nordic EcoWear Sweden AB
+Factory / Facility: WeaveCarbon Garment Plant 2 - Hai Duong
+Season: Spring/Summer 2024
+Issue Date: 2024-02-15
+Total Order Quantity: 20000 pcs
+
+Item No,Category,Component Name,Material Composition,Supplier / Origin,Unit Consumption (per pc),Unit,Wastage Rate (%),Gross Consumption,Embodied Carbon Factor (kgCO2e/kg),Notes
+1,Main Fabric,Vải chính Pique thân áo,100% Organic Cotton GOTS Certified,Tan Binh Textile Mills Vietnam,0.245,kg,5.0,0.257,5.85,Oeko-Tex 100 Class 1
+2,Rib Collar,Vải dệt bo cổ áo,95% Organic Cotton / 5% Spandex,Viet Thang Jacquard,0.038,kg,4.0,0.0395,6.10,Dệt jacquard flat-knit
+3,Rib Cuff,Vải bo tay áo,95% Organic Cotton / 5% Spandex,Viet Thang Jacquard,0.022,kg,4.0,0.0229,6.10,Bo tay co giãn
+4,Sewing Thread,Chỉ may 100% Polyester Tkt 120,Recycled PET Polyester (rPET),Coats Phong Phu,140,meter,8.0,151.2,3.40,GRS Certified rPET thread
+5,Buttons,Nút áo 2 lỗ 18L,Nút vỏ sò tự nhiên (Mother of Pearl),Hai Nam Button Co,3,piece,2.0,3.06,0.12,Nguyên liệu tự nhiên tái sinh
+6,Interlining,Mex dựng cổ áo,100% Non-woven Fusible Interlining,Freudenberg Vilene,0.015,meter,5.0,0.0158,2.80,Keo dán sinh thái
+7,Main Label,Nhãn dệt cổ áo (Care Label),100% Recycled Damask Satin,Paxar Avery Dennison,1,piece,1.0,1.01,0.04,GRS Recycled yarn
+8,Polybag,Túi nilon bọc áo đơn chiếc,100% Bio-based PLA Compostable,An Phat Bioplastics,1,piece,1.0,1.01,1.15,Phân hủy sinh học hoàn toàn
+9,Master Carton,Thùng carton 5 lớp đóng 50 áo,100% Recycled Kraft Corrugated Board,Song Lam Packaging,0.02,carton,1.0,0.0202,0.85,FSC Recycled Certified
+
+SUMMARY METRICS:
+Total Product Net Weight: 0.320 kg/pc
+Total Embodied Carbon (Cradle-to-Gate Scope 3 Cat 1): 1.942 kgCO2e/pc
+Audited By: Bureau Veritas Sustainability Audit Group
+Status: Approved for Production
