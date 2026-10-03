@@ -139,6 +139,7 @@ router.post('/upload', expensiveOperationLimiter, upload.single('file'), asyncHa
       evidence_type: kind,
       documentName,
       fileName: file.originalname,
+      lookupCode: req.body.lookupCode || req.body.lookup_code || null,
       mime_type: file.mimetype,
       file_size_bytes: file.size,
       checksum_sha256: sha256,
@@ -263,6 +264,14 @@ router.get('/', asyncHandler(async (req, res) => {
 router.post('/', asyncHandler(async (req, res) => {
   const companyId = requireCompany(req, res);
   if (!companyId) return;
+
+  if ((req.body?.action === 'link' || req.body?.evidenceId) && (req.body?.productId || req.body?.product_id)) {
+    const evidenceId = req.body.evidenceId || req.body.id;
+    const productId = req.body.productId || req.body.product_id;
+    const lookupCode = req.body.lookupCode || req.body.lookup_code;
+    const linked = await evidenceService.linkEvidenceToProduct(companyId, productId, { evidenceId, lookupCode });
+    return sendSuccess(res, { data: { linked } });
+  }
 
   const result = await evidenceService.createEvidenceWithAudit(companyId, req.userId, req.body || {});
   if (result.error === 'PRODUCT_NOT_FOUND') {

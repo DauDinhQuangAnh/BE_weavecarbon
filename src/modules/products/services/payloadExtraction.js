@@ -109,11 +109,16 @@ const extractDestinationMarketFromPayload = (payload = {}, targetMarkets = []) =
 
 const extractV2MetadataFromPayload = (payload = {}) => {
     const snapshot = toPayloadObject(payload);
-    return {
+    const meta = {
         hsCode: snapshot.hsCode || snapshot.hs_code || snapshot.cnCode || snapshot.cn_code || null,
         cnCode: snapshot.cnCode || snapshot.cn_code || snapshot.hsCode || snapshot.hs_code || null,
         facility: snapshot.facility || snapshot.factory || null,
-        evidenceLookupCode: snapshot.evidenceLookupCode || snapshot.evidence_lookup_code || null,
+        evidenceLookupCode:
+            snapshot.evidenceLookupCode ||
+            snapshot.evidence_lookup_code ||
+            snapshot.evidenceDocument?.id ||
+            snapshot.evidence_document?.id ||
+            null,
         supplierCountry: snapshot.supplierCountry || snapshot.supplier_country || null,
         supplyGap: Boolean(snapshot.supplyGap || snapshot.supply_gap),
         customsDeclarationNo: snapshot.customsDeclarationNo || snapshot.customs_declaration_no || null,
@@ -121,6 +126,10 @@ const extractV2MetadataFromPayload = (payload = {}) => {
         billOfLadingNo: snapshot.billOfLadingNo || snapshot.bill_of_lading_no || null,
         containerNo: snapshot.containerNo || snapshot.container_no || null
     };
+    if (snapshot.evidenceDocument || snapshot.evidence_document) {
+        meta.evidenceDocument = snapshot.evidenceDocument || snapshot.evidence_document;
+    }
+    return meta;
 };
 
 module.exports = {

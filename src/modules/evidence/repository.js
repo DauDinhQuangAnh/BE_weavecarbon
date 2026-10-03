@@ -23,7 +23,7 @@ function createEvidenceRepository({ database = pool } = {}) {
       return rows[0]?.id || null;
     },
 
-    async list({ companyId, productId, lookupCode, pageSize, offset }) {
+    async list({ companyId, productId, lookupCode, evidenceId, pageSize, offset }) {
       const conditions = ['company_id = $1'];
       const params = [companyId];
       let index = 2;
@@ -36,6 +36,11 @@ function createEvidenceRepository({ database = pool } = {}) {
       if (lookupCode) {
         conditions.push(`lookup_code = $${index}`);
         params.push(lookupCode);
+        index += 1;
+      }
+      if (evidenceId) {
+        conditions.push(`id = $${index}`);
+        params.push(evidenceId);
         index += 1;
       }
 
@@ -56,6 +61,67 @@ function createEvidenceRepository({ database = pool } = {}) {
         database.query(`SELECT COUNT(*) FROM evidence_documents WHERE ${where}`, params)
       ]);
       return { rows: result.rows, total: parseInt(countResult.rows[0].count, 10) };
+    },
+
+    async linkProduct({ companyId, productId, lookupCode, evidenceId }, queryable = database) {
+      const conditions = [];
+      const params = [productId, companyId];
+      let index = 3;
+
+      if (evidenceId) {
+        conditions.push(`id::text = $${index}`);
+        params.push(String(evidenceId));
+        index += 1;
+      }
+      if (lookupCode) {
+        conditions.push(`(lookup_code = $${index} OR id::text = $${index})`);
+        params.push(String(lookupCode));
+        index += 1;
+      }
+
+      if (conditions.length === 0) return 0;
+
+      const where = `company_id = $2 AND (${conditions.join(' OR ')})`;
+      const result = await queryable.query(
+        `UPDATE evidence_documents
+         SET product_id = $1, updated_at = now()
+         WHERE ${where}
+         RETURNING id`,
+        params
+      );
+      return result.rowCount || 0;
+    },
+
+    async findProductEvidenceFromSnapshot({ companyId, productId }, queryable = database) {
+      const { rows } = await queryable.query(
+        `SELECT payload
+         FROM product_snapshots
+         WHERE product_id = $1 AND company_id = $2
+         ORDER BY version DESC NULLS LAST, snapshot_version DESC NULLS LAST, updated_at DESC NULLS LAST
+         LIMIT 1`,
+        [productId, companyId]
+      );
+      if (!rows[0]?.payload) return [];
+      const payload = rows[0].payload;
+      const codes = new Set();
+      const add = (v) => {
+        if (typeof v === 'string' && v.trim().length > 0) codes.add(v.trim());
+      };
+      add(payload.evidenceLookupCode);
+      add(payload.evidence_lookup_code);
+      add(payload.evidenceDocument?.id);
+      add(payload.evidence_document?.id);
+      if (Array.isArray(payload.materials)) {
+        for (const m of payload.materials) {
+          if (m && typeof m === 'object') {
+            add(m.evidenceLookupCode);
+            add(m.evidence_lookup_code);
+            add(m.evidenceDocument?.id);
+            add(m.evidence_document?.id);
+          }
+        }
+      }
+      return [...codes];
     },
 
     async create(values, queryable = database) {

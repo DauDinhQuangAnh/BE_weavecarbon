@@ -62,6 +62,16 @@ class EvidenceService {
       : this.repository.findProductId({ companyId, productId: safeProductId });
   }
 
+  async linkEvidenceToProduct(companyId, productId, { lookupCode, evidenceId } = {}, queryable) {
+    const safeProductId = toUuidOrNull(productId);
+    if (!safeProductId) return false;
+    const count = await this.repository.linkProduct(
+      { companyId, productId: safeProductId, lookupCode, evidenceId },
+      queryable
+    );
+    return count > 0;
+  }
+
   async listEvidence(companyId, filters = {}) {
     let productId = null;
     if (filters.productId) {
@@ -71,13 +81,53 @@ class EvidenceService {
     const page = Math.max(1, Number.parseInt(filters.page, 10) || 1);
     const pageSize = Math.min(200, Math.max(1, Number.parseInt(filters.pageSize, 10) || 50));
     const offset = (page - 1) * pageSize;
-    const result = await this.repository.list({
+    let result = await this.repository.list({
       companyId,
       productId,
       lookupCode: filters.lookupCode,
       pageSize,
       offset
     });
+
+    if (result.total === 0 && filters.lookupCode && toUuidOrNull(filters.lookupCode)) {
+      result = await this.repository.list({
+        companyId,
+        productId,
+        evidenceId: toUuidOrNull(filters.lookupCode),
+        pageSize,
+        offset
+      });
+    }
+
+    // Auto-heal: If queried by productId and 0 results found, check if product snapshot references an evidence document
+    if (result.total === 0 && productId) {
+      try {
+        const evidenceCodes = await this.repository.findProductEvidenceFromSnapshot({ companyId, productId });
+        if (evidenceCodes && evidenceCodes.length > 0) {
+          let anyLinked = false;
+          for (const code of evidenceCodes) {
+            const count = await this.repository.linkProduct({
+              companyId,
+              productId,
+              lookupCode: code,
+              evidenceId: code
+            });
+            if (count > 0) anyLinked = true;
+          }
+          if (anyLinked) {
+            result = await this.repository.list({
+              companyId,
+              productId,
+              lookupCode: filters.lookupCode,
+              pageSize,
+              offset
+            });
+          }
+        }
+      } catch (healErr) {
+        this.log?.warn?.({ err: healErr, productId }, '[evidence] auto-heal product evidence skipped');
+      }
+    }
 
     return {
       items: result.rows.map((row) => this.formatEvidence(row)),

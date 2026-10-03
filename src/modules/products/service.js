@@ -1,4 +1,5 @@
-﻿const pool = require('../shared/database');
+const pool = require('../shared/database');
+const logger = require('../shared/logger');
 const domesticComplianceService = require('../shared/domesticCompliance');
 const { ensureShipmentSimulationSchema } = require('../shared/shipmentSimulation');
 const {
@@ -231,6 +232,7 @@ class ProductsService {
                             scope2: snapshotSummary.carbonResults?.scope2 || 0,
                             scope3: snapshotSummary.carbonResults?.scope3 || 0
                         },
+                        ...extractV2MetadataFromPayload(snapshotSummary),
                         carbonAuthority: buildCarbonAuthorityReference(snapshotRecord),
                         createdAt: row.created_at,
                         updatedAt: row.updated_at
@@ -469,6 +471,48 @@ class ProductsService {
     /**
      * Create new product
      */
+    async linkProductEvidence(client, companyId, productId, payload = {}) {
+        try {
+            const rawCodes = new Set();
+            const addCandidate = (val) => {
+                if (typeof val === 'string' && val.trim().length > 0) {
+                    rawCodes.add(val.trim());
+                }
+            };
+
+            addCandidate(payload.evidenceLookupCode);
+            addCandidate(payload.evidence_lookup_code);
+            addCandidate(payload.evidenceDocument?.id);
+            addCandidate(payload.evidence_document?.id);
+
+            if (Array.isArray(payload.materials)) {
+                for (const mat of payload.materials) {
+                    if (mat && typeof mat === 'object') {
+                        addCandidate(mat.evidenceLookupCode);
+                        addCandidate(mat.evidence_lookup_code);
+                        addCandidate(mat.evidenceDocument?.id);
+                        addCandidate(mat.evidence_document?.id);
+                    }
+                }
+            }
+
+            const codes = [...rawCodes];
+            if (codes.length === 0) return;
+
+            for (const code of codes) {
+                await client.query(
+                    `UPDATE evidence_documents
+                     SET product_id = $1, updated_at = NOW()
+                     WHERE company_id = $2
+                       AND (id::text = $3 OR lookup_code = $3)`,
+                    [productId, companyId, code]
+                );
+            }
+        } catch (err) {
+            logger.warn({ err, productId, companyId }, '[products] failed to link evidence documents to product');
+        }
+    }
+
     async createProduct(companyId, userId, productData) {
         await this.ensureSimulationSchema();
         const authoritativeCarbon = this.calculateProductCarbon(productData);
@@ -558,6 +602,7 @@ class ProductsService {
                 result: normalizedCarbonResults
             });
             const fullPayload = calculationSnapshot.payload;
+            await this.linkProductEvidence(client, companyId, product.id, productData);
 
             // Auto-create shipment if publishing directly
             let shipmentMeta = {
@@ -704,6 +749,7 @@ class ProductsService {
                 result: normalizedCarbonResults
             });
             const fullPayload = calculationSnapshot.payload;
+            await this.linkProductEvidence(client, companyId, productId, productData);
 
             let shipmentMeta = {
                 shipmentId: null,
