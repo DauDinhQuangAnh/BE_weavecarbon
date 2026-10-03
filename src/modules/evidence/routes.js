@@ -452,6 +452,12 @@ router.get('/:id/download', asyncHandler(async (req, res) => {
     return sendError(res, { status: 404, code: 'FILE_NOT_FOUND', message: 'Evidence file not found.' });
   }
 
+  if (req.query.inline === 'true' || req.query.view === 'true') {
+    res.setHeader('Content-Type', fileInfo.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileInfo.filename)}"`);
+    return res.sendFile(fileInfo.filePath);
+  }
+
   return res.download(fileInfo.filePath, fileInfo.filename);
 }));
 

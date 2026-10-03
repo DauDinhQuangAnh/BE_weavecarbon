@@ -13,11 +13,15 @@ function hasAnyRole(userRoles, allowedRoles) {
 function getBearerToken(req) {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.slice(7);
   }
 
-  return authHeader.slice(7);
+  if (req.query?.token && typeof req.query.token === 'string') {
+    return req.query.token.trim();
+  }
+
+  return null;
 }
 
 function assignRequestUserContext(req, user, companyContext) {
