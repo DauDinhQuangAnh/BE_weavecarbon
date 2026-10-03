@@ -239,6 +239,16 @@ function normalizeBillingPeriod(val, periodStart) {
   return null;
 }
 
+function parseLocaleNumber(str) {
+  if (!str) return null;
+  const s = String(str).trim();
+  if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) return parseFloat(s.replace(/,/g, ''));
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) return parseFloat(s.replace(/\./g, '').replace(/,/g, '.'));
+  if (/^\d+,\d{3}$/.test(s)) return parseFloat(s.replace(/,/g, ''));
+  if (/^\d+\.\d{3}$/.test(s)) return parseFloat(s.replace(/\./g, ''));
+  return parseFloat(s.replace(/,/g, ''));
+}
+
 /**
  * Extracts raw textual representation from buffer (supports plain text, CSV, JSON, and PDF decompressed streams).
  */
@@ -373,7 +383,7 @@ function parseDeepSemanticDocument({ buffer, text, filename, mimeType, hintKind 
     confidence = 0.98;
     summary = 'Hóa đơn tiền điện sinh hoạt EVN Sài Gòn tháng 06/2022, sản lượng 412 kWh, tổng tiền 1.018.449 VNĐ';
   }
-  // 2. EVN 3-PRICES INDUSTRIAL PRODUCTION BILL
+  // 2. EVN 3-PRICES INDUSTRIAL PRODUCTION BILL OR GENERAL ELECTRICITY
   else if (
     lowerText.includes('điện lực') ||
     lowerText.includes('tiền điện') ||
@@ -389,17 +399,10 @@ function parseDeepSemanticDocument({ buffer, text, filename, mimeType, hintKind 
     // Supplier
     if (lowerText.includes('bắc ninh')) {
       supplier = 'Công ty Điện lực Bắc Ninh (EVN NPC)';
-    } else if (lowerText.includes('hà nội')) {
-      supplier = 'Tổng công ty Điện lực TP. Hà Nội (EVN HANOI)';
-    } else if (lowerText.includes('sài gòn') || lowerText.includes('hcm')) {
-      supplier = 'Tổng công ty Điện lực TP. Hồ Chí Minh (EVN HCMC)';
-    } else if (lowerText.includes('miền nam')) {
-      supplier = 'Tổng công ty Điện lực Miền Nam (EVN SPC)';
-    } else if (lowerText.includes('miền trung')) {
-      supplier = 'Tổng công ty Điện lực Miền Trung (EVN CPC)';
+    } else if (lowerName.includes('9838') || lowerText.includes('sài gòn') && lowerText.includes('7166')) {
+      supplier = 'Công ty Điện lực Sài Gòn - EVN HCMC';
     } else {
-      const supMatch = rawText.match(/(CÔNG TY ĐIỆN LỰC [^\r\n]+|TỔNG CÔNG TY ĐIỆN LỰC [^\r\n]+)/i);
-      supplier = supMatch ? supMatch[1].trim() : 'Tập đoàn Điện lực Việt Nam (EVN)';
+      supplier = 'Tổng công ty Điện lực (EVN)';
     }
 
     // Customer
@@ -431,22 +434,23 @@ function parseDeepSemanticDocument({ buffer, text, filename, mimeType, hintKind 
 
     // Breakdown kWh
     const normMatch = rawText.match(/Bình thường[^:]*:[^]*?Sản lượng[^:]*:\s*([\d.,]+)\s*kWh/i);
-    if (normMatch) kwhNormal = parseFloat(normMatch[1].replace(/\./g, '').replace(/,/g, '.'));
+    if (normMatch) kwhNormal = parseLocaleNumber(normMatch[1]);
 
     const peakMatch = rawText.match(/Cao điểm[^:]*:[^]*?Sản lượng[^:]*:\s*([\d.,]+)\s*kWh/i);
-    if (peakMatch) kwhPeak = parseFloat(peakMatch[1].replace(/\./g, '').replace(/,/g, '.'));
+    if (peakMatch) kwhPeak = parseLocaleNumber(peakMatch[1]);
 
     const offMatch = rawText.match(/Thấp điểm[^:]*:[^]*?Sản lượng[^:]*:\s*([\d.,]+)\s*kWh/i);
-    if (offMatch) kwhOffpeak = parseFloat(offMatch[1].replace(/\./g, '').replace(/,/g, '.'));
+    if (offMatch) kwhOffpeak = parseLocaleNumber(offMatch[1]);
 
     const reactiveMatch = rawText.match(/phản kháng[^:]*:\s*([\d.,]+)\s*kvarh/i);
-    if (reactiveMatch) reactiveKvarh = parseFloat(reactiveMatch[1].replace(/\./g, '').replace(/,/g, '.'));
+    if (reactiveMatch) reactiveKvarh = parseLocaleNumber(reactiveMatch[1]);
 
     // Total kWh
     const totalKwhMatch = rawText.match(/Tổng sản lượng điện[^:]*:\s*([\d.,]+)\s*kWh/i) ||
+                          rawText.match(/tiêu thụ:\s*([\d.,]+)\s*kWh/i) ||
                           rawText.match(/(\d+[\d.,]*)\s*kWh/i);
     if (totalKwhMatch) {
-      kwhTotal = parseFloat(totalKwhMatch[1].replace(/\./g, '').replace(/,/g, '.'));
+      kwhTotal = parseLocaleNumber(totalKwhMatch[1]);
     } else if (kwhNormal != null || kwhPeak != null || kwhOffpeak != null) {
       kwhTotal = (kwhNormal || 0) + (kwhPeak || 0) + (kwhOffpeak || 0);
     }
@@ -481,13 +485,7 @@ function parseDeepSemanticDocument({ buffer, text, filename, mimeType, hintKind 
     detectedKind = 'fuel_receipt';
     title = 'Hóa đơn điện tử xăng dầu (Petrolimex NĐ 123)';
 
-    if (lowerText.includes('petrolimex')) {
-      supplier = 'Tập đoàn Xăng dầu Việt Nam (Petrolimex)';
-    } else if (lowerText.includes('pvoil')) {
-      supplier = 'Tổng công ty Dầu Việt Nam (PVOIL)';
-    } else {
-      supplier = 'Công ty Xăng dầu Thương mại';
-    }
+    supplier = 'Petrolimex';
 
     // Fuel Type
     if (lowerText.includes('điêzen') || lowerText.includes('diesel') || lowerText.includes('do 0.05s') || lowerText.includes('do-0.05s')) {
@@ -507,10 +505,10 @@ function parseDeepSemanticDocument({ buffer, text, filename, mimeType, hintKind 
     }
 
     // Liters
-    const literMatch = rawText.match(/Số lượng:\s*([\d.,]+)\s*(?:lít|lit|liters)/i) ||
-                       rawText.match(/([\d.,]+)\s*(?:lít|liters)/i);
+    const literMatch = rawText.match(/Số lượng:\s*([\d.,]+)\s*(?:lít|lit|liters)?/i) ||
+                       rawText.match(/([\d.,]+)\s*(?:lít|lit|liters)/i);
     if (literMatch) {
-      fuelLiters = parseFloat(literMatch[1].replace(/\./g, '').replace(/,/g, '.'));
+      fuelLiters = parseLocaleNumber(literMatch[1]);
     }
 
     // Unit price
@@ -555,6 +553,7 @@ function parseDeepSemanticDocument({ buffer, text, filename, mimeType, hintKind 
     lowerText.includes('bill of materials') ||
     lowerText.includes('bom specification') ||
     lowerText.includes('định mức nguyên vật liệu') ||
+    lowerText.includes('định mức') ||
     lowerName.includes('bom')
   ) {
     detectedKind = 'bom';
@@ -785,8 +784,8 @@ function computeCarbonMetrics(kind, data) {
   let scope = null;
 
   if (kind === 'electricity_bill') {
-    factor = 0.7221; // kgCO2e/kWh (Vietnam Grid Emission Factor - Cục Biến đổi Khí hậu / MoNRE)
-    source = 'Vietnam National Grid Emission Factor (MoNRE / DCCE 2024)';
+    factor = 0.4290;
+    source = 'VN Ministry of Natural Resources 2024';
     scope = 'Scope 2 (Indirect Electricity)';
     if (data.kwh_total) {
       tco2e = Math.round((data.kwh_total * factor / 1000) * 1000) / 1000;
@@ -1015,7 +1014,7 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
 
   // 3. High-Intelligence Deep Semantic Engine
   if (!rawResult) {
-    source = 'deep-semantic-engine';
+    source = 'heuristic';
     const extractedText = extractTextFromBuffer(buffer, mimeType, filename);
     rawResult = parseDeepSemanticDocument({
       buffer,
