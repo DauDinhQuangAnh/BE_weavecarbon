@@ -253,21 +253,21 @@ jobs:
             printf 'BE_IMAGE=%s\n' "$BE_IMAGE" >> .env.vps
           fi
           export BE_IMAGE
-          if ! bash deploy/redeploy-vps.sh --backend-only; then
+          if ! bash deploy/redeploy-vps.sh --backend-only </dev/null; then
             echo "[deploy] Backend smoke failed; restoring previous immutable image."
             if [ -n "$PREVIOUS_BE_IMAGE" ]; then
               sed -i "s|^BE_IMAGE=.*|BE_IMAGE=${PREVIOUS_BE_IMAGE}|" .env.vps
               export BE_IMAGE="$PREVIOUS_BE_IMAGE"
-              bash deploy/redeploy-vps.sh --backend-only
+              bash deploy/redeploy-vps.sh --backend-only </dev/null
             fi
             exit 1
           fi
           DEPLOY_HISTORY_FILE="${DEPLOY_HISTORY_FILE:-/var/lib/weavecarbon/deploy-history.log}"
-          install -d -m 0750 "$(dirname "$DEPLOY_HISTORY_FILE")"
+          install -d -m 0750 "$(dirname "$DEPLOY_HISTORY_FILE")" || true
           (
             flock -x 9
             printf '%s backend %s %s\n' "$(date -u +%FT%TZ)" '${{ steps.release.outputs.sha }}' "$BE_IMAGE" >&9
-          ) 9>>"$DEPLOY_HISTORY_FILE"
+          ) 9>>"$DEPLOY_HISTORY_FILE" || true
 
           echo "[deploy] Verifying backend container health..."
           docker exec weavecarbon-be-1 wget -qO- "http://127.0.0.1:4000/ready" || echo "[warn] BE local probe failed"
@@ -277,8 +277,10 @@ jobs:
             docker inspect weavecarbon-be-1 --format 'BE networks: {{json .NetworkSettings.Networks}}' || true
             docker inspect weavecarbon-proxy-1 --format 'Proxy networks: {{json .NetworkSettings.Networks}}' || true
             docker logs --tail 40 weavecarbon-proxy-1 || true
-            echo "[deploy] Attempting Caddy reload..."
-            docker exec weavecarbon-proxy-1 caddy reload -c /etc/caddy/Caddyfile || true
+            echo "[deploy] Restarting proxy container to refresh network namespaces..."
+            docker restart weavecarbon-proxy-1 || true
+            sleep 3
+            docker exec weavecarbon-proxy-1 wget -qO- "http://be:4000/ready" || echo "[error] Proxy STILL cannot reach be:4000 after restart"
           fi
           echo "[deploy] Testing https://weavecarbon.com/health from host..."
           curl -ik https://weavecarbon.com/health || true
