@@ -268,6 +268,22 @@ jobs:
             flock -x 9
             printf '%s backend %s %s\n' "$(date -u +%FT%TZ)" '${{ steps.release.outputs.sha }}' "$BE_IMAGE" >&9
           ) 9>>"$DEPLOY_HISTORY_FILE"
+
+          echo "[deploy] Verifying backend container health..."
+          docker exec weavecarbon-be-1 wget -qO- "http://127.0.0.1:4000/ready" || echo "[warn] BE local probe failed"
+          echo "[deploy] Verifying Caddy to backend upstream connectivity..."
+          if ! docker exec weavecarbon-proxy-1 wget -qO- "http://be:4000/ready"; then
+            echo "[warn] Proxy cannot reach be:4000. Inspecting network state..."
+            docker inspect weavecarbon-be-1 --format 'BE networks: {{json .NetworkSettings.Networks}}' || true
+            docker inspect weavecarbon-proxy-1 --format 'Proxy networks: {{json .NetworkSettings.Networks}}' || true
+            docker logs --tail 40 weavecarbon-proxy-1 || true
+            echo "[deploy] Attempting Caddy reload..."
+            docker exec weavecarbon-proxy-1 caddy reload -c /etc/caddy/Caddyfile || true
+          fi
+          echo "[deploy] Testing https://weavecarbon.com/health from host..."
+          curl -ik https://weavecarbon.com/health || true
+          echo "[deploy] Proxy container recent logs:"
+          docker logs --tail 30 weavecarbon-proxy-1 || true
           EOF
 
       - name: Verify public backend health
