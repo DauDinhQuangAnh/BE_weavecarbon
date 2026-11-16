@@ -72,7 +72,7 @@ COPY (
 SQL
 }
 
-for command_name in psql pg_dump pg_restore createdb dropdb sha256sum tar diff; do
+for command_name in psql pg_dump pg_restore createdb dropdb sha256sum tar diff sed; do
   command -v "${command_name}" >/dev/null 2>&1 || {
     echo "Required command is missing: ${command_name}" >&2
     exit 1
@@ -129,8 +129,9 @@ tar -tzf "${WORK_DIR}/uploads.tar.gz" > "${WORK_DIR}/uploads-members.txt"
 echo "Restoring into isolated database ${TARGET_DATABASE}..."
 createdb --template=template0 "${TARGET_DATABASE}"
 TARGET_CREATED=1
-pg_restore --exit-on-error --no-owner --no-privileges -d "${TARGET_DATABASE}" \
-  "${WORK_DIR}/database.dump"
+pg_restore -f "${WORK_DIR}/restore.sql" --no-owner --no-privileges "${WORK_DIR}/database.dump"
+sed -i '/transaction_timeout/d' "${WORK_DIR}/restore.sql"
+psql -X -q -v ON_ERROR_STOP=1 -d "${TARGET_DATABASE}" -f "${WORK_DIR}/restore.sql"
 write_table_counts "${TARGET_DATABASE}" "${WORK_DIR}/database-counts-restored.tsv"
 diff -u "${WORK_DIR}/database-counts-source.tsv" "${WORK_DIR}/database-counts-restored.tsv"
 
