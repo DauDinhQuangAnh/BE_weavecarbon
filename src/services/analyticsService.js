@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const axios = require('axios');
-const { v4: uuidv4 } = require('uuid');
+const uuidv4 = crypto.randomUUID;
 const pool = require('../config/database');
 const logger = require('../utils/logger');
 
