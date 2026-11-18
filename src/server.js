@@ -202,7 +202,9 @@ if (require.main === module) {
       server = app.listen(PORT, () => {
         logStartup(PORT);
       });
-      if (process.env.DEMO_CLEANUP_DISABLED !== 'true') {
+      // Opt-in: run `node scripts/purge-expired-demo-users.js --dry-run` first,
+      // then set DEMO_CLEANUP_ENABLED=true to purge expired demo users hourly.
+      if (process.env.DEMO_CLEANUP_ENABLED === 'true') {
         const intervalMs = Number.parseInt(process.env.DEMO_CLEANUP_INTERVAL_MS || '', 10);
         demoCleanupScheduler = demoCleanupService.startScheduler(
           Number.isFinite(intervalMs) && intervalMs > 0 ? { intervalMs } : undefined
