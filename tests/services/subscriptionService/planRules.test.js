@@ -37,10 +37,26 @@ describe('inferLegacyStandardSkuLimit', () => {
 });
 
 describe('resolveStandardPackage', () => {
-    it('returns the matching SKU package', () => {
-        expect(planRules.resolveStandardPackage(50)).toEqual(planRules.STANDARD_SKU_PACKAGES[50]);
-        expect(planRules.resolveStandardPackage(37)).toEqual(planRules.STANDARD_SKU_PACKAGES[35]);
-        expect(planRules.resolveStandardPackage(5)).toEqual(planRules.STANDARD_SKU_PACKAGES[20]);
+    // Behaviour change (2026-11-18 price list): SKU tiers are no longer sold;
+    // every Starter purchase is the single 20-SKU Starter package.
+    it('always returns the single Starter package', () => {
+        expect(planRules.resolveStandardPackage(50)).toEqual(planRules.STARTER_PACKAGE);
+        expect(planRules.resolveStandardPackage(37)).toEqual(planRules.STARTER_PACKAGE);
+        expect(planRules.resolveStandardPackage(5)).toEqual(planRules.STARTER_PACKAGE);
+        expect(planRules.STARTER_PACKAGE).toEqual({ sku_increment: 20, name: 'Starter', price_monthly: 6000000 });
+    });
+});
+
+describe('official price list (pitch deck)', () => {
+    it('prices Starter at 6.000.000 and Pro at 8.000.000 VND/month', () => {
+        expect(planRules.PLAN_LIMITS.standard).toMatchObject({ name: 'Starter', price_monthly: 6000000 });
+        expect(planRules.PLAN_LIMITS.export).toMatchObject({ name: 'Pro', price_monthly: 8000000 });
+    });
+
+    it('returns a real sales contact instead of a placeholder', () => {
+        expect(planRules.CONTACT_INFO.phone).not.toBe('123456789');
+        expect(planRules.CONTACT_INFO.name).not.toBe('Nguyen Van A');
+        expect(planRules.CONTACT_INFO.email).toMatch(/@/);
     });
 });
 
@@ -76,7 +92,8 @@ describe('resolvePlanDetails', () => {
     it('uses the requested SKU limit for standard plans', () => {
         const details = planRules.resolvePlanDetails('standard', { standardSkuLimit: 45 });
         expect(details.products).toBe(45);
-        expect(details.name).toBe('Standard');
+        // display name follows the 2026-11-18 price list (internal id stays 'standard')
+        expect(details.name).toBe('Starter');
     });
 
     it('falls back to trial limits for unknown plans', () => {

@@ -1,42 +1,55 @@
+// Official price list (pitch deck, approved 2026-11-18):
+//   Starter    6.000.000 VND/month  -> internal plan id "standard" (VNPAY checkout)
+//   Pro        8.000.000 VND/month  -> internal plan id "export"   (sales-assisted)
+//   Enterprise contact sales        -> request-upgrade flow
+// Internal ids are unchanged so existing companies, DB enum values and payment
+// sessions keep working.
 const PLAN_LIMITS = {
     trial: {
         name: 'Trial',
+        // Trial is auto-activated for free on sign-up; this amount is only used by
+        // the legacy paid trial-extension path and is intentionally unchanged.
         price_monthly: 149000,
         products: 100,
         members: 5,
         api_calls_per_month: 10000
     },
     standard: {
-        name: 'Standard',
-        price_monthly: 0,
+        name: 'Starter',
+        price_monthly: 6000000,
         products: 20,
         members: 20,
         api_calls_per_month: 100000
     },
     export: {
-        name: 'Export',
-        price_monthly: 3000000,
+        name: 'Pro',
+        price_monthly: 8000000,
         products: -1,
         members: 50,
         api_calls_per_month: -1
     }
 };
 
+// Starter is sold as one package (20 SKU, one facility). The 35/50 entries are
+// kept only so legacy standard_35 / standard_50 subscriptions still resolve;
+// they are no longer offered for purchase.
+const STARTER_PACKAGE = {
+    sku_increment: 20,
+    name: 'Starter',
+    price_monthly: 6000000
+};
+
 const STANDARD_SKU_PACKAGES = {
-    20: {
-        sku_increment: 20,
-        name: 'Standard +20 SKU',
-        price_monthly: 899000
-    },
+    20: STARTER_PACKAGE,
     35: {
         sku_increment: 35,
-        name: 'Standard +35 SKU',
-        price_monthly: 1199000
+        name: 'Standard +35 SKU (legacy)',
+        price_monthly: 6000000
     },
     50: {
         sku_increment: 50,
-        name: 'Standard +50 SKU',
-        price_monthly: 1499000
+        name: 'Standard +50 SKU (legacy)',
+        price_monthly: 6000000
     }
 };
 
@@ -60,9 +73,12 @@ const ALLOWED_TARGET_PLANS = new Set([
     'export'
 ]);
 
+// Sales contact returned for the sales-assisted Pro / Enterprise plans.
+// Override per environment with SALES_CONTACT_NAME / _PHONE / _EMAIL.
 const CONTACT_INFO = {
-    name: 'Nguyen Van A',
-    phone: '123456789'
+    name: process.env.SALES_CONTACT_NAME || 'WeaveCarbon Sales',
+    phone: process.env.SALES_CONTACT_PHONE || '0828413747',
+    email: process.env.SALES_CONTACT_EMAIL || 'teamcet.st@gmail.com'
 };
 
 const normalizePlanId = (value, fallback = 'trial') => {
@@ -107,13 +123,10 @@ const inferLegacyStandardSkuLimit = (value, fallback = 20) => {
     return fallback;
 };
 
-const resolveStandardPackage = (value, fallback = 20) => {
-    const numericValue = Number(value);
-    if (numericValue >= 50) return STANDARD_SKU_PACKAGES[50];
-    if (numericValue >= 35) return STANDARD_SKU_PACKAGES[35];
-    if (numericValue >= 20) return STANDARD_SKU_PACKAGES[20];
-    return STANDARD_SKU_PACKAGES[fallback] || STANDARD_SKU_PACKAGES[20];
-};
+// Every Starter purchase is the single Starter package, whatever SKU tier an
+// older client still sends (prevents buying 50 SKU at the Starter price).
+// eslint-disable-next-line no-unused-vars
+const resolveStandardPackage = (_value, _fallback = 20) => STARTER_PACKAGE;
 
 const resolveRequestedTargetPlan = (targetPlan, standardSkuLimit, fallback = 'trial') => {
     const normalizedToken = String(targetPlan || '')
@@ -156,6 +169,7 @@ const resolvePlanDetails = (planId, options = {}) => {
 
 module.exports = {
     PLAN_LIMITS,
+    STARTER_PACKAGE,
     STANDARD_SKU_PACKAGES,
     PLAN_RANK,
     STANDARD_PLAN_IDS,
