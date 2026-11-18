@@ -125,7 +125,6 @@ const inferLegacyStandardSkuLimit = (value, fallback = 20) => {
 
 // Every Starter purchase is the single Starter package, whatever SKU tier an
 // older client still sends (prevents buying 50 SKU at the Starter price).
-// eslint-disable-next-line no-unused-vars
 const resolveStandardPackage = (_value, _fallback = 20) => STARTER_PACKAGE;
 
 const resolveRequestedTargetPlan = (targetPlan, standardSkuLimit, fallback = 'trial') => {

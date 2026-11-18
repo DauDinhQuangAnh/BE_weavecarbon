@@ -33,6 +33,22 @@ const {
     insertFinalizedProductSnapshot
 } = require('../carbon');
 
+// Vietnamese accent folding shared by SQL (translate) and JS so product search
+// matches with or without diacritics.
+const VI_ACCENTED = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
+const VI_PLAIN = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd';
+const VI_FOLD_SQL = (column) => `translate(lower(${column}), '${VI_ACCENTED}', '${VI_PLAIN}')`;
+const foldVietnamese = (value) => {
+    const lower = String(value || '').toLowerCase();
+    let out = '';
+    for (const ch of lower) {
+        const index = VI_ACCENTED.indexOf(ch);
+        out += index >= 0 ? VI_PLAIN[index] : ch;
+    }
+    return out;
+};
+
+
 class ProductsService {
     constructor({
         database = pool,
@@ -79,9 +95,13 @@ class ProductsService {
             let paramIndex = 2;
 
             if (search) {
-                conditions.push(`(p.sku ILIKE $${paramIndex} OR p.name ILIKE $${paramIndex})`);
-                params.push(`%${search}%`);
-                paramIndex++;
+                // Accent-insensitive match ("thep" finds "Thép") without requiring the
+                // unaccent extension: fold both sides with translate().
+                conditions.push(
+                    `(p.sku ILIKE $${paramIndex} OR p.name ILIKE $${paramIndex} OR ${VI_FOLD_SQL('p.name')} LIKE $${paramIndex + 1})`
+                );
+                params.push(`%${search}%`, `%${foldVietnamese(search)}%`);
+                paramIndex += 2;
             }
 
             if (status && status !== 'all') {
