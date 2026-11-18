@@ -36,6 +36,10 @@ const {
   authSessionService
 } = require('./authSessionService');
 const { createMfaService, mfaService } = require('./mfaService');
+const {
+  createDemoCleanupService,
+  demoCleanupService
+} = require('./demoCleanupService');
 
 module.exports = {
   tokens,
@@ -62,5 +66,7 @@ module.exports = {
   createAuthSessionService,
   authSessionService,
   createMfaService,
-  mfaService
+  mfaService,
+  createDemoCleanupService,
+  demoCleanupService
 };

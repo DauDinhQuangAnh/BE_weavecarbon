@@ -85,6 +85,22 @@ const signupLimiter = rateLimit({
   keyGenerator: (req) => req.ip,
 });
 
+// Demo sessions create real (short-lived) database users, so they get their own
+// per-IP budget instead of sharing the generic API limiter.
+const demoSessionLimiter = rateLimit({
+  windowMs: parsePositiveInt(process.env.DEMO_RATE_LIMIT_WINDOW_MS, 60 * 60 * 1000),
+  max: parsePositiveInt(process.env.DEMO_RATE_LIMIT_MAX, isDev ? 100 : 10),
+  skip: (req) => req.method === 'OPTIONS',
+  message: {
+    success: false,
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many demo sessions, please try again later'
+    }
+  },
+  keyGenerator: (req) => req.ip,
+});
+
 // Strict limiter for signin
 const signinLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -163,6 +179,7 @@ const verifyEmailLimiter = rateLimit({
 module.exports = {
   apiLimiter,
   signupLimiter,
+  demoSessionLimiter,
   signinLimiter,
   refreshLimiter,
   verifyEmailLimiter,

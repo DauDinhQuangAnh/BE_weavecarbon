@@ -14,6 +14,7 @@ const { sendSuccess } = require('./utils/http');
 const logger = require('./utils/logger');
 const metrics = require('./operations/metrics');
 const reportJobQueue = require('./services/reportJobQueue');
+const { demoCleanupService } = require('./modules/auth');
 const pool = require('./config/database');
 const swaggerSpec = require('./config/swagger');
 const apiRoutes = require('./config/apiRoutes');
@@ -192,6 +193,7 @@ app.use(notFound);
 app.use(errorHandler);
 
 let server = null;
+let demoCleanupScheduler = null;
 const startupReady = bootstrapApplication();
 
 if (require.main === module) {
@@ -200,6 +202,13 @@ if (require.main === module) {
       server = app.listen(PORT, () => {
         logStartup(PORT);
       });
+      if (process.env.DEMO_CLEANUP_DISABLED !== 'true') {
+        const intervalMs = Number.parseInt(process.env.DEMO_CLEANUP_INTERVAL_MS || '', 10);
+        demoCleanupScheduler = demoCleanupService.startScheduler(
+          Number.isFinite(intervalMs) && intervalMs > 0 ? { intervalMs } : undefined
+        );
+        demoCleanupScheduler.runNow();
+      }
     })
     .catch((error) => {
       logger.error({ err: error }, '[startup] Application bootstrap failed');
@@ -211,6 +220,7 @@ let shutdownPromise = null;
 function shutdown(signal) {
   if (shutdownPromise) return shutdownPromise;
   logger.info({ signal }, '[shutdown] Graceful shutdown started');
+  if (demoCleanupScheduler) demoCleanupScheduler.stop();
 
   if (!server) {
     shutdownPromise = reportJobQueue.stop().finally(() => process.exit(0));

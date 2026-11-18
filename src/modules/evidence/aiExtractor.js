@@ -875,22 +875,32 @@ function evaluateExtractionCompleteness(kind, rawData) {
   };
 }
 
-// Fallback Gemini direct call
-const DEFAULT_GEMINI_KEY = Buffer.from(
-  'QUl6YVN5QTVHM0JFM3k2S2VNS0I2bC1HdjdzaTljTk0zVkRsWkpv',
-  'base64'
-).toString('utf-8');
+// Gemini direct call. The API key is read ONLY from the environment
+// (GEMINI_API_KEY). Never embed a key in source - a previously embedded key
+// must be treated as compromised and revoked.
+const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
+const DEFAULT_GEMINI_FALLBACK_MODELS = ['gemini-2.5-flash'];
+
+function resolveGeminiApiKey() {
+  if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
+  return process.env.NODE_ENV === 'test' ? 'test-mock-gemini-key' : null;
+}
+
+function resolveGeminiModels() {
+  const primary = (process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL).trim();
+  const fallbacks = process.env.GEMINI_FALLBACK_MODELS
+    ? process.env.GEMINI_FALLBACK_MODELS.split(',').map((m) => m.trim()).filter(Boolean)
+    : DEFAULT_GEMINI_FALLBACK_MODELS;
+  return [...new Set([primary, ...fallbacks])];
+}
 
 async function callGeminiDirect({ buffer, mimeType, filename }) {
-  const apiKey = process.env.GEMINI_API_KEY || (process.env.NODE_ENV === 'test' ? 'test-mock-gemini-key' : DEFAULT_GEMINI_KEY);
+  const apiKey = resolveGeminiApiKey();
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not configured on the server.');
   }
 
-  const primaryModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-  const modelsToTry = [primaryModel];
-  if (!modelsToTry.includes('gemini-2.0-flash')) modelsToTry.push('gemini-2.0-flash');
-  if (!modelsToTry.includes('gemini-1.5-pro')) modelsToTry.push('gemini-1.5-pro');
+  const modelsToTry = resolveGeminiModels();
 
   const isImage = (mimeType || '').startsWith('image/');
   const isPdf = (mimeType || '').includes('pdf') || (filename || '').toLowerCase().endsWith('.pdf');
@@ -964,7 +974,7 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
   let source = 'gemini-vision';
 
   // 1. Direct Gemini Vision call
-  const geminiApiKey = process.env.GEMINI_API_KEY || (process.env.NODE_ENV === 'test' ? 'test-mock-gemini-key' : DEFAULT_GEMINI_KEY);
+  const geminiApiKey = resolveGeminiApiKey();
   if (geminiApiKey) {
     try {
       rawResult = await callGeminiDirect({ buffer, mimeType, filename });
@@ -1140,5 +1150,7 @@ module.exports = {
   KIND_DISPLAY_NAMES,
   EXPECTED_FIELDS_CONFIG,
   computeCarbonMetrics,
-  evaluateExtractionCompleteness
+  evaluateExtractionCompleteness,
+  resolveGeminiApiKey,
+  resolveGeminiModels
 };

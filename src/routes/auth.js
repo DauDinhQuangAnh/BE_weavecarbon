@@ -41,6 +41,7 @@ const {
 } = require('../utils/authCookies');
 const {
   signupLimiter,
+  demoSessionLimiter,
   signinLimiter,
   refreshLimiter,
   verifyEmailLimiter,
@@ -298,7 +299,7 @@ router.get('/session', refreshLimiter, async (req, res, next) => {
 });
 
 // 5. DEMO LOGIN
-router.post('/demo', demoValidation, validate, async (req, res, next) => {
+router.post('/demo', demoSessionLimiter, demoValidation, validate, async (req, res, next) => {
   try {
     const { role, demo_scenario = 'sample_data' } = req.body;
     const data = await demoAccountService.createDemoSession(role, demo_scenario);
