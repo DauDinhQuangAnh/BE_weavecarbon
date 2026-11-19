@@ -1,6 +1,7 @@
 version: 2
-# Keeps dependencies patched automatically so security advisories are usually
-# fixed by a merged PR before they would ever surface in the CI audit.
+# Version-update PRs are turned off (open-pull-requests-limit set to 0) at the
+# owner's request on 19/11/2026: dependencies are updated by hand on main.
+# GitHub security alerts and the scheduled Dependency Audit workflow still run.
 updates:
   - package-ecosystem: "npm"
     directory: "/"
@@ -8,7 +9,7 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "03:00"
-    open-pull-requests-limit: 8
+    open-pull-requests-limit: 0
     labels: ["dependencies"]
     commit-message:
       prefix: "chore(deps)"
@@ -23,6 +24,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    open-pull-requests-limit: 0
     labels: ["dependencies", "github-actions"]
     commit-message:
       prefix: "chore(ci)"
