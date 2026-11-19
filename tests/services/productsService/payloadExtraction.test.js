@@ -1,7 +1,7 @@
 const {
     extractDestinationMarketFromPayload,
     extractV2MetadataFromPayload
-} = require('../../../src/services/productsService/payloadExtraction');
+} = require('../../../src/modules/products').services.payloadExtraction;
 
 describe('extractDestinationMarketFromPayload', () => {
     it('resolves a direct destinationMarket field', () => {

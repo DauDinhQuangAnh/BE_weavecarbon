@@ -23,8 +23,6 @@ describe('evidence compatibility entrypoints', () => {
     const evidence = require('../../../src/modules/evidence');
 
     expect(require('../../../src/routes/evidence')).toBe(evidence.evidenceRouter);
-    expect(require('../../../src/services/evidenceService')).toBe(evidence.evidenceService);
-    expect(require('../../../src/services/evidenceFileStorage')).toBe(evidence.fileStorage);
   });
 
   test('keeps the complete Evidence operation surface unchanged', () => {

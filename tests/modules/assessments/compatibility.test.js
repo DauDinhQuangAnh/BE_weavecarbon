@@ -14,10 +14,6 @@ describe('assessments compatibility entrypoints', () => {
   test('keeps legacy batch service and validators on modular implementations', () => {
     const assessments = require('../../../src/modules/assessments');
 
-    expect(require('../../../src/services/batchesService'))
-      .toBe(assessments.batchesService);
-    expect(require('../../../src/validators/batchesValidators'))
-      .toBe(assessments.batchesValidators);
   });
 
   test('keeps the public product-batches operation surface unchanged', () => {

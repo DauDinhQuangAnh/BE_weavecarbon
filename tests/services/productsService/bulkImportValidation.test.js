@@ -9,7 +9,7 @@ const {
     splitBulkList,
     addBulkValidationError,
     validateBulkImportRows
-} = require('../../../src/services/productsService/bulkImportValidation');
+} = require('../../../src/modules/products').services.bulkImportValidation;
 
 function validRow(overrides = {}) {
     return {

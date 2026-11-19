@@ -3,7 +3,7 @@ const {
     hasAddressData,
     buildCarbonResultsWithConfidence,
     computeDataConfidenceScore
-} = require('../../../src/services/productsService/carbonScoring');
+} = require('../../../src/modules/products').services.carbonScoring;
 
 describe('sumPercentage', () => {
     it('sums non-negative percentages, clamping negatives to 0', () => {

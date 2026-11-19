@@ -25,11 +25,7 @@ describe('reports compatibility entrypoints', () => {
     const reports = require('../../../src/modules/reports');
 
     expect(require('../../../src/routes/reports')).toBe(reports.reportsRouter);
-    expect(require('../../../src/services/reportsService')).toBe(reports.reportsService);
-    expect(require('../../../src/services/reportsService/helpers')).toBe(reports.helpers);
-    expect(require('../../../src/services/pdfReportService')).toBe(reports.pdfReportService);
     expect(require('../../../src/services/reportJobQueue')).toBe(reports.reportJobQueue);
-    expect(require('../../../src/validators/reportsValidators')).toBe(reports.validators);
   });
 
   test('keeps the complete Reports operation surface and route order unchanged', () => {

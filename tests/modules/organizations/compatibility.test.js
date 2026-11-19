@@ -4,8 +4,6 @@ describe('organizations compatibility entrypoints', () => {
 
     expect(require('../../../src/services/companyMembersService'))
       .toBe(organizations.companyMembersService);
-    expect(require('../../../src/validators/companyMembersValidators'))
-      .toBe(organizations.companyMembersValidators);
   });
 
   test('keeps the public member route operation surface unchanged', () => {

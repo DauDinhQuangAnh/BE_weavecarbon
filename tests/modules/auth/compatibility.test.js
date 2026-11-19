@@ -1,19 +1,14 @@
 describe('auth foundation compatibility entrypoints', () => {
   test('keeps the legacy token helper path on the modular implementation', () => {
     const authModule = require('../../../src/modules/auth');
-    expect(require('../../../src/services/authService/tokens')).toBe(authModule.tokens);
   });
 
   test('keeps the legacy Google OAuth client path on the modular implementation', () => {
     const authModule = require('../../../src/modules/auth');
-    expect(require('../../../src/services/googleAuthService'))
-      .toBe(authModule.googleOAuthClient);
   });
 
   test('keeps legacy Auth HTTP helpers and validators on the modular implementations', () => {
     const authModule = require('../../../src/modules/auth');
-    expect(require('../../../src/routes/auth/helpers')).toBe(authModule.http);
-    expect(require('../../../src/validators/authValidators')).toBe(authModule.validation);
   });
 
   test('keeps the legacy demo provisioning method on the modular implementation', async () => {

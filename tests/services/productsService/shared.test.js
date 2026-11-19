@@ -4,7 +4,7 @@ const {
     toPayloadObject,
     isNonEmptyString,
     safeArray
-} = require('../../../src/services/productsService/shared');
+} = require('../../../src/modules/products').services.shared;
 
 describe('toNumber', () => {
     it('parses valid numeric input', () => {

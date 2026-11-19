@@ -1,7 +1,7 @@
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test-refresh-secret-bbbbbbbbbbbbbbbbbbbbbbbb';
 
-const tokens = require('../../../src/services/authService/tokens');
+const tokens = require('../../../src/modules/auth').tokens;
 
 describe('hashRefreshToken', () => {
     it('returns a stable sha256 hex digest', () => {

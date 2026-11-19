@@ -11,7 +11,7 @@ const {
     resolveRequestMetadata,
     escapeHtml,
     prefersHtmlResponse
-} = require('../../../src/routes/auth/helpers');
+} = require('../../../src/modules/auth').http;
 
 describe('resolveEntryAccountType', () => {
     it('prefers an explicit role over roles array', () => {

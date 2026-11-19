@@ -16,7 +16,7 @@ jest.mock('../../../src/services/domesticComplianceService', () => ({
 
 const pool = require('../../../src/config/database');
 const domesticComplianceService = require('../../../src/services/domesticComplianceService');
-const { bulkImport } = require('../../../src/services/productsService/bulkImportExecution');
+const { bulkImport } = require('../../../src/modules/products').services.bulkImportExecution;
 
 function createMockClient() {
     return { query: jest.fn(), release: jest.fn() };

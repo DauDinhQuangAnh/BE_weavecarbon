@@ -4,7 +4,7 @@ const {
     getConfidenceLevel,
     clampConfidenceScore,
     buildDomesticComplianceWarning
-} = require('../../../src/services/productsService/mappers');
+} = require('../../../src/modules/products').services.mappers;
 
 describe('dbToFeStatus / feToDbStatus', () => {
     it('maps DB "active" to FE "published" and back', () => {

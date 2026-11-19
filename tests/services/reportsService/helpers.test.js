@@ -11,7 +11,7 @@ const {
     normalizeUuid,
     pushTransactionalAnalyticsEvent,
     safeTrackAnalyticsEvent
-} = require('../../../src/services/reportsService/helpers');
+} = require('../../../src/modules/reports').helpers;
 
 describe('normalizeUuid', () => {
     it('returns the trimmed value when it matches the UUID format', () => {

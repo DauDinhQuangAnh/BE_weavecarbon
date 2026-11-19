@@ -1,7 +1,7 @@
 const {
     syncShipmentFromProduct,
     createShipmentFromProduct
-} = require('../../../src/services/productsService/shipmentSync');
+} = require('../../../src/modules/products').services.shipmentSync;
 
 function createMockClient() {
     return { query: jest.fn() };

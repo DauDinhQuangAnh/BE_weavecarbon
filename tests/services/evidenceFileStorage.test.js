@@ -6,7 +6,7 @@ const {
   resolveStoragePath,
   safeExtension,
   storeEvidenceFile,
-} = require('../../src/services/evidenceFileStorage');
+} = require('../../src/modules/evidence').fileStorage;
 
 describe('evidenceFileStorage', () => {
   let uploadsRoot;

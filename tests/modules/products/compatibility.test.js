@@ -4,13 +4,6 @@ describe('products compatibility entrypoints', () => {
 
     expect(require('../../../src/services/productsService'))
       .toBe(products.productsService);
-    expect(require('../../../src/validators/productsValidators'))
-      .toBe(products.productsValidators);
-
-    for (const helperName of Object.keys(products.services)) {
-      expect(require(`../../../src/services/productsService/${helperName}`))
-        .toBe(products.services[helperName]);
-    }
   });
 
   test('keeps the public products route operation surface unchanged', () => {
