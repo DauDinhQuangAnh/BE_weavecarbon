@@ -329,6 +329,34 @@ async function getOverview(companyId, trendMonths) {
     LIMIT 12
   `;
 
+  // Nhịp phát thải theo tháng của từng sản phẩm, lấy từ lô sản phẩm đã xuất bản:
+  // số lượng trong lô × phát thải mỗi đơn vị (ưu tiên giá trị chốt trong lô, nếu không có thì
+  // dùng phát thải hiện tại của sản phẩm), gộp theo tháng xuất bản lô. Đơn vị: kgCO₂e.
+  const productMonthlyEmissionsQuery = `
+    SELECT
+      p.id,
+      COALESCE(NULLIF(p.name, ''), NULLIF(p.sku, ''), p.id::text) AS name,
+      COALESCE(NULLIF(p.sku, ''), p.id::text) AS sku,
+      to_char(date_trunc('month', COALESCE(b.published_at, b.created_at)), 'YYYY-MM') AS month,
+      SUM(
+        i.quantity * COALESCE(
+          i.co2_per_unit,
+          COALESCE(p.materials_co2e, 0) + COALESCE(p.production_co2e, 0) +
+          COALESCE(p.transport_co2e, 0) + COALESCE(p.packaging_co2e, 0)
+        )
+      ) AS emissions_kg
+    FROM product_batch_items i
+    INNER JOIN product_batches b ON b.id = i.batch_id
+    INNER JOIN products p ON p.id = i.product_id
+    WHERE b.company_id = $1
+      AND p.company_id = $1
+      AND b.status = 'published'
+      AND COALESCE(b.published_at, b.created_at) >=
+        date_trunc('month', CURRENT_DATE) - (($2::int - 1) * interval '1 month')
+    GROUP BY p.id, p.name, p.sku, date_trunc('month', COALESCE(b.published_at, b.created_at))
+    ORDER BY month ASC
+  `;
+
   const exportReadinessFromMarketReadinessQuery = `
     SELECT
       COUNT(*)::int AS total_markets,
@@ -404,14 +432,16 @@ async function getOverview(companyId, trendMonths) {
     recommendationsResult,
     exportResult,
     marketReadinessResult,
-    productEmissionsResult
+    productEmissionsResult,
+    productMonthlyEmissionsResult
   ] = await Promise.all([
     pool.query(statsQuery, [companyId]),
     pool.query(carbonTrendQuery, [companyId, trendMonths]),
     pool.query(recommendationsQuery, [companyId]),
     exportReadinessPromise,
     marketReadinessPromise,
-    pool.query(productEmissionsQuery, [companyId])
+    pool.query(productEmissionsQuery, [companyId]),
+    pool.query(productMonthlyEmissionsQuery, [companyId, trendMonths])
   ]);
 
   let exportReadinessRow = exportResult.rows?.[0] || { total_markets: 0, avg_export_readiness: 0 };
@@ -547,11 +577,22 @@ async function getOverview(companyId, trendMonths) {
     total: toNumber(row.total)
   }));
 
+  const productMonthlyEmissions = productMonthlyEmissionsResult.rows
+    .map((row) => ({
+      productId: row.id,
+      name: row.name,
+      sku: row.sku,
+      month: row.month,
+      emissionsKg: toNumber(row.emissions_kg)
+    }))
+    .filter((row) => row.emissionsKg > 0);
+
   const payload = {
     stats,
     carbonTrend,
     emissionBreakdown,
     productEmissions,
+    productMonthlyEmissions,
     marketReadiness,
     marketReadinessPreview: marketReadinessDisplay.previewItems,
     marketReadinessRemainingCount: marketReadinessDisplay.remainingCount,
