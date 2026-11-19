@@ -3,6 +3,8 @@ const productsService = require('./productsService');
 const logisticsService = require('./logisticsService');
 const publicEnvironmentalClaimService = require('./publicEnvironmentalClaimService');
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function array(value) { return Array.isArray(value) ? value : []; }
 function publicProduct(product) {
   return {
@@ -50,7 +52,7 @@ class PassportService {
     this.database = database; this.products = products; this.logistics = logistics; this.publicClaims = publicClaims;
   }
 
-  async getPublicPassportPayload(identifier) {
+  async getPublicPassportPayload(identifier, { shipmentId: requestedShipmentId } = {}) {
     const normalizedIdentifier = String(identifier || '').trim();
     if (!normalizedIdentifier) {
       return null;
@@ -93,16 +95,39 @@ class PassportService {
       return null;
     }
 
+    // A QR printed for a specific shipment carries ?shipmentId=. Honour it only when that
+    // shipment belongs to the same company and actually contains this product; otherwise
+    // keep the latest linked shipment so the id cannot be used to probe other shipments.
+    let shipmentId = productRef.shipment_id || null;
+    const requested = String(requestedShipmentId || '').trim();
+    if (UUID_PATTERN.test(requested) && requested !== shipmentId) {
+      const linked = await this.database.query(
+        `
+          SELECT sp.shipment_id
+          FROM public.shipment_products sp
+          INNER JOIN public.shipments s ON s.id = sp.shipment_id
+          WHERE sp.product_id = $1
+            AND sp.shipment_id = $2
+            AND s.company_id = $3
+          LIMIT 1
+        `,
+        [productRef.id, requested, productRef.company_id]
+      );
+      if (linked.rows.length > 0) {
+        shipmentId = linked.rows[0].shipment_id;
+      }
+    }
+
     let shipment = null;
-    if (productRef.shipment_id) {
+    if (shipmentId) {
       shipment = await this.logistics.getShipmentById(
-        productRef.shipment_id,
+        shipmentId,
         productRef.company_id
       );
     }
 
     const environmentalClaims = await this.publicClaims.resolvePassportClaims({
-      companyId: productRef.company_id, shipmentId: productRef.shipment_id,
+      companyId: productRef.company_id, shipmentId,
       shipmentReference: shipment?.referenceNumber, destinationCountry: shipment?.destination?.country,
       productId: product.id, productSku: product.productCode,
       calculationSha256: product.carbonAuthority?.canonicalInputHash

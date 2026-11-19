@@ -9,7 +9,9 @@ router.get(
   '/:productId',
   asyncHandler(async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    const payload = await passportService.getPublicPassportPayload(req.params.productId);
+    const payload = await passportService.getPublicPassportPayload(req.params.productId, {
+      shipmentId: typeof req.query.shipmentId === 'string' ? req.query.shipmentId : undefined
+    });
 
     if (!payload) {
       return sendError(res, {

@@ -80,6 +80,7 @@ const QUERY_PARAMETER_OVERRIDES = {
   'GET /logistics/shipments': ['search', 'status', 'page', 'page_size', 'sort_by', 'sort_order'],
   'GET /product-batches': ['search', 'status', 'page', 'page_size', 'sort_by', 'sort_order'],
   'GET /products': ['search', 'status', 'category', 'page', 'page_size', 'sort_by', 'sort_order', 'include', 'view'],
+  'GET /passport/{productId}': ['shipmentId'],
   'GET /products/bulk-template': ['format'],
   'GET /reports': ['search', 'type', 'status', 'date_from', 'date_to', 'page', 'page_size'],
   'GET /subscription/payment-status': ['txn_ref']
