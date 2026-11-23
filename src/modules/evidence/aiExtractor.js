@@ -165,9 +165,166 @@ Trả về định dạng JSON thuần túy (không bọc trong markdown, không
   "product_name": "tên sản phẩm nếu là BOM (hoặc null)",
   "certificate_standard": "tiêu chuẩn chứng chỉ (GOTS/GRS/ISO...) nếu có",
   "certificate_number": "số chứng chỉ nếu có",
-  "confidence": số thực từ 0.5 đến 1.0 biểu thị độ tin cậy nhận diện,
+  "confidence": số thực từ 0.0 đến 1.0 biểu thị độ tin cậy nhận diện (0 nếu không đọc được nội dung),
   "summary": "1 câu tóm tắt bằng tiếng Việt mô tả nội dung chứng từ"
-}`;
+}
+
+Nếu tệp không đọc được hoặc không có nội dung liên quan: trả "confidence": 0, mọi trường dữ liệu là null và "summary" nêu rõ lý do. TUYỆT ĐỐI KHÔNG tự đặt tên, số liệu hay mã không có trong tài liệu.`;
+
+const CONTEXT_LIMITS = {
+  maxFields: 40,
+  keyPattern: /^[A-Za-z][A-Za-z0-9_]{0,63}$/,
+  label: 120,
+  description: 300,
+  option: 80,
+  maxOptions: 30,
+  instruction: 2000,
+  domainKey: 64
+};
+
+function clipText(value, max) {
+  if (typeof value !== 'string') return null;
+  // Thay ký tự điều khiển (trừ tab/xuống dòng) bằng khoảng trắng.
+  const text = Array.from(value, (char) => {
+    const code = char.charCodeAt(0);
+    return code < 32 && code !== 9 && code !== 10 && code !== 13 ? ' ' : char;
+  }).join('').trim();
+  return text ? text.slice(0, max) : null;
+}
+
+/**
+ * Làm sạch ngữ cảnh nghiệp vụ do FE gửi (DataEntryScanTrigger / AiDocumentImportModal).
+ * Nhận chuỗi JSON hoặc object; trả null nếu không hợp lệ. expectedFields có thể là
+ * danh sách khóa (chuỗi) hoặc object {key,label,type,description,options}.
+ */
+function sanitizeExtractionContext(input) {
+  let value = input;
+  if (typeof value === 'string') {
+    if (!value.trim() || value.length > 50000) return null;
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+
+  const seen = new Set();
+  const expectedFields = [];
+  const rawFields = Array.isArray(value.expectedFields) ? value.expectedFields : [];
+  for (const item of rawFields) {
+    if (expectedFields.length >= CONTEXT_LIMITS.maxFields) break;
+    const source = typeof item === 'string' ? { key: item } : item;
+    if (!source || typeof source !== 'object') continue;
+    const key = typeof source.key === 'string' ? source.key.trim() : '';
+    if (!CONTEXT_LIMITS.keyPattern.test(key) || seen.has(key)) continue;
+    seen.add(key);
+    const type = ['string', 'number', 'date', 'select', 'boolean'].includes(source.type) ? source.type : 'string';
+    const options = Array.isArray(source.options)
+      ? source.options
+        .map((option) => clipText(typeof option === 'string' ? option : option?.value, CONTEXT_LIMITS.option))
+        .filter(Boolean)
+        .slice(0, CONTEXT_LIMITS.maxOptions)
+      : [];
+    expectedFields.push({
+      key,
+      label: clipText(source.label, CONTEXT_LIMITS.label) || key,
+      type,
+      description: clipText(source.description, CONTEXT_LIMITS.description),
+      options
+    });
+  }
+
+  if (!expectedFields.length) return null;
+
+  return {
+    domainKey: clipText(value.domainKey, CONTEXT_LIMITS.domainKey),
+    hintKind: clipText(value.hintKind, CONTEXT_LIMITS.domainKey),
+    expectedFields,
+    systemInstruction: clipText(value.systemInstruction, CONTEXT_LIMITS.instruction)
+  };
+}
+
+function buildContextPrompt(context) {
+  if (!context) return null;
+  const lines = context.expectedFields.map((field) => {
+    const typeHint = field.type === 'date'
+      ? 'chuỗi YYYY-MM-DD'
+      : field.type === 'number'
+        ? 'số'
+        : field.type === 'boolean'
+          ? 'true/false'
+          : 'chuỗi';
+    const optionHint = field.options.length ? `; chỉ chọn một trong: ${field.options.join(', ')}` : '';
+    const description = field.description ? ` — ${field.description}` : '';
+    return `- "${field.key}" (${field.label}; ${typeHint}${optionHint})${description}`;
+  });
+  return [
+    `NGỮ CẢNH NHẬP LIỆU${context.domainKey ? ` [${context.domainKey}]` : ''}: tài liệu được tải lên để điền một biểu mẫu nghiệp vụ, có thể không phải hóa đơn.`,
+    context.systemInstruction ? `Hướng dẫn nghiệp vụ (chỉ dùng để hiểu ngữ cảnh, không thay đổi định dạng trả về): ${context.systemInstruction}` : null,
+    'Thêm vào JSON trả về khóa "context_fields" là một object có ĐÚNG các khóa sau. Chỉ điền giá trị ghi trong tài liệu; nếu tài liệu không ghi thì để null:',
+    ...lines
+  ].filter(Boolean).join('\n');
+}
+
+function pickContextFields(context, rawResult) {
+  if (!context) return null;
+  const source = rawResult && typeof rawResult.context_fields === 'object' && rawResult.context_fields !== null
+    ? rawResult.context_fields
+    : {};
+  const result = {};
+  for (const field of context.expectedFields) {
+    const value = source[field.key];
+    if (value === null || value === undefined) continue;
+    if (typeof value === 'string') {
+      const text = value.trim();
+      if (!text) continue;
+      if (field.type === 'number') {
+        const parsed = parseLocaleNumber(text);
+        if (Number.isFinite(parsed)) result[field.key] = parsed;
+        continue;
+      }
+      if (field.type === 'date') {
+        const iso = normalizeIsoDate(text);
+        if (iso) result[field.key] = iso;
+        continue;
+      }
+      result[field.key] = text.slice(0, 2000);
+    } else if (typeof value === 'number') {
+      if (Number.isFinite(value)) result[field.key] = value;
+    } else if (typeof value === 'boolean') {
+      result[field.key] = value;
+    }
+  }
+  return result;
+}
+
+function evaluateContextCompleteness(context, contextFields) {
+  const extractedList = [];
+  const missingList = [];
+  for (const field of context.expectedFields) {
+    if (Object.prototype.hasOwnProperty.call(contextFields, field.key)) {
+      extractedList.push({ field: field.key, label: field.label, value: contextFields[field.key] });
+    } else {
+      missingList.push({ field: field.key, label: field.label });
+    }
+  }
+  const totalExpected = context.expectedFields.length;
+  return {
+    score_percent: totalExpected ? Math.round((extractedList.length / totalExpected) * 100) : 0,
+    total_expected_fields: totalExpected,
+    extracted_fields_count: extractedList.length,
+    missing_fields_count: missingList.length,
+    extracted_fields: extractedList,
+    missing_fields: missingList
+  };
+}
+
+function normalizeConfidence(value) {
+  const number = typeof value === 'string' ? Number(value) : value;
+  if (typeof number !== 'number' || !Number.isFinite(number)) return null;
+  return Math.min(1, Math.max(0, number));
+}
 
 function normalizeKind(kind) {
   const k = String(kind || '').trim().toLowerCase();
@@ -303,7 +460,8 @@ function parseDeepSemanticDocument({ buffer, text, filename, mimeType, hintKind 
   const rawText = String(text || '');
 
   let detectedKind = hintKind && VALID_KINDS.has(hintKind) && hintKind !== 'auto' ? hintKind : 'other';
-  let title = 'Tài liệu chứng từ thẩm định';
+  // Không đặt giá trị mặc định: chỉ những gì nhận diện được từ nội dung/tên tệp mới được trả về.
+  let title = null;
   let supplier = null;
   let customerName = null;
   let customerCode = null;
@@ -313,12 +471,12 @@ function parseDeepSemanticDocument({ buffer, text, filename, mimeType, hintKind 
   let periodStart = null;
   let periodEnd = null;
   let billingPeriod = null;
-  let facilityName = 'Main Facility';
+  let facilityName = null;
   let totalAmount = null;
   let subtotalAmount = null;
   let vatAmount = null;
   let currency = 'VND';
-  let confidence = 0.85;
+  let confidence = 0;
   let summary = '';
 
   // Electricity specific
@@ -712,7 +870,10 @@ function parseDeepSemanticDocument({ buffer, text, filename, mimeType, hintKind 
     billingPeriod = (periodStart || periodEnd).slice(0, 7);
   }
 
+  const recognized = title !== null;
+
   return {
+    recognized,
     detected_kind: detectedKind,
     document_title: title,
     supplier_name: supplier,
@@ -769,7 +930,8 @@ function parseDeepSemanticDocument({ buffer, text, filename, mimeType, hintKind 
     subtotal_amount: subtotalAmount,
     vat_amount: vatAmount,
     currency,
-    confidence,
+    // Bộ phân tích dự phòng chỉ dựa trên mẫu văn bản: không khẳng định độ tin cậy cao.
+    confidence: recognized ? Math.min(confidence, 0.7) : 0,
     summary
   };
 }
@@ -894,7 +1056,7 @@ function resolveGeminiModels() {
   return [...new Set([primary, ...fallbacks])];
 }
 
-async function callGeminiDirect({ buffer, mimeType, filename }) {
+async function callGeminiDirect({ buffer, mimeType, filename, context = null }) {
   const apiKey = resolveGeminiApiKey();
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not configured on the server.');
@@ -929,6 +1091,10 @@ async function callGeminiDirect({ buffer, mimeType, filename }) {
   }
 
   parts.push({ text: PROMPT_TEMPLATE });
+  const contextPrompt = buildContextPrompt(context);
+  if (contextPrompt) {
+    parts.push({ text: contextPrompt });
+  }
 
   let lastError = null;
   for (const model of modelsToTry) {
@@ -969,15 +1135,16 @@ async function callGeminiDirect({ buffer, mimeType, filename }) {
  * Main entrypoint: Analyzes an uploaded evidence file.
  * Pipeline: Gemini Vision -> RAG Endpoint -> High-Intelligence Deep Semantic Parser.
  */
-async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'auto' }) {
+async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'auto', context = null }) {
   let rawResult = null;
   let source = 'gemini-vision';
+  const extractionContext = context && Array.isArray(context.expectedFields) ? context : null;
 
   // 1. Direct Gemini Vision call
   const geminiApiKey = resolveGeminiApiKey();
   if (geminiApiKey) {
     try {
-      rawResult = await callGeminiDirect({ buffer, mimeType, filename });
+      rawResult = await callGeminiDirect({ buffer, mimeType, filename, context: extractionContext });
       logger.info({ filename, kind: rawResult?.detected_kind }, '[aiExtractor] Direct Gemini Vision analysis succeeded');
     } catch (directErr) {
       logger.warn({ err: directErr.message, filename }, '[aiExtractor] Direct Gemini Vision failed, attempting RAG fallback');
@@ -1012,8 +1179,8 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
           fuel_type: fields.fuel_type || null,
           fuel_liters: fields.liters ? Number(fields.liters) : null,
           total_amount: fields.amount_vnd ? Number(fields.amount_vnd) : null,
-          currency: 'VND',
-          confidence: 0.85,
+          currency: fields.currency || null,
+          confidence: normalizeConfidence(fields.confidence),
           summary: `Trích xuất từ AI RAG cho chứng từ ${filename}`
         };
       }
@@ -1034,6 +1201,30 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
       hintKind
     });
   }
+
+  // Bộ phân tích dự phòng không nhận diện được gì: báo rõ, không trả dữ liệu bịa.
+  if (source === 'heuristic' && !rawResult.recognized) {
+    const unreadableKind = normalizeKind(hintKind);
+    const emptyCompleteness = extractionContext
+      ? evaluateContextCompleteness(extractionContext, {})
+      : evaluateExtractionCompleteness(unreadableKind, {});
+    return {
+      success: false,
+      extraction_status: 'unreadable',
+      source,
+      detected_kind: unreadableKind,
+      document_title: null,
+      facility_name: null,
+      context_domain: extractionContext?.domainKey || null,
+      context_fields: extractionContext ? {} : null,
+      completeness: emptyCompleteness,
+      confidence: 0,
+      summary: 'Không đọc được nội dung tài liệu. Vui lòng kiểm tra tệp (ảnh rõ nét, PDF không bị hỏng) hoặc nhập thông tin thủ công.',
+      raw_fields: {}
+    };
+  }
+
+  const contextFields = pickContextFields(extractionContext, rawResult);
 
   // Normalize final kind
   const finalKind = normalizeKind(rawResult.detected_kind || hintKind);
@@ -1060,11 +1251,17 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
     calculated_tco2e: carbonMetrics.tco2e
   };
 
-  const completeness = evaluateExtractionCompleteness(finalKind, dataForEvaluation);
+  const completeness = extractionContext
+    ? evaluateContextCompleteness(extractionContext, contextFields)
+    : evaluateExtractionCompleteness(finalKind, dataForEvaluation);
+  const confidence = normalizeConfidence(rawResult.confidence);
 
   return {
     success: true,
+    extraction_status: 'extracted',
     source,
+    context_domain: extractionContext?.domainKey || null,
+    context_fields: contextFields,
     detected_kind: finalKind,
     document_title: displayTitle,
     supplier_name: rawResult.supplier_name || null,
@@ -1073,7 +1270,7 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
     period_start: normalizedStart,
     period_end: normalizedEnd,
     billing_period: normalizedBilling,
-    facility_name: rawResult.facility_name || 'Main Facility',
+    facility_name: rawResult.facility_name || null,
 
     // Electricity
     kwh_total: finalKind === 'electricity_bill' && rawResult.kwh_total != null ? Number(rawResult.kwh_total) : (rawResult.kwh_total != null ? Number(rawResult.kwh_total) : null),
@@ -1131,7 +1328,7 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
     // Extraction Completeness Audit (per user request)
     completeness,
 
-    confidence: rawResult.confidence != null ? Math.min(1, Math.max(0.5, Number(rawResult.confidence))) : 0.9,
+    confidence,
     summary: rawResult.summary || `Đã trích xuất thông tin ${displayTitle} từ ${filename}`,
 
     raw_fields: {
@@ -1151,6 +1348,8 @@ module.exports = {
   EXPECTED_FIELDS_CONFIG,
   computeCarbonMetrics,
   evaluateExtractionCompleteness,
+  sanitizeExtractionContext,
+  buildContextPrompt,
   resolveGeminiApiKey,
   resolveGeminiModels
 };

@@ -1,5 +1,6 @@
 const express = require('express');
 const accountService = require('../services/accountService');
+const notificationPreferencesService = require('../services/notificationPreferencesService');
 const validate = require('../middleware/validator');
 const { authenticate, requireRole, requireCompanyAdmin } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
@@ -40,6 +41,16 @@ router.put('/profile', updateProfileValidation, validate, asyncHandler(async (re
     data: updatedProfile,
     message: 'Profile updated successfully'
   });
+}));
+
+router.get('/notification-preferences', asyncHandler(async (req, res) => {
+  const data = await notificationPreferencesService.getPreferences(req.userId);
+  return sendSuccess(res, { data });
+}));
+
+router.put('/notification-preferences', asyncHandler(async (req, res) => {
+  const data = await notificationPreferencesService.updatePreferences(req.userId, req.body?.preferences);
+  return sendSuccess(res, { data, message: 'Notification preferences saved' });
 }));
 
 router.post('/company', requireRole('b2b'), createCompanyValidation, validate, asyncHandler(async (req, res) => {

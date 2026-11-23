@@ -7,7 +7,9 @@ const {
   analyzeEvidenceFile,
   normalizeKind,
   VALID_KINDS,
-  KIND_DISPLAY_NAMES
+  KIND_DISPLAY_NAMES,
+  sanitizeExtractionContext,
+  buildContextPrompt
 } = require('../../../src/modules/evidence/aiExtractor');
 
 describe('aiExtractor module', () => {
@@ -136,7 +138,7 @@ describe('aiExtractor module', () => {
       expect(result.detected_kind).toBe('bom');
     });
 
-    test('respects hintKind when file is ambiguous', async () => {
+    test('reports unreadable files instead of inventing values', async () => {
       const buffer = Buffer.from('Random binary content');
       const result = await analyzeEvidenceFile({
         buffer,
@@ -145,8 +147,109 @@ describe('aiExtractor module', () => {
         hintKind: 'material_invoice'
       });
 
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
+      expect(result.extraction_status).toBe('unreadable');
       expect(result.detected_kind).toBe('material_invoice');
+      expect(result.confidence).toBe(0);
+      expect(result.facility_name).toBeNull();
+      expect(result.document_title).toBeNull();
     });
+
+    test('unreadable file with context returns empty context fields', async () => {
+      const result = await analyzeEvidenceFile({
+        buffer: Buffer.from('%PDF-1.4 garbage'),
+        mimeType: 'application/pdf',
+        filename: 'facility.pdf',
+        hintKind: 'facility_boundary',
+        context: sanitizeExtractionContext({ domainKey: 'facility', expectedFields: ['reference', 'name'] })
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.context_fields).toEqual({});
+      expect(result.completeness.total_expected_fields).toBe(2);
+      expect(result.completeness.extracted_fields_count).toBe(0);
+    });
+  });
+});
+
+describe('aiExtractor extraction context', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('sanitizeExtractionContext accepts JSON strings and drops invalid keys', () => {
+    const context = sanitizeExtractionContext(JSON.stringify({
+      domainKey: 'facility',
+      hintKind: 'facility_boundary',
+      expectedFields: ['reference', { key: 'timezone', label: 'Múi giờ', type: 'string' }, 'bad key', 'reference'],
+      systemInstruction: 'Trích xuất hồ sơ cơ sở'
+    }));
+
+    expect(context.domainKey).toBe('facility');
+    expect(context.expectedFields.map((field) => field.key)).toEqual(['reference', 'timezone']);
+    expect(context.expectedFields[1].label).toBe('Múi giờ');
+  });
+
+  test('sanitizeExtractionContext rejects malformed input', () => {
+    expect(sanitizeExtractionContext('{not json')).toBeNull();
+    expect(sanitizeExtractionContext({ expectedFields: [] })).toBeNull();
+    expect(sanitizeExtractionContext(null)).toBeNull();
+  });
+
+  test('buildContextPrompt lists every expected key', () => {
+    const prompt = buildContextPrompt(sanitizeExtractionContext({ expectedFields: ['reference', 'boundary'] }));
+    expect(prompt).toContain('"reference"');
+    expect(prompt).toContain('"boundary"');
+    expect(prompt).toContain('context_fields');
+  });
+
+  test('returns context fields from Gemini and scores completeness against them', async () => {
+    axios.post.mockResolvedValueOnce({
+      data: {
+        candidates: [{
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                detected_kind: 'other',
+                document_title: 'Giấy chứng nhận cơ sở',
+                confidence: 0.93,
+                context_fields: {
+                  reference: 'FAC-TU-02',
+                  name: 'Nhà máy Thủ Đức 2',
+                  timezone: 'Asia/Ho_Chi_Minh',
+                  boundary: null,
+                  injected: 'ignored'
+                }
+              })
+            }]
+          }
+        }]
+      }
+    });
+    const previousKey = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = 'test-key';
+    try {
+      const result = await analyzeEvidenceFile({
+        buffer: Buffer.from('fake-image'),
+        mimeType: 'image/png',
+        filename: 'facility.png',
+        hintKind: 'facility_boundary',
+        context: sanitizeExtractionContext({ domainKey: 'facility', expectedFields: ['reference', 'name', 'timezone', 'boundary'] })
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.context_fields).toEqual({
+        reference: 'FAC-TU-02',
+        name: 'Nhà máy Thủ Đức 2',
+        timezone: 'Asia/Ho_Chi_Minh'
+      });
+      expect(result.completeness.total_expected_fields).toBe(4);
+      expect(result.completeness.extracted_fields_count).toBe(3);
+      expect(result.facility_name).toBeNull();
+      expect(result.confidence).toBe(0.93);
+    } finally {
+      if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = previousKey;
+    }
   });
 });

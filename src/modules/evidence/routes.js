@@ -201,13 +201,17 @@ router.post('/analyze-file', expensiveOperationLimiter, upload.single('file'), a
   file.originalname = safeUpload.filename;
   file.mimetype = safeUpload.mime;
 
-  const hintKind = req.body?.hintKind || req.body?.kind || req.body?.evidence_type || null;
+  const rawHintKind = req.body?.hintKind || req.body?.kind || req.body?.evidence_type || null;
+  const hintKind = typeof rawHintKind === 'string' ? rawHintKind.trim().slice(0, 64) || null : null;
+  // Ngữ cảnh nhập liệu (danh sách trường mong đợi) do form quét AI gửi kèm; không hợp lệ thì bỏ qua.
+  const context = aiExtractor.sanitizeExtractionContext(req.body?.context);
 
   const result = await aiExtractor.analyzeEvidenceFile({
     buffer: file.buffer,
     mimeType: file.mimetype,
     filename: file.originalname,
-    hintKind
+    hintKind,
+    context
   });
 
   return sendSuccess(res, { data: result });
