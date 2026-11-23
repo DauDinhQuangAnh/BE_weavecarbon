@@ -16,6 +16,7 @@ const FUEL_EMISSION_FACTORS = {
 const formatCalculation = (row) => ({
   id: row.id,
   productId: row.product_id,
+  productName: row.product_name ?? null,
   shipmentId: row.shipment_id,
   calculationType: row.calculation_type,
   periodStart: row.period_start,

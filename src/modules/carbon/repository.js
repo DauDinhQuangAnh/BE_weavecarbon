@@ -26,7 +26,10 @@ function createCarbonRepository({ database = pool } = {}) {
                 engine_version, methodology_version, factor_registry_version,
                 gwp_basis, calculated_at, canonical_input_hash,
                 factor_snapshot, assumptions, is_legacy,
-                notes, created_at
+                notes, created_at,
+                (SELECT p.name FROM products p
+                  WHERE p.id = carbon_calculations.product_id
+                    AND p.company_id = carbon_calculations.company_id) AS product_name
          FROM carbon_calculations
          WHERE ${where}
          ORDER BY created_at DESC
