@@ -104,8 +104,9 @@ async function main() {
   const auditEvents = [];
   try {
     await client.query('BEGIN');
-    const migration = await client.query('SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1');
-    assert(migration.rows[0]?.name === '052_g2_controlled_ai_activity_promotion.sql', 'G2-14 migration is not current.');
+    // G2-14 phải đã được áp dụng; các migration mới hơn (053+) không làm pilot này mất hiệu lực.
+    const migration = await client.query('SELECT name FROM schema_migrations WHERE name = $1', ['052_g2_controlled_ai_activity_promotion.sql']);
+    assert(migration.rows[0]?.name === '052_g2_controlled_ai_activity_promotion.sql', 'G2-14 migration is not applied.');
 
     await client.query(
       `INSERT INTO companies(id,name,business_type)
