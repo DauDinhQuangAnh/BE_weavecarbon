@@ -479,7 +479,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     });
   }
 
-  const doc = await evidenceService.getEvidenceById(companyId, req.params.id);
+  const fileRecord = await evidenceService.getEvidenceFile(companyId, req.params.id);
   const deleted = await evidenceService.deleteEvidence(companyId, req.params.id);
   if (!deleted) {
     return sendError(res, { status: 404, code: 'NOT_FOUND', message: 'Evidence document not found.' });
@@ -490,10 +490,10 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     evidenceDocumentId: null,
     dataGroup: 'evidence',
     changedField: 'document.deleted',
-    oldValue: doc?.file_name || doc?.document_name || req.params.id,
+    oldValue: fileRecord?.file_name || req.params.id,
     newValue: null,
     reason: 'evidence.delete',
-    notes: `Chứng từ ${doc?.file_name || doc?.document_name || req.params.id} đã bị xóa bởi người dùng`
+    notes: `Chứng từ ${fileRecord?.file_name || req.params.id} đã bị xóa bởi người dùng`
   });
   return sendSuccess(res, { data: { deleted: true } });
 }));
