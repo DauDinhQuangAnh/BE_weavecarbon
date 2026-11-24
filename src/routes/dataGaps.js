@@ -15,6 +15,7 @@ const formatDataGap = (row) => ({
   requiredAction: row.required_action,
   owner: row.owner,
   deadline: row.deadline,
+  regulationTag: row.regulation_tag || 'Kiểm toán nội bộ',
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -34,7 +35,7 @@ router.get(
 
     const { rows } = await pool.query(
       `SELECT id, data_group, required_for_audit, current_status,
-              risk_level, required_action, owner, deadline, created_at, updated_at
+              risk_level, required_action, owner, deadline, regulation_tag, created_at, updated_at
        FROM data_gaps
        WHERE company_id = $1
        ORDER BY
@@ -117,12 +118,14 @@ router.post(
       required_action, requiredAction,
       owner,
       deadline,
+      regulation_tag, regulationTag,
     } = req.body;
     const resolvedDataGroup = dataGroup ?? data_group;
     const resolvedRequiredForAudit = requiredForAudit ?? required_for_audit;
     const resolvedCurrentStatus = currentStatus ?? current_status ?? 'missing';
     const resolvedRiskLevel = riskLevel ?? risk_level ?? 'high';
     const resolvedRequiredAction = requiredAction ?? required_action ?? null;
+    const resolvedRegulationTag = regulationTag ?? regulation_tag ?? 'Kiểm toán nội bộ';
 
     if (!resolvedDataGroup) {
       return sendError(res, {
@@ -150,10 +153,10 @@ router.post(
 
     const { rows } = await pool.query(
       `INSERT INTO data_gaps
-         (company_id, data_group, required_for_audit, current_status, risk_level, required_action, owner, deadline)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (company_id, data_group, required_for_audit, current_status, risk_level, required_action, owner, deadline, regulation_tag)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id, data_group, required_for_audit, current_status, risk_level,
-                 required_action, owner, deadline, created_at, updated_at`,
+                 required_action, owner, deadline, regulation_tag, created_at, updated_at`,
       [
         companyId,
         resolvedDataGroup,
@@ -162,7 +165,8 @@ router.post(
         resolvedRiskLevel,
         resolvedRequiredAction,
         owner || null,
-        deadline || null
+        deadline || null,
+        resolvedRegulationTag
       ]
     );
     await logAuditTrail({
@@ -187,11 +191,12 @@ router.put(
     if (!companyId) return sendNoCompany(res);
 
     const { id } = req.params;
-    const { current_status, currentStatus, risk_level, riskLevel, required_action, requiredAction, owner, deadline, required_for_audit, requiredForAudit } = req.body;
+    const { current_status, currentStatus, risk_level, riskLevel, required_action, requiredAction, owner, deadline, required_for_audit, requiredForAudit, regulation_tag, regulationTag } = req.body;
     const resolvedCurrentStatus = currentStatus ?? current_status;
     const resolvedRiskLevel = riskLevel ?? risk_level;
     const resolvedRequiredAction = requiredAction ?? required_action;
     const resolvedRequiredForAudit = requiredForAudit ?? required_for_audit;
+    const resolvedRegulationTag = regulationTag ?? regulation_tag;
 
     if (resolvedCurrentStatus && !VALID_STATUSES.includes(resolvedCurrentStatus)) {
       return sendError(res, {
@@ -224,10 +229,11 @@ router.put(
            owner            = COALESCE($6, owner),
            deadline         = COALESCE($7::DATE, deadline),
            required_for_audit = COALESCE($8, required_for_audit),
+           regulation_tag   = COALESCE($9, regulation_tag),
            updated_at       = now()
        WHERE id = $1 AND company_id = $2
        RETURNING id, data_group, required_for_audit, current_status, risk_level,
-                 required_action, owner, deadline, created_at, updated_at`,
+                 required_action, owner, deadline, regulation_tag, created_at, updated_at`,
       [
         id,
         companyId,
@@ -236,7 +242,8 @@ router.put(
         resolvedRequiredAction !== undefined ? resolvedRequiredAction : null,
         owner !== undefined ? owner : null,
         deadline || null,
-        resolvedRequiredForAudit !== undefined ? resolvedRequiredForAudit : null
+        resolvedRequiredForAudit !== undefined ? resolvedRequiredForAudit : null,
+        resolvedRegulationTag !== undefined ? resolvedRegulationTag : null
       ]
     );
 
@@ -268,13 +275,24 @@ router.delete(
     if (!companyId) return sendNoCompany(res);
 
     const { rows } = await pool.query(
-      `DELETE FROM data_gaps WHERE id = $1 AND company_id = $2 RETURNING id`,
+      `DELETE FROM data_gaps WHERE id = $1 AND company_id = $2 RETURNING id, data_group`,
       [req.params.id, companyId]
     );
 
     if (!rows.length) {
       return sendError(res, { status: 404, code: 'NOT_FOUND', message: 'Data gap not found' });
     }
+
+    await logAuditTrail({
+      companyId,
+      userId: req.userId,
+      dataGroup: rows[0].data_group || 'data_gap',
+      changedField: 'data_gap.deleted',
+      oldValue: rows[0].id,
+      newValue: null,
+      reason: 'data_gap.delete',
+      notes: 'Mục khoảng trống dữ liệu đã bị xóa'
+    });
 
     return sendSuccess(res, { data: { deleted: true, id: rows[0].id } });
   })

@@ -9,6 +9,7 @@ const logger = require('../shared/logger');
 const reportJobQueue = require('../shared/jobQueue');
 const { expensiveOperationLimiter } = require('../shared/rateLimiter');
 const { assertSafeEvidenceUpload } = require('./uploadPolicy');
+const { logAuditTrail } = require('../shared/auditing');
 const { aiActivityPromotionService } = require('./aiActivityPromotionService');
 const {
   removeEvidenceFile,
@@ -482,6 +483,17 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   if (!deleted) {
     return sendError(res, { status: 404, code: 'NOT_FOUND', message: 'Evidence document not found.' });
   }
+  await logAuditTrail({
+    companyId,
+    userId: req.userId,
+    evidenceDocumentId: req.params.id,
+    dataGroup: 'evidence',
+    changedField: 'document.deleted',
+    oldValue: req.params.id,
+    newValue: null,
+    reason: 'evidence.delete',
+    notes: 'Chứng từ đã bị xóa bởi người dùng'
+  });
   return sendSuccess(res, { data: { deleted: true } });
 }));
 

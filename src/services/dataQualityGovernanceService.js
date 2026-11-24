@@ -14,6 +14,36 @@ class DataQualityGovernanceService {
       checksumSha256: row.checksum_sha256, fileSizeBytes: Number(row.file_size_bytes || 0), status: row.status }));
   }
 
+  async _subjectExists(companyId, type, ref) {
+    if (!ref) return false;
+    try {
+      if (type === 'activity') {
+        const q = await this.database.query(
+          'SELECT 1 FROM industrial_activities WHERE company_id=$1 AND (activity_reference=$2 OR id::text=$2)',
+          [companyId, ref]
+        );
+        return Boolean(q.rows.length);
+      }
+      if (type === 'facility') {
+        const q = await this.database.query(
+          'SELECT 1 FROM industrial_facilities WHERE company_id=$1 AND (facility_reference=$2 OR id::text=$2)',
+          [companyId, ref]
+        );
+        return Boolean(q.rows.length);
+      }
+      if (type === 'process') {
+        const q = await this.database.query(
+          'SELECT 1 FROM industrial_processes WHERE company_id=$1 AND (process_reference=$2 OR id::text=$2)',
+          [companyId, ref]
+        );
+        return Boolean(q.rows.length);
+      }
+    } catch {
+      // Allow other or legacy tables
+    }
+    return true;
+  }
+
   async listDql(companyId) {
     if (!(await this._companyExists(companyId))) return null;
     const result = await this.database.query('SELECT * FROM industrial_dql_assessments WHERE company_id=$1 ORDER BY created_at DESC, id DESC', [companyId]);
@@ -25,6 +55,14 @@ class DataQualityGovernanceService {
     const scored = scoreDql(input); if (scored.errors.length) return { blocked: true, code: 'DQL_ASSESSMENT_INVALID', message: scored.errors.join(' '), details: scored.errors };
     const value = scored.value; const evidence = await this._evidence(companyId, value.evidenceDocumentIds);
     if (evidence.length !== value.evidenceDocumentIds.length) return { blocked: true, code: 'DQL_EVIDENCE_INVALID', message: 'Every evidence document must belong to the active company.' };
+    const exists = await this._subjectExists(companyId, value.subjectType, value.subjectReference);
+    if (!exists) {
+      return {
+        blocked: true,
+        code: 'DQL_SUBJECT_NOT_FOUND',
+        message: `Mã đối tượng "${value.subjectReference}" thuộc loại "${value.subjectType}" không tồn tại trong hệ thống của doanh nghiệp.`
+      };
+    }
     const scores = value.scores;
     const result = await this.database.query(
       `INSERT INTO industrial_dql_assessments (company_id, subject_type, subject_reference, methodology_version,
@@ -76,6 +114,13 @@ class DataQualityGovernanceService {
     const { value, errors } = validateFactorReview(input); if (errors.length) return { blocked: true, code: 'FACTOR_REVIEW_INVALID', message: errors.join(' '), details: errors };
     const found = await this.database.query('SELECT * FROM emission_factor_proposals WHERE id=$1 AND company_id=$2', [proposalId, companyId]);
     const proposal = found.rows[0]; if (!proposal) return null;
+    if (proposal.created_by && String(proposal.created_by) === String(userId)) {
+      return {
+        blocked: true,
+        code: 'MAKER_CHECKER_VIOLATION',
+        message: 'Nguyên tắc kiểm soát chéo (Four-Eyes Principle): Người tạo đề xuất không được tự phê duyệt đề xuất hệ số phát thải của chính mình.'
+      };
+    }
     const currentEvidence = await this._evidence(companyId, (proposal.evidence_snapshot || []).map((item) => item.id));
     const stale = currentEvidence.length !== proposal.evidence_snapshot.length || currentEvidence.some((item) => {
       const snapshot = proposal.evidence_snapshot.find((candidate) => candidate.id === item.id);
