@@ -3,36 +3,39 @@ const pool = require('../shared/database');
 function createCarbonRepository({ database = pool } = {}) {
   return {
     async listCalculations({ companyId, productId, calculationType, limit, offset }) {
-      const conditions = ['company_id = $1'];
+      const conditions = ['carbon_calculations.company_id = $1'];
       const params = [companyId];
 
       if (productId) {
         params.push(productId);
-        conditions.push(`product_id = $${params.length}`);
+        conditions.push(`carbon_calculations.product_id = $${params.length}`);
       }
 
       if (calculationType) {
         params.push(calculationType);
-        conditions.push(`calculation_type = $${params.length}`);
+        conditions.push(`carbon_calculations.calculation_type = $${params.length}`);
       }
 
       const where = conditions.join(' AND ');
       const { rows } = await database.query(
-        `SELECT id, product_id, shipment_id, calculation_type,
-                period_start, period_end,
-                materials_co2e, production_co2e, transport_co2e,
-                packaging_co2e, total_co2e,
-                methodology, emission_factor_version,
-                engine_version, methodology_version, factor_registry_version,
-                gwp_basis, calculated_at, canonical_input_hash,
-                factor_snapshot, assumptions, is_legacy,
-                notes, created_at,
+        `SELECT carbon_calculations.id, carbon_calculations.product_id, carbon_calculations.shipment_id, carbon_calculations.calculation_type,
+                carbon_calculations.period_start, carbon_calculations.period_end,
+                carbon_calculations.materials_co2e, carbon_calculations.production_co2e, carbon_calculations.transport_co2e,
+                carbon_calculations.packaging_co2e, carbon_calculations.total_co2e,
+                carbon_calculations.methodology, carbon_calculations.emission_factor_version,
+                carbon_calculations.engine_version, carbon_calculations.methodology_version, carbon_calculations.factor_registry_version,
+                carbon_calculations.gwp_basis, carbon_calculations.calculated_at, carbon_calculations.canonical_input_hash,
+                carbon_calculations.factor_snapshot, carbon_calculations.assumptions, carbon_calculations.is_legacy,
+                carbon_calculations.notes, carbon_calculations.created_at,
                 (SELECT p.name FROM products p
                   WHERE p.id = carbon_calculations.product_id
-                    AND p.company_id = carbon_calculations.company_id) AS product_name
+                    AND p.company_id = carbon_calculations.company_id) AS product_name,
+                carbon_calculations.calculated_by AS user_id,
+                COALESCE(u.full_name, u.email, 'Người dùng') AS created_by
          FROM carbon_calculations
+         LEFT JOIN users u ON u.id = carbon_calculations.calculated_by
          WHERE ${where}
-         ORDER BY created_at DESC
+         ORDER BY carbon_calculations.created_at DESC
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset]
       );
