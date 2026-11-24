@@ -441,6 +441,131 @@ class B2CService {
     };
   }
 
+  async redeemCoupon(userId, couponId) {
+    await this.ensureSchema();
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const couponRes = await client.query(
+        `SELECT id, slug, title, points_cost, stock_remaining, redemption_limit_per_user, is_active, code, valid_until
+         FROM public.b2c_coupons
+         WHERE id = $1
+         FOR UPDATE`,
+        [couponId]
+      );
+
+      if (couponRes.rows.length === 0 || !couponRes.rows[0].is_active) {
+        const error = new Error('Coupon không tồn tại hoặc đã ngừng hoạt động.');
+        error.code = 'COUPON_NOT_FOUND';
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const coupon = couponRes.rows[0];
+
+      if (coupon.stock_remaining !== null && Number(coupon.stock_remaining) <= 0) {
+        const error = new Error('Ưu đãi này đã hết lượt đổi.');
+        error.code = 'COUPON_OUT_OF_STOCK';
+        error.statusCode = 400;
+        throw error;
+      }
+
+      let rewardsRes = await client.query(
+        `SELECT id, total_points FROM public.user_rewards WHERE user_id = $1 FOR UPDATE`,
+        [userId]
+      );
+
+      if (rewardsRes.rows.length === 0) {
+        rewardsRes = await client.query(
+          `INSERT INTO public.user_rewards (user_id, total_points) VALUES ($1, 0) RETURNING id, total_points`,
+          [userId]
+        );
+      }
+
+      const userPoints = Number(rewardsRes.rows[0].total_points || 0);
+      const pointsCost = Number(coupon.points_cost);
+
+      if (userPoints < pointsCost) {
+        const error = new Error(`Bạn cần ${pointsCost.toLocaleString('vi-VN')} điểm để đổi ưu đãi này (hiện có ${userPoints.toLocaleString('vi-VN')} điểm).`);
+        error.code = 'INSUFFICIENT_POINTS';
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const limit = Number(coupon.redemption_limit_per_user || 1);
+      const userRedemptionsRes = await client.query(
+        `SELECT COUNT(*) AS count FROM public.b2c_coupon_redemptions
+         WHERE user_id = $1 AND coupon_id = $2 AND status = 'redeemed'`,
+        [userId, couponId]
+      );
+      const redemptionsCount = Number(userRedemptionsRes.rows[0].count || 0);
+
+      if (redemptionsCount >= limit) {
+        const error = new Error(`Bạn đã đạt giới hạn tối đa (${limit} lần) đổi ưu đãi này.`);
+        error.code = 'REDEMPTION_LIMIT_EXCEEDED';
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const redemptionCode = coupon.code ? `${coupon.code}-${randomSuffix}` : `WC-${coupon.slug.slice(0, 6).toUpperCase()}-${randomSuffix}`;
+      const expiresAt = coupon.valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+      const updatedRewardsRes = await client.query(
+        `UPDATE public.user_rewards
+         SET total_points = total_points - $1, updated_at = NOW()
+         WHERE user_id = $2
+         RETURNING total_points`,
+        [pointsCost, userId]
+      );
+      const remainingPoints = Number(updatedRewardsRes.rows[0].total_points);
+
+      const insertRedemptionRes = await client.query(
+        `INSERT INTO public.b2c_coupon_redemptions (
+           coupon_id, user_id, points_spent, redemption_code, status, redeemed_at, expires_at
+         ) VALUES ($1, $2, $3, $4, 'redeemed', NOW(), $5)
+         RETURNING id, redemption_code, points_spent, status, redeemed_at, expires_at`,
+        [couponId, userId, pointsCost, redemptionCode, expiresAt]
+      );
+      const redemption = insertRedemptionRes.rows[0];
+
+      await client.query(
+        `INSERT INTO public.reward_transactions (
+           user_id, points, transaction_type, title, reference_id, created_at
+         ) VALUES ($1, $2, 'redeem_coupon', $3, $4, NOW())`,
+        [userId, -pointsCost, `Đổi ưu đãi: ${coupon.title}`, redemption.id]
+      );
+
+      if (coupon.stock_remaining !== null) {
+        await client.query(
+          `UPDATE public.b2c_coupons
+           SET stock_remaining = stock_remaining - 1, updated_at = NOW()
+           WHERE id = $1`,
+          [couponId]
+        );
+      }
+
+      await client.query('COMMIT');
+
+      return {
+        redemption_id: redemption.id,
+        coupon_id: coupon.id,
+        coupon_title: coupon.title,
+        redemption_code: redemption.redemption_code,
+        points_spent: pointsCost,
+        remaining_points: remainingPoints,
+        expires_at: redemption.expires_at
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async listDonations(userId, { limit = 20 } = {}) {
     await this.ensureSchema();
 

@@ -204,7 +204,7 @@ const handleB2CError = (res, error) => {
   return true;
 };
 
-router.use(authenticate, requireRole('b2c'));
+router.use(authenticate, requireRole('b2c', 'b2b', 'admin'));
 
 router.get(
   '/dashboard',
@@ -301,6 +301,24 @@ router.get(
     return sendSuccess(res, {
       data: payload
     });
+  })
+);
+
+router.post(
+  '/coupons/:id/redeem',
+  asyncHandler(async (req, res) => {
+    try {
+      const payload = await b2cService.redeemCoupon(req.userId, req.params.id);
+      return sendSuccess(res, {
+        status: 200,
+        data: payload
+      });
+    } catch (error) {
+      if (handleB2CError(res, error)) {
+        return;
+      }
+      throw error;
+    }
   })
 );
 
