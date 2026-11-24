@@ -3,17 +3,17 @@ const pool = require('../shared/database');
 function createCarbonRepository({ database = pool } = {}) {
   return {
     async listCalculations({ companyId, productId, calculationType, limit, offset }) {
-      const conditions = ['carbon_calculations.company_id = $1'];
+      const conditions = ['company_id = $1'];
       const params = [companyId];
 
       if (productId) {
         params.push(productId);
-        conditions.push(`carbon_calculations.product_id = $${params.length}`);
+        conditions.push(`product_id = $${params.length}`);
       }
 
       if (calculationType) {
         params.push(calculationType);
-        conditions.push(`carbon_calculations.calculation_type = $${params.length}`);
+        conditions.push(`calculation_type = $${params.length}`);
       }
 
       const where = conditions.join(' AND ');
