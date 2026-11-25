@@ -14,7 +14,8 @@ const {
     pushTransactionalAnalyticsEvent,
     safeTrackAnalyticsEvent,
     trimTrailingSlash,
-    isPlainObject
+    isPlainObject,
+    resolveConversationalReply
 } = require('../../../src/services/chatService/helpers');
 
 describe('isObject / isPlainObject', () => {
@@ -113,5 +114,32 @@ describe('safeTrackAnalyticsEvent', () => {
     it('swallows errors from trackEvent', async () => {
         analyticsService.trackEvent.mockRejectedValue(new Error('boom'));
         await expect(safeTrackAnalyticsEvent({}, 'test-scope')).resolves.toBeUndefined();
+    });
+});
+
+describe('resolveConversationalReply', () => {
+    it('returns Vietnamese greeting for xin chào / chào bạn', () => {
+        expect(resolveConversationalReply('xin chào')).toContain('Weavey');
+        expect(resolveConversationalReply('Chào bạn!')).toContain('WeaveCarbon');
+    });
+
+    it('returns English greeting for hi / hello', () => {
+        expect(resolveConversationalReply('hi')).toContain("I'm Weavey");
+        expect(resolveConversationalReply('Hello!')).toContain('WeaveCarbon');
+    });
+
+    it('returns identity capabilities for bạn là ai / help', () => {
+        expect(resolveConversationalReply('bạn là ai?')).toContain('GHG Protocol');
+        expect(resolveConversationalReply('help')).toContain('CBAM');
+    });
+
+    it('returns gratitude reply for cảm ơn / thanks', () => {
+        expect(resolveConversationalReply('Cảm ơn bạn')).toContain('Rất vui');
+        expect(resolveConversationalReply('thank you!')).toContain('Rất vui');
+    });
+
+    it('returns null for domain/technical questions so RAG handles them', () => {
+        expect(resolveConversationalReply('CBAM là gì?')).toBeNull();
+        expect(resolveConversationalReply('Cách tính phát thải Scope 2')).toBeNull();
     });
 });

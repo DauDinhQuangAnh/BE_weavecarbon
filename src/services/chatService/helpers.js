@@ -64,6 +64,95 @@ const safeTrackAnalyticsEvent = async (payload, scope) => {
 
 const trimTrailingSlash = (value) => value.replace(/\/+$/, '');
 
+const VI_GREETINGS = new Set([
+  'xin chao',
+  'chao',
+  'chao ban',
+  'chao weavey',
+  'chao ai',
+  'chao buoi sang',
+  'chao buoi chieu',
+  'chao buoi toi',
+  'alo',
+  'hello ban'
+]);
+
+const EN_GREETINGS = new Set([
+  'hi',
+  'hello',
+  'hey',
+  'helo',
+  'halo',
+  'hi weavey',
+  'hello weavey',
+  'good morning',
+  'good afternoon',
+  'good evening'
+]);
+
+const IDENTITY_QUERIES = new Set([
+  'ban la ai',
+  'weavey la ai',
+  'weavey la gi',
+  'ban lam duoc gi',
+  'ban giup duoc gi',
+  'giup toi',
+  'huong dan',
+  'help',
+  'who are you',
+  'what can you do'
+]);
+
+const GRATITUDE_QUERIES = new Set([
+  'cam on',
+  'cam on ban',
+  'cam on weavey',
+  'thanks',
+  'thank you',
+  'thank',
+  'ok',
+  'oke',
+  'tam biet',
+  'bye'
+]);
+
+const normalizeConversationalText = (value) =>
+  compactWhitespace(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/[!?.~,;:'"()]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/**
+ * Returns a direct friendly response for simple greetings, identity questions,
+ * or gratitude so strict RAG evidence guards do not reject small talk.
+ */
+const resolveConversationalReply = (content) => {
+  const normalized = normalizeConversationalText(content);
+  if (!normalized) return null;
+
+  if (VI_GREETINGS.has(normalized)) {
+    return 'Xin chào! Mình là Weavey, trợ lý AI của WeaveCarbon. Mình có thể hỗ trợ bạn tra cứu tiêu chuẩn kiểm kê phát thải (GHG Protocol, ISO 14064, EU CBAM), giải thích hệ số phát thải hoặc hướng dẫn sử dụng nền tảng. Bạn cần hỗ trợ nội dung nào?';
+  }
+
+  if (EN_GREETINGS.has(normalized)) {
+    return "Hello! I'm Weavey, WeaveCarbon's AI assistant for carbon accounting and ESG compliance. How can I help you with CBAM, GHG Protocol, emission factors, or platform workflows today?";
+  }
+
+  if (IDENTITY_QUERIES.has(normalized)) {
+    return 'Mình là Weavey — trợ lý AI chuyên trách về kiểm kê phát thải carbon của WeaveCarbon. Mình có thể hỗ trợ bạn:\n• Tra cứu quy định và tiêu chuẩn (GHG Protocol, ISO 14064, ISO 14067, EU CBAM, Nghị định 06).\n• Giải thích cách tính Scope 1, Scope 2, Scope 3 và hệ số phát thải.\n• Hướng dẫn quy trình nhập chứng từ, thiết lập cơ sở và xuất báo cáo trên WeaveCarbon.\nBạn hãy đặt câu hỏi cụ thể nhé!';
+  }
+
+  if (GRATITUDE_QUERIES.has(normalized)) {
+    return 'Rất vui được hỗ trợ bạn! Nếu cần tra cứu thêm về dữ liệu phát thải hoặc quy định CBAM/ESG, bạn cứ nhắn mình nhé.';
+  }
+
+  return null;
+};
+
 module.exports = {
   isObject,
   toPositiveInt,
@@ -74,5 +163,6 @@ module.exports = {
   pushTransactionalAnalyticsEvent,
   safeTrackAnalyticsEvent,
   trimTrailingSlash,
-  isPlainObject
+  isPlainObject,
+  resolveConversationalReply
 };

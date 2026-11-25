@@ -25,7 +25,8 @@ const {
   pushTransactionalAnalyticsEvent,
   safeTrackAnalyticsEvent,
   trimTrailingSlash,
-  isPlainObject
+  isPlainObject,
+  resolveConversationalReply
 } = require('./chatService/helpers');
 
 class ChatService {
@@ -1043,7 +1044,13 @@ class ChatService {
     );
     const runtime = await this.resolveRuntimeConfigForCompany(userId, companyId);
     const dashboardChatConfig = runtime.config;
-    const ragResult = await this.callRagQuery(dashboardChatConfig, content);
+    const conversationalReply = resolveConversationalReply(content);
+    const ragResult = conversationalReply
+      ? {
+          answer: conversationalReply,
+          rag_response: { metadatas: [], intent: 'conversational' }
+        }
+      : await this.callRagQuery(dashboardChatConfig, content);
     const client = await pool.connect();
     const analyticsEventIds = [];
 
