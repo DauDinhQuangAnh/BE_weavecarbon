@@ -74,7 +74,11 @@ const VI_GREETINGS = new Set([
   'chao buoi chieu',
   'chao buoi toi',
   'alo',
-  'hello ban'
+  'hello ban',
+  'ban noi tieng viet di',
+  'noi tieng viet di',
+  'tra loi bang tieng viet',
+  'dung tieng viet di'
 ]);
 
 const EN_GREETINGS = new Set([
