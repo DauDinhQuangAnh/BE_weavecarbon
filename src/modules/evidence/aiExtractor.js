@@ -485,6 +485,8 @@ function parseLocaleNumber(str) {
   if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) return parseFloat(s.replace(/\./g, '').replace(/,/g, '.'));
   if (/^\d+,\d{3}$/.test(s)) return parseFloat(s.replace(/,/g, ''));
   if (/^\d+\.\d{3}$/.test(s)) return parseFloat(s.replace(/\./g, ''));
+  // Dấu phẩy thập phân kiểu Việt Nam: "2,5" = 2.5 (không phải 25).
+  if (/^\d+,\d{1,2}$/.test(s)) return parseFloat(s.replace(',', '.'));
   return parseFloat(s.replace(/,/g, ''));
 }
 
