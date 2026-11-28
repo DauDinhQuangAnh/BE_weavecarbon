@@ -14,34 +14,37 @@ class DataQualityGovernanceService {
       checksumSha256: row.checksum_sha256, fileSizeBytes: Number(row.file_size_bytes || 0), status: row.status }));
   }
 
+  // LOI-021: kiểm tra đối tượng có thật trong đúng bảng revision của G2 (trước đây truy vấn
+  // bảng không tồn tại nên luôn rơi vào nhánh "cho qua").
   async _subjectExists(companyId, type, ref) {
     if (!ref) return false;
-    try {
-      if (type === 'activity') {
-        const q = await this.database.query(
-          'SELECT 1 FROM industrial_activities WHERE company_id=$1 AND (activity_reference=$2 OR id::text=$2)',
-          [companyId, ref]
-        );
-        return Boolean(q.rows.length);
-      }
-      if (type === 'facility') {
-        const q = await this.database.query(
-          'SELECT 1 FROM industrial_facilities WHERE company_id=$1 AND (facility_reference=$2 OR id::text=$2)',
-          [companyId, ref]
-        );
-        return Boolean(q.rows.length);
-      }
-      if (type === 'process') {
-        const q = await this.database.query(
-          'SELECT 1 FROM industrial_processes WHERE company_id=$1 AND (process_reference=$2 OR id::text=$2)',
-          [companyId, ref]
-        );
-        return Boolean(q.rows.length);
-      }
-    } catch {
-      // Allow other or legacy tables
+    const lookups = {
+      activity: ['industrial_activity_records', 'activity_reference'],
+      facility: ['industrial_facility_revisions', 'facility_reference'],
+      process: ['industrial_process_revisions', 'process_reference'],
+      measurement_point: ['industrial_measurement_point_revisions', 'measurement_point_reference']
+    };
+    if (type === 'emission_factor') {
+      // Hệ số có thể là đề xuất của doanh nghiệp hoặc hệ số trong danh mục dùng chung.
+      const proposal = await this.database.query(
+        'SELECT 1 FROM emission_factor_proposals WHERE company_id=$1 AND (proposal_reference=$2 OR id::text=$2) LIMIT 1',
+        [companyId, ref]
+      );
+      if (proposal.rows.length) return true;
+      const registry = await this.database.query(
+        'SELECT 1 FROM emission_factor_versions WHERE factor_id=$1 OR factor_version_id=$1 LIMIT 1',
+        [ref]
+      );
+      return Boolean(registry.rows.length);
     }
-    return true;
+    const lookup = lookups[type];
+    if (!lookup) return false;
+    const [table, column] = lookup;
+    const q = await this.database.query(
+      `SELECT 1 FROM ${table} WHERE company_id=$1 AND (${column}=$2 OR id::text=$2) LIMIT 1`,
+      [companyId, ref]
+    );
+    return Boolean(q.rows.length);
   }
 
   async listDql(companyId) {
