@@ -39,7 +39,10 @@ const formatCalculation = (row) => ({
   assumptions: row.assumptions,
   legacy: Boolean(row.is_legacy),
   notes: row.notes,
-  createdAt: row.created_at
+  createdAt: row.created_at,
+  // LOI-040: tên người tạo từ JOIN users (repository) — trước đây bị bỏ khi định dạng.
+  createdBy: row.created_by ?? null,
+  userId: row.user_id ?? null
 });
 
 function validationError(message) {
