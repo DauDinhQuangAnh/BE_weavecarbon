@@ -47,6 +47,10 @@ function validateActivityInput(input = {}) {
   if (!value.canonicalUnit) errors.push('canonicalUnit is required.');
   if (!['invoice', 'meter', 'plc', 'sensor', 'supplier', 'manual', 'api'].includes(value.sourceKind)) errors.push('sourceKind is invalid.');
   if (!['L1', 'L2', 'L3', 'L4', 'L5'].includes(value.dataQualityLevel)) errors.push('dataQualityLevel must be L1-L5.');
+  // LOI-018: L3 trở lên phải có chứng từ bảo chứng, không được tự khai.
+  if (['L3', 'L4', 'L5'].includes(value.dataQualityLevel) && value.evidenceDocumentIds.length === 0) {
+    errors.push('dataQualityLevel L3-L5 requires at least one linked evidence document.');
+  }
   if (!/^[a-f0-9]{64}$/.test(value.sourceSha256)) errors.push('sourceSha256 must be a SHA-256 hex digest.');
   if (value.evidenceDocumentIds.length > 100 || value.evidenceDocumentIds.some((id) => !uuid.test(id))) errors.push('evidenceDocumentIds must contain at most 100 UUIDs.');
   return { value, errors };

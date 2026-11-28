@@ -99,6 +99,10 @@ class ExportMarketsService {
                 return [];
             }
 
+            // LOI-039 / LOI-043: tạo sẵn (idempotent) mục giấy tờ chứng nhận vật liệu cho mọi thị trường
+            // và giấy tờ bắt buộc của thị trường nội địa, để người dùng có chỗ tải lên.
+            await this._ensureUploadableDocumentSlots(client, companyId, markets);
+
             const marketIds = markets.map((market) => market.id).filter(Boolean);
             const marketCodes = markets.map(m => String(m.market_code || '').trim().toUpperCase());
             const docsQuery = `
@@ -186,11 +190,13 @@ class ExportMarketsService {
             const marketByCode = new Map(
                 markets.map(m => [String(m.market_code || '').trim().toUpperCase(), m])
             );
+            // Nhóm theo mã thị trường: thị trường chưa có dòng export_markets có id = null,
+            // nhóm theo id sẽ trộn giấy tờ của nhiều thị trường với nhau.
             for (const d of docsResult.rows) {
-                const market = marketByCode.get(String(d.market_code || '').trim().toUpperCase());
-                if (market) {
-                    if (!docsMap[market.id]) docsMap[market.id] = [];
-                    docsMap[market.id].push(d);
+                const docMarketCode = String(d.market_code || '').trim().toUpperCase();
+                if (marketByCode.has(docMarketCode)) {
+                    if (!docsMap[docMarketCode]) docsMap[docMarketCode] = [];
+                    docsMap[docMarketCode].push(d);
                 }
             }
             const scopeMap = groupBy(scopeResult.rows, 'market_id');
@@ -199,7 +205,7 @@ class ExportMarketsService {
 
             const payload = markets.map(market => {
                 const marketCode = String(market.market_code || '').trim().toUpperCase();
-                const marketDocs = docsMap[market.id] || [];
+                const marketDocs = docsMap[marketCode] || [];
 
                 const requiredTemplates = getRequiredDocumentsForMarket(marketCode);
                 const requiredCodeSet = new Set(requiredTemplates.map(d => normalizeDocumentCode(d.code)));
@@ -1314,6 +1320,11 @@ class ExportMarketsService {
         const selectedCodes = normalizeTargetMarkets(
             companyTargetMarkets.length > 0 ? companyTargetMarkets : DEFAULT_MARKET_CODES
         );
+        // LOI-043: luôn có thị trường nội địa để tải giấy tờ nội địa bắt buộc khi xuất bản lô hàng.
+        const domesticMarketCode = await domesticComplianceService.resolveCompanyDomesticMarketCode(client, companyId);
+        if (domesticMarketCode && !selectedCodes.includes(domesticMarketCode)) {
+            selectedCodes.push(domesticMarketCode);
+        }
 
         const existingMarketsResult = await client.query(
             `
@@ -1556,6 +1567,29 @@ class ExportMarketsService {
     // Delegates to ./exportMarketsService/seeding.js — kept as instance
     // methods so any existing caller of exportMarketsService._ensure*(...)
     // keeps working unchanged.
+    async _ensureUploadableDocumentSlots(client, companyId, markets) {
+        try {
+            await this._ensureMaterialCertificationDocuments(client, companyId, markets);
+            const domesticMarketCode = await domesticComplianceService.resolveCompanyDomesticMarketCode(client, companyId);
+            const hasDomesticMarket = markets.some(
+                (market) => String(market.market_code || '').trim().toUpperCase() === domesticMarketCode
+            );
+            if (hasDomesticMarket) {
+                const requiredDocuments = await domesticComplianceService.listRequiredDocuments(client, domesticMarketCode);
+                if (requiredDocuments.length > 0) {
+                    await domesticComplianceService.ensureRequiredDocumentPlaceholders(
+                        client,
+                        companyId,
+                        domesticMarketCode,
+                        requiredDocuments
+                    );
+                }
+            }
+        } catch (error) {
+            logger.warn({ err: error?.message, companyId }, '[exportMarkets] could not seed document slots');
+        }
+    }
+
     async _ensureMarketsAndRequiredDocuments(client, companyId) {
         return ensureMarketsAndRequiredDocuments(client, companyId);
     }
@@ -1600,17 +1634,26 @@ class ExportMarketsService {
             }
         }
 
+        // LOI-038: id tạm của FE ("fallback-eu-4") không phải mã tài liệu; ưu tiên tên/mã loại
+        // tài liệu gửi kèm và khớp theo danh mục yêu cầu của thị trường.
+        const isTemporaryId = /^fallback-/i.test(rawDocumentId);
+        const requestedName = String(fileData.document_name || '').trim();
+        const templateByName = requestedName
+            ? templates.find(doc => String(doc.name || '').trim().toLowerCase() === requestedName.toLowerCase())
+            : null;
         const normalizedDocumentCode =
             explicitDocumentCode ||
-            normalizeDocumentCode(rawDocumentId) ||
-            normalizeDocumentCode(fileData.document_name) ||
+            (templateByName ? normalizeDocumentCode(templateByName.code) : null) ||
+            (isTemporaryId ? null : normalizeDocumentCode(rawDocumentId)) ||
+            normalizeDocumentCode(requestedName) ||
             `document_${Date.now()}`;
-        const template = templates.find(doc => normalizeDocumentCode(doc.code) === normalizedDocumentCode);
+        const template = templateByName ||
+            templates.find(doc => normalizeDocumentCode(doc.code) === normalizedDocumentCode);
 
         return {
             id: null,
             document_code: normalizedDocumentCode,
-            document_name: fileData.document_name || template?.name || normalizedDocumentCode
+            document_name: requestedName || template?.name || normalizedDocumentCode
         };
     }
 

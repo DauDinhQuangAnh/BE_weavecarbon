@@ -154,8 +154,8 @@ describe('carbonService', () => {
       facilityName: 'Main Facility',
       billingPeriod: '2026-08',
       kwh: 100,
-      emissionFactor: 0.429,
-      emissionFactorSource: 'VN Ministry of Natural Resources 2024',
+      emissionFactor: 0.6592,
+      emissionFactorSource: 'Cục Biến đổi khí hậu — CV 1726/BĐKH-PTCBT (2024), hệ số lưới điện VN 2023',
       status: 'uploaded',
       evidenceDocumentId: null
     });

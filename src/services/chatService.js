@@ -4,6 +4,7 @@ const analyticsService = require('./analyticsService');
 const { createAppError } = require('../utils/appError');
 const logger = require('../utils/logger');
 const { getCorrelationId } = require('../middleware/requestContext');
+const { buildProductHotspotSuggestions } = require('./chatService/productHotspotSuggestions');
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 20;
@@ -996,22 +997,43 @@ class ChatService {
     };
   }
 
+  // LOI-036: đề xuất dựa trên điểm nóng phát thải thật của sản phẩm (quy tắc, không gọi RAG
+  // vì RAG trả về cùng một bộ đề xuất mẫu cho mọi sản phẩm).
   async generateProductSuggestions(userId, companyId, requestedProductId, payload = {}) {
     await this.assertProductAccess(companyId, requestedProductId, payload.product_id);
 
-    const runtime = await this.resolveRuntimeConfigForCompany(userId, companyId);
-    const response = await this.callRagRecommendation(
-      runtime.config,
-      `/recommendations/product/${encodeURIComponent(requestedProductId)}`,
-      {
-        product_id: requestedProductId,
-        language: compactWhitespace(payload.language) || 'vi'
-      }
+    const { rows } = await pool.query(
+      `SELECT p.id, p.materials_co2e, p.production_co2e, p.transport_co2e, p.packaging_co2e, p.total_co2e,
+              s.payload AS snapshot_payload
+       FROM public.products p
+       LEFT JOIN latest_product_assessment_snapshots s
+         ON s.product_id = p.id AND s.company_id = p.company_id
+       WHERE p.id = $1 AND p.company_id = $2
+       LIMIT 1`,
+      [requestedProductId, companyId]
     );
+    const row = rows[0] || {};
+    const snapshot = row.snapshot_payload && typeof row.snapshot_payload === 'object' ? row.snapshot_payload : {};
+    const storedPerProduct = snapshot.carbonResults?.perProduct || {};
+    const suggestions = buildProductHotspotSuggestions({
+      perProduct: {
+        materials: row.materials_co2e ?? storedPerProduct.materials,
+        production: row.production_co2e ?? storedPerProduct.production,
+        energy: storedPerProduct.energy,
+        transport: row.transport_co2e ?? storedPerProduct.transport,
+        packaging: row.packaging_co2e ?? storedPerProduct.packaging,
+        total: row.total_co2e ?? storedPerProduct.total
+      },
+      materials: snapshot.materials,
+      energySources: snapshot.energySources,
+      transportLegs: snapshot.transportLegs
+    });
 
     return {
-      ...response,
-      config_source: runtime.config_source
+      product_id: requestedProductId,
+      suggestions,
+      source: 'rule_based_hotspot',
+      config_source: 'rule_based'
     };
   }
 

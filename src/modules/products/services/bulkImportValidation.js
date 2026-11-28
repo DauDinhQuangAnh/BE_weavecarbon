@@ -120,9 +120,11 @@ async function validateBulkImportRows(companyId, rows = []) {
         const marketType = readBulkString(row, ['marketType', 'market_type']).toLowerCase();
         const exportCountry = readBulkString(row, ['exportCountry', 'export_country']).toLowerCase();
         const transportMode = readBulkString(row, ['transportMode', 'transport_mode']).toLowerCase();
+        // LOI-042: khoảng cách có thể đến dưới dạng cột "Transport Distance (km)" hoặc tổng quãng
+        // đường đã tính từ các chặng.
         const transportDistance = readBulkNumber(
             row,
-            ['transportDistanceKm', 'transport_distance_km'],
+            ['transportDistanceKm', 'transport_distance_km', 'estimatedTotalDistance', 'estimated_total_distance'],
             Number.NaN
         );
 
@@ -199,7 +201,7 @@ async function validateBulkImportRows(companyId, rows = []) {
             warnings.push({
                 row: rowNumber,
                 field: 'transportDistanceKm',
-                message: 'Transport mode is set but distance is missing; import will rely on route defaults where available.',
+                message: 'Đã khai phương thức vận chuyển nhưng thiếu khoảng cách; hệ thống sẽ dùng khoảng cách mặc định của tuyến/thị trường.',
                 severity: 'warning'
             });
         }

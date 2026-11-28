@@ -5,6 +5,7 @@ const logger = require('../shared/logger');
 const pool = require('../shared/database');
 const { resolveStoragePath } = require('./fileStorage');
 const { analyzeEvidenceFile } = require('./aiExtractor');
+const { VN_GRID_EMISSION_FACTOR } = require('../shared/emissionFactors');
 
 function collectionName(companyId) {
   const prefix = String(process.env.RAG_EVIDENCE_COLLECTION_PREFIX || 'evidence').trim() || 'evidence';
@@ -45,7 +46,13 @@ async function processStoredEvidence({ evidenceId, companyId }) {
   const fieldCount = Object.keys(fields).length;
 
   if (fieldCount > 0) {
-    await evidenceService.updateExtractedJson(companyId, evidenceId, fields, 'ocr_parsed');
+    await evidenceService.updateExtractedJson(
+      companyId,
+      evidenceId,
+      fields,
+      'ocr_parsed',
+      (analysis?.validation_warnings || []).map((warning) => warning?.message || String(warning))
+    );
 
     // Automatically update vendor, periods, and evidence_type if they were previously unpopulated
     try {
@@ -87,8 +94,8 @@ async function processStoredEvidence({ evidenceId, companyId }) {
               analysis.facility_name || 'Main Facility',
               analysis.billing_period || (analysis.period_start ? String(analysis.period_start).slice(0, 7) : '2024-Q2'),
               analysis.kwh_total,
-              analysis.emission_factor || 0.4290,
-              analysis.emission_factor_source || 'VN Ministry of Natural Resources 2024',
+              analysis.emission_factor || VN_GRID_EMISSION_FACTOR.value,
+              analysis.emission_factor_source || VN_GRID_EMISSION_FACTOR.source,
               evidenceId
             ]
           );

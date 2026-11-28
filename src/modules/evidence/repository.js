@@ -52,7 +52,15 @@ function createEvidenceRepository({ database = pool } = {}) {
                   valid_from, valid_to, approved_by, approval_note,
                   storage_provider, storage_bucket, storage_key, original_filename, mime_type,
                   file_size_bytes, checksum_sha256, extracted_json, status, warnings,
-                  extraction_error, locked_at, uploaded_at, created_at, updated_at
+                  extraction_error, locked_at, uploaded_at, created_at, updated_at,
+                  (SELECT ei.kwh FROM electricity_invoices ei
+                    WHERE ei.evidence_document_id = evidence_documents.id
+                      AND ei.company_id = evidence_documents.company_id
+                    ORDER BY ei.created_at DESC LIMIT 1) AS linked_kwh,
+                  (SELECT fi.quantity_liters FROM fuel_invoices fi
+                    WHERE fi.evidence_document_id = evidence_documents.id
+                      AND fi.company_id = evidence_documents.company_id
+                    ORDER BY fi.created_at DESC LIMIT 1) AS linked_fuel_liters
            FROM evidence_documents
            WHERE ${where}
            ORDER BY created_at DESC LIMIT $${index} OFFSET $${index + 1}`,
@@ -176,16 +184,16 @@ function createEvidenceRepository({ database = pool } = {}) {
       return rows[0];
     },
 
-    async updateExtractedJson({ companyId, evidenceId, extractedJson, status }) {
+    async updateExtractedJson({ companyId, evidenceId, extractedJson, status, warnings = '[]' }) {
       await database.query(
         `UPDATE evidence_documents
          SET extracted_json = COALESCE(extracted_json, '{}'::jsonb) || $1::jsonb,
              status = $2,
-             warnings = '[]'::jsonb,
+             warnings = $5::jsonb,
              extraction_error = NULL,
              updated_at = now()
          WHERE id = $3 AND company_id = $4`,
-        [extractedJson, status, evidenceId, companyId]
+        [extractedJson, status, evidenceId, companyId, warnings]
       );
     },
 
@@ -216,6 +224,18 @@ function createEvidenceRepository({ database = pool } = {}) {
       return rows[0] || null;
     },
 
+    async findByChecksum({ companyId, checksumSha256 }) {
+      const { rows } = await database.query(
+        `SELECT id, document_name, file_name, status, created_at
+         FROM evidence_documents
+         WHERE company_id = $1 AND checksum_sha256 = $2
+         ORDER BY created_at ASC
+         LIMIT 1`,
+        [companyId, checksumSha256]
+      );
+      return rows[0] || null;
+    },
+
     async exists({ evidenceId, companyId }) {
       const { rows } = await database.query(
         'SELECT id FROM evidence_documents WHERE id = $1 AND company_id = $2',
@@ -239,10 +259,31 @@ function createEvidenceRepository({ database = pool } = {}) {
 
     async getExtractedJson({ evidenceId, companyId }) {
       const { rows } = await database.query(
-        'SELECT id, extracted_json FROM evidence_documents WHERE id = $1 AND company_id = $2',
+        'SELECT id, extracted_json, warnings FROM evidence_documents WHERE id = $1 AND company_id = $2',
         [evidenceId, companyId]
       );
       return rows[0] || null;
+    },
+
+    async getLinkedInvoiceFigures({ evidenceId, companyId }) {
+      const [electricity, fuel] = await Promise.all([
+        database.query(
+          `SELECT kwh FROM electricity_invoices
+           WHERE evidence_document_id = $1 AND company_id = $2
+           ORDER BY created_at DESC LIMIT 1`,
+          [evidenceId, companyId]
+        ),
+        database.query(
+          `SELECT quantity_liters FROM fuel_invoices
+           WHERE evidence_document_id = $1 AND company_id = $2
+           ORDER BY created_at DESC LIMIT 1`,
+          [evidenceId, companyId]
+        )
+      ]);
+      return {
+        kwh: electricity.rows[0]?.kwh ?? null,
+        fuelLiters: fuel.rows[0]?.quantity_liters ?? null
+      };
     },
 
     async getExtractionForReview({ evidenceId, companyId }, queryable = database) {

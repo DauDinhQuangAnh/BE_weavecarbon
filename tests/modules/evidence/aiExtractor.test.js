@@ -9,7 +9,9 @@ const {
   VALID_KINDS,
   KIND_DISPLAY_NAMES,
   sanitizeExtractionContext,
-  buildContextPrompt
+  buildContextPrompt,
+  validateElectricityFigures,
+  toNumberOrNull
 } = require('../../../src/modules/evidence/aiExtractor');
 
 describe('aiExtractor module', () => {
@@ -106,7 +108,7 @@ describe('aiExtractor module', () => {
       expect(result.detected_kind).toBe('electricity_bill');
       expect(result.kwh_total).toBe(12500);
       expect(result.supplier_name).toBe('Tổng công ty Điện lực (EVN)');
-      expect(result.emission_factor).toBe(0.4290);
+      expect(result.emission_factor).toBe(0.6592);
     });
 
     test('identifies fuel receipt from filename and extracts fuel quantity', async () => {
@@ -251,5 +253,52 @@ describe('aiExtractor extraction context', () => {
       if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
       else process.env.GEMINI_API_KEY = previousKey;
     }
+  });
+});
+
+describe('aiExtractor electricity plausibility (LOI-014)', () => {
+  test('parses Vietnamese thousands separators in strings', () => {
+    expect(toNumberOrNull('120.000')).toBe(120000);
+    expect(toNumberOrNull('259.588.800 đ')).toBe(259588800);
+    expect(toNumberOrNull('2,5')).toBe(2.5);
+    expect(toNumberOrNull(null)).toBeNull();
+  });
+
+  test('corrects kWh read without thousands separator using the invoice amount', () => {
+    const { data, warnings, confidenceCap } = validateElectricityFigures({
+      kwh_total: 120,
+      kwh_normal: 66,
+      kwh_peak: 24,
+      kwh_offpeak: 30,
+      total_amount: 259588800
+    });
+    expect(data.kwh_total).toBe(120000);
+    expect(data.kwh_breakdown).toEqual({ normal: 66000, peak: 24000, offpeak: 30000 });
+    expect(warnings.map((w) => w.code)).toContain('KWH_THOUSANDS_SEPARATOR_CORRECTED');
+    expect(confidenceCap).toBeLessThanOrEqual(0.6);
+  });
+
+  test('flags a total that does not match the meter breakdown', () => {
+    const { warnings } = validateElectricityFigures({
+      kwh_total: 100000,
+      kwh_normal: 66000,
+      kwh_peak: 24000,
+      kwh_offpeak: 30000,
+      total_amount: 259588800
+    });
+    expect(warnings.map((w) => w.code)).toContain('KWH_BREAKDOWN_MISMATCH');
+  });
+
+  test('keeps plausible figures unchanged', () => {
+    const { data, warnings, confidenceCap } = validateElectricityFigures({
+      kwh_total: 120000,
+      kwh_normal: 66000,
+      kwh_peak: 24000,
+      kwh_offpeak: 30000,
+      total_amount: 259588800
+    });
+    expect(data.kwh_total).toBe(120000);
+    expect(warnings).toEqual([]);
+    expect(confidenceCap).toBe(1);
   });
 });

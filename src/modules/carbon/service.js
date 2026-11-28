@@ -2,6 +2,7 @@ const { carbonRepository } = require('./repository');
 const { createAppError } = require('../shared/errors');
 const { calculateCarbonFootprint } = require('./core');
 const { buildCalculationMetadata } = require('./calculationSnapshot');
+const { VN_GRID_EMISSION_FACTOR } = require('../shared/emissionFactors');
 
 const FUEL_EMISSION_FACTORS = {
   diesel: 2.6880,
@@ -133,8 +134,8 @@ function createCarbonService({
         facility_name = 'Main Facility',
         billing_period,
         kwh,
-        emission_factor_kg_per_kwh = 0.4290,
-        emission_factor_source = 'VN Ministry of Natural Resources 2024',
+        emission_factor_kg_per_kwh = VN_GRID_EMISSION_FACTOR.value,
+        emission_factor_source = VN_GRID_EMISSION_FACTOR.source,
         status = 'uploaded',
         evidence_document_id
       } = payload;

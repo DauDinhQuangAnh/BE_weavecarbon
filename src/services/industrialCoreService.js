@@ -135,7 +135,11 @@ class IndustrialCoreService {
     if (!(await this._companyExists(companyId))) return null;
     const safeLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 100, 1), 500);
     const result = await this.database.query(
-      `SELECT activity.*, facility.facility_reference, facility.name AS facility_name
+      `SELECT activity.*, facility.facility_reference, facility.name AS facility_name,
+              COALESCE((SELECT array_agg(link.evidence_document_id::text ORDER BY link.evidence_document_id)
+                        FROM industrial_activity_evidence link
+                        WHERE link.activity_id=activity.id AND link.company_id=activity.company_id),
+                       ARRAY[]::text[]) AS evidence_document_ids
        FROM industrial_activity_records activity
        JOIN industrial_facility_revisions facility
          ON facility.id=activity.facility_revision_id AND facility.company_id=activity.company_id
@@ -154,14 +158,22 @@ class IndustrialCoreService {
       return { blocked: true, code: 'INDUSTRIAL_ACTIVITY_PROVENANCE_MISMATCH', message: 'Manual activity provenance does not match sourceSha256.' };
     }
     const evidenceIds = value.evidenceDocumentIds;
+    if (value.dataQualityLevel === 'L5') {
+      return { blocked: true, code: 'INDUSTRIAL_ACTIVITY_DQL_RESERVED', message: 'L5 (third-party verified) can only be assigned by an independent verifier, not when entering activity data.' };
+    }
     const references = await Promise.all([
       this.database.query('SELECT id FROM industrial_facility_revisions WHERE id=$1 AND company_id=$2', [value.facilityRevisionId, companyId]),
       value.processRevisionId ? this.database.query('SELECT id,facility_revision_id FROM industrial_process_revisions WHERE id=$1 AND company_id=$2', [value.processRevisionId, companyId]) : Promise.resolve({ rows: [{}] }),
       value.measurementPointRevisionId ? this.database.query('SELECT id,facility_revision_id,process_revision_id FROM industrial_measurement_point_revisions WHERE id=$1 AND company_id=$2', [value.measurementPointRevisionId, companyId]) : Promise.resolve({ rows: [{}] }),
-      evidenceIds.length ? this.database.query('SELECT id FROM evidence_documents WHERE company_id=$1 AND id=ANY($2::uuid[])', [companyId, evidenceIds]) : Promise.resolve({ rows: [] })
+      evidenceIds.length ? this.database.query('SELECT id, status FROM evidence_documents WHERE company_id=$1 AND id=ANY($2::uuid[])', [companyId, evidenceIds]) : Promise.resolve({ rows: [] })
     ]);
     if (!references[0].rows[0] || !references[1].rows[0] || !references[2].rows[0] || references[3].rows.length !== evidenceIds.length) {
       return { blocked: true, code: 'INDUSTRIAL_ACTIVITY_REFERENCE_INVALID', message: 'Every facility, process, measurement point and evidence reference must belong to the active company.' };
+    }
+    const controlledStatuses = ['locked', 'verified', 'third_party_verified'];
+    if (['L3', 'L4'].includes(value.dataQualityLevel)
+      && !references[3].rows.some((row) => controlledStatuses.includes(row.status))) {
+      return { blocked: true, code: 'INDUSTRIAL_ACTIVITY_EVIDENCE_NOT_LOCKED', message: 'Data quality L3-L4 requires at least one locked (confirmed) evidence document.' };
     }
     const process = references[1].rows[0];
     const point = references[2].rows[0];

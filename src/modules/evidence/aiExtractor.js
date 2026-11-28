@@ -2,6 +2,7 @@ const zlib = require('zlib');
 const axios = require('axios');
 const chatService = require('../shared/rag');
 const logger = require('../shared/logger');
+const { VN_GRID_EMISSION_FACTOR } = require('../shared/emissionFactors');
 
 const VALID_KINDS = new Set([
   'electricity_bill',
@@ -133,6 +134,8 @@ Quy tắc trích xuất quan trọng:
 3. "billing_period": BẮT BUỘC định dạng YYYY-MM hoặc null.
 4. "kwh_total": Trích xuất chính xác tổng số kWh điện tiêu thụ.
 5. "supplier_name": Ghi đầy đủ tên đơn vị phát hành hoặc công ty điện lực / xăng dầu.
+6. Định dạng số Việt Nam: dấu chấm "." là dấu phân cách HÀNG NGHÌN, dấu phẩy "," là dấu thập phân. Ví dụ "120.000 kWh" = 120000; "259.588.800 đ" = 259588800; "2,5 lít" = 2.5. Mọi trường số trong JSON phải là số thuần (không dấu phân cách hàng nghìn), ví dụ "kwh_total": 120000.
+7. Kiểm tra chéo trước khi trả lời: tổng kWh phải xấp xỉ tổng các bộ chỉ số (bình thường + cao điểm + thấp điểm) nếu có; đơn giá điện tại Việt Nam thường 1.500–6.000 đ/kWh. Nếu không chắc chắn, hạ "confidence".
 
 Trả về định dạng JSON thuần túy (không bọc trong markdown, không thêm lời dẫn giải):
 {
@@ -394,6 +397,91 @@ function normalizeBillingPeriod(val, periodStart) {
     if (iso) return iso.slice(0, 7);
   }
   return null;
+}
+
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const parsed = parseLocaleNumber(String(value).replace(/[^\d.,-]/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+const ELECTRICITY_NUMERIC_FIELDS = ['kwh_total', 'kwh_normal', 'kwh_peak', 'kwh_offpeak'];
+// Đơn giá điện hợp lý (đ/kWh, đã gồm thuế) cho khách hàng sản xuất / kinh doanh tại Việt Nam.
+const VN_ELECTRICITY_PRICE_RANGE = { min: 800, max: 8000 };
+
+function formatVi(value) {
+  return Math.round(value).toLocaleString('vi-VN');
+}
+
+/**
+ * Kiểm tra hợp lý số liệu hóa đơn điện (LOI-014): phát hiện số kWh bị đọc mất dấu
+ * phân cách hàng nghìn ("120.000" → 120), tổng không khớp các bộ chỉ số, đơn giá bất thường.
+ * Trả về bản sao đã hiệu chỉnh kèm cảnh báo và mức tin cậy tối đa cho phép.
+ */
+function validateElectricityFigures(input) {
+  const data = { ...input };
+  const warnings = [];
+  let confidenceCap = 1;
+  ELECTRICITY_NUMERIC_FIELDS.forEach((field) => {
+    if (field in data) data[field] = toNumberOrNull(data[field]);
+  });
+  const amount = toNumberOrNull(data.total_amount);
+  const currency = String(data.currency || 'VND').toUpperCase();
+
+  if (data.kwh_total && amount && currency === 'VND') {
+    const price = amount / data.kwh_total;
+    const scaledPrice = price / 1000;
+    if (price > VN_ELECTRICITY_PRICE_RANGE.max
+      && scaledPrice >= VN_ELECTRICITY_PRICE_RANGE.min
+      && scaledPrice <= VN_ELECTRICITY_PRICE_RANGE.max) {
+      ELECTRICITY_NUMERIC_FIELDS.forEach((field) => {
+        if (typeof data[field] === 'number') data[field] = Math.round(data[field] * 1000 * 1000) / 1000;
+      });
+      warnings.push({
+        code: 'KWH_THOUSANDS_SEPARATOR_CORRECTED',
+        message: `Số kWh có vẻ bị đọc mất dấu phân cách hàng nghìn (đơn giá suy ra ${formatVi(price)} đ/kWh). Đã hiệu chỉnh thành ${formatVi(data.kwh_total)} kWh — vui lòng đối chiếu với hóa đơn trước khi xác nhận.`
+      });
+      confidenceCap = Math.min(confidenceCap, 0.6);
+    } else if (price > VN_ELECTRICITY_PRICE_RANGE.max || price < VN_ELECTRICITY_PRICE_RANGE.min) {
+      warnings.push({
+        code: 'UNIT_PRICE_OUT_OF_RANGE',
+        message: `Đơn giá suy ra ${formatVi(price)} đ/kWh nằm ngoài khoảng hợp lý (${formatVi(VN_ELECTRICITY_PRICE_RANGE.min)}–${formatVi(VN_ELECTRICITY_PRICE_RANGE.max)} đ/kWh); kiểm tra lại số kWh và tổng tiền.`
+      });
+      confidenceCap = Math.min(confidenceCap, 0.5);
+    }
+  }
+
+  const parts = ['kwh_normal', 'kwh_peak', 'kwh_offpeak'].map((field) => data[field]);
+  const partsKnown = parts.every((value) => typeof value === 'number' && value > 0);
+  if (partsKnown) {
+    const sum = parts.reduce((acc, value) => acc + value, 0);
+    if (!data.kwh_total) {
+      data.kwh_total = sum;
+    } else if (Math.abs(sum - data.kwh_total) / data.kwh_total > 0.02) {
+      warnings.push({
+        code: 'KWH_BREAKDOWN_MISMATCH',
+        message: `Tổng các bộ chỉ số (${formatVi(sum)} kWh) không khớp tổng kWh (${formatVi(data.kwh_total)} kWh).`
+      });
+      confidenceCap = Math.min(confidenceCap, 0.6);
+    }
+  } else if (data.kwh_total && !amount) {
+    warnings.push({
+      code: 'KWH_UNVERIFIED',
+      message: 'Không có tổng tiền hay đủ bộ chỉ số để đối chiếu số kWh; vui lòng kiểm tra lại trước khi xác nhận.'
+    });
+    confidenceCap = Math.min(confidenceCap, 0.8);
+  }
+
+  if (parts.some((value) => typeof value === 'number')) {
+    data.kwh_breakdown = {
+      ...(data.kwh_breakdown && typeof data.kwh_breakdown === 'object' ? data.kwh_breakdown : {}),
+      normal: data.kwh_normal ?? null,
+      peak: data.kwh_peak ?? null,
+      offpeak: data.kwh_offpeak ?? null
+    };
+  }
+  return { data, warnings, confidenceCap };
 }
 
 function parseLocaleNumber(str) {
@@ -946,8 +1034,8 @@ function computeCarbonMetrics(kind, data) {
   let scope = null;
 
   if (kind === 'electricity_bill') {
-    factor = 0.4290;
-    source = 'VN Ministry of Natural Resources 2024';
+    factor = VN_GRID_EMISSION_FACTOR.value;
+    source = VN_GRID_EMISSION_FACTOR.source;
     scope = 'Scope 2 (Indirect Electricity)';
     if (data.kwh_total) {
       tco2e = Math.round((data.kwh_total * factor / 1000) * 1000) / 1000;
@@ -1132,6 +1220,38 @@ async function callGeminiDirect({ buffer, mimeType, filename, context = null }) 
 }
 
 /**
+ * Sinh văn bản tự do bằng Gemini (dùng khi dịch vụ RAG không phản hồi). Trả về chuỗi hoặc ném lỗi.
+ */
+async function generateGeminiText(prompt, { timeoutMs = 30000, temperature = 0.3 } = {}) {
+  const apiKey = resolveGeminiApiKey();
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is not configured on the server.');
+  }
+  let lastError = null;
+  for (const model of resolveGeminiModels()) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const response = await axios.post(
+        url,
+        { contents: [{ parts: [{ text: String(prompt || '') }] }], generationConfig: { temperature } },
+        { timeout: timeoutMs }
+      );
+      const text = response.data?.candidates?.[0]?.content?.parts
+        ?.map((part) => part?.text || '')
+        .join('')
+        .trim();
+      if (text) return text;
+      lastError = new Error('Gemini returned an empty answer.');
+    } catch (err) {
+      lastError = err;
+      logger.warn({ model, err: err.message }, '[aiExtractor] Gemini text attempt failed, trying fallback model');
+      if (process.env.NODE_ENV === 'test') break;
+    }
+  }
+  throw lastError || new Error('All Gemini text model attempts failed.');
+}
+
+/**
  * Main entrypoint: Analyzes an uploaded evidence file.
  * Pipeline: Gemini Vision -> RAG Endpoint -> High-Intelligence Deep Semantic Parser.
  */
@@ -1175,10 +1295,10 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
           period_start: fields.period_start || null,
           period_end: fields.period_end || null,
           billing_period: fields.billing_period || null,
-          kwh_total: fields.kwh_total ? Number(fields.kwh_total) : null,
+          kwh_total: toNumberOrNull(fields.kwh_total),
           fuel_type: fields.fuel_type || null,
-          fuel_liters: fields.liters ? Number(fields.liters) : null,
-          total_amount: fields.amount_vnd ? Number(fields.amount_vnd) : null,
+          fuel_liters: toNumberOrNull(fields.liters),
+          total_amount: toNumberOrNull(fields.amount_vnd),
           currency: fields.currency || null,
           confidence: normalizeConfidence(fields.confidence),
           summary: `Trích xuất từ AI RAG cho chứng từ ${filename}`
@@ -1232,6 +1352,15 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
     ? rawResult.document_title
     : (KIND_DISPLAY_NAMES[finalKind] || 'Chứng từ thẩm định');
 
+  let validationWarnings = [];
+  let confidenceCap = 1;
+  if (finalKind === 'electricity_bill') {
+    const checked = validateElectricityFigures(rawResult);
+    rawResult = checked.data;
+    validationWarnings = checked.warnings;
+    confidenceCap = checked.confidenceCap;
+  }
+
   const normalizedStart = normalizeIsoDate(rawResult.period_start);
   const normalizedEnd = normalizeIsoDate(rawResult.period_end);
   const normalizedBilling = normalizeBillingPeriod(rawResult.billing_period, normalizedStart);
@@ -1254,10 +1383,11 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
   const completeness = extractionContext
     ? evaluateContextCompleteness(extractionContext, contextFields)
     : evaluateExtractionCompleteness(finalKind, dataForEvaluation);
-  const confidence = normalizeConfidence(rawResult.confidence);
+  const confidence = Math.min(normalizeConfidence(rawResult.confidence), confidenceCap);
 
   return {
     success: true,
+    validation_warnings: validationWarnings,
     extraction_status: 'extracted',
     source,
     context_domain: extractionContext?.domainKey || null,
@@ -1273,13 +1403,13 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
     facility_name: rawResult.facility_name || null,
 
     // Electricity
-    kwh_total: finalKind === 'electricity_bill' && rawResult.kwh_total != null ? Number(rawResult.kwh_total) : (rawResult.kwh_total != null ? Number(rawResult.kwh_total) : null),
+    kwh_total: toNumberOrNull(rawResult.kwh_total),
     kwh_breakdown: finalKind === 'electricity_bill' ? rawResult.kwh_breakdown : null,
 
     // Fuel
     fuel_type: finalKind === 'fuel_receipt' ? (rawResult.fuel_type || 'diesel') : null,
-    fuel_liters: finalKind === 'fuel_receipt' && rawResult.fuel_liters != null ? Number(rawResult.fuel_liters) : null,
-    unit_price: rawResult.unit_price != null ? Number(rawResult.unit_price) : null,
+    fuel_liters: finalKind === 'fuel_receipt' ? toNumberOrNull(rawResult.fuel_liters) : null,
+    unit_price: toNumberOrNull(rawResult.unit_price),
     vehicle_plate: rawResult.vehicle_plate || null,
 
     // BOM
@@ -1288,9 +1418,9 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
     season_collection: rawResult.season_collection || null,
     buyer_brand: rawResult.buyer_brand || null,
     materials_count: rawResult.materials_count || null,
-    total_weight_kg: rawResult.total_weight_kg != null ? Number(rawResult.total_weight_kg) : null,
-    wastage_rate: rawResult.wastage_rate != null ? Number(rawResult.wastage_rate) : null,
-    embodied_carbon_kgco2e: rawResult.embodied_carbon_kgco2e != null ? Number(rawResult.embodied_carbon_kgco2e) : null,
+    total_weight_kg: toNumberOrNull(rawResult.total_weight_kg),
+    wastage_rate: toNumberOrNull(rawResult.wastage_rate),
+    embodied_carbon_kgco2e: toNumberOrNull(rawResult.embodied_carbon_kgco2e),
 
     // Logistics
     bl_number: rawResult.bl_number || null,
@@ -1300,8 +1430,8 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
     port_of_discharge: rawResult.port_of_discharge || null,
     container_numbers: rawResult.container_numbers || null,
     container_type: rawResult.container_type || null,
-    gross_weight_kg: rawResult.gross_weight_kg != null ? Number(rawResult.gross_weight_kg) : null,
-    estimated_distance_km: rawResult.estimated_distance_km != null ? Number(rawResult.estimated_distance_km) : null,
+    gross_weight_kg: toNumberOrNull(rawResult.gross_weight_kg),
+    estimated_distance_km: toNumberOrNull(rawResult.estimated_distance_km),
 
     // Certificate
     certificate_standard: rawResult.certificate_standard || null,
@@ -1311,9 +1441,9 @@ async function analyzeEvidenceFile({ buffer, mimeType, filename, hintKind = 'aut
     carbon_reduction_claim: rawResult.carbon_reduction_claim || null,
 
     // Financial
-    total_amount: rawResult.total_amount != null ? Number(rawResult.total_amount) : null,
-    subtotal_amount: rawResult.subtotal_amount != null ? Number(rawResult.subtotal_amount) : null,
-    vat_amount: rawResult.vat_amount != null ? Number(rawResult.vat_amount) : null,
+    total_amount: toNumberOrNull(rawResult.total_amount),
+    subtotal_amount: toNumberOrNull(rawResult.subtotal_amount),
+    vat_amount: toNumberOrNull(rawResult.vat_amount),
     currency: rawResult.currency || 'VND',
     meter_number: rawResult.meter_number || null,
     invoice_number: rawResult.invoice_number || null,
@@ -1347,9 +1477,12 @@ module.exports = {
   KIND_DISPLAY_NAMES,
   EXPECTED_FIELDS_CONFIG,
   computeCarbonMetrics,
+  validateElectricityFigures,
+  toNumberOrNull,
   evaluateExtractionCompleteness,
   sanitizeExtractionContext,
   buildContextPrompt,
   resolveGeminiApiKey,
-  resolveGeminiModels
+  resolveGeminiModels,
+  generateGeminiText
 };

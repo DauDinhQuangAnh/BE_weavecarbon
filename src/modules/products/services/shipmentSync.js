@@ -175,8 +175,10 @@ const normalizeShipmentLegs = (rawLegs, origin, destination, fallbackTotalCo2e, 
         );
 
         let co2e = Number.isFinite(parsedCo2) && parsedCo2 >= 0 ? parsedCo2 : null;
-        if (co2e === null && distanceKm > 0 && emissionFactorUsed > 0) {
-            co2e = distanceKm * emissionFactorUsed;
+        // LOI-028: hệ số vận chuyển là kgCO2e/tấn·km → phải nhân khối lượng hàng (tấn).
+        // Không biết khối lượng thì để null để phân bổ từ kết quả carbon đã tính bên dưới.
+        if (co2e === null && distanceKm > 0 && emissionFactorUsed > 0 && totalWeightKg > 0) {
+            co2e = distanceKm * emissionFactorUsed * (totalWeightKg / 1000);
         }
 
         const fallbackOriginLocation = index === 0 ? originLabel : `Transit ${index}`;

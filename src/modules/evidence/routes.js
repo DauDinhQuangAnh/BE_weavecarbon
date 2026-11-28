@@ -128,6 +128,20 @@ router.post('/upload', expensiveOperationLimiter, upload.single('file'), asyncHa
   }
   const documentName = req.body.documentName || file.originalname;
   const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex');
+  // LOI-017: cùng một tệp (cùng SHA-256) đã có trong kho chứng từ → báo trùng ngay khi tải lên.
+  const allowDuplicate = ['true', '1', 'yes'].includes(String(req.body.allowDuplicate || req.body.allow_duplicate || '').toLowerCase());
+  if (!allowDuplicate) {
+    const duplicate = await evidenceService.findDuplicateByChecksum(companyId, sha256);
+    if (duplicate) {
+      const uploadedAt = duplicate.createdAt ? new Date(duplicate.createdAt).toISOString().slice(0, 10) : null;
+      return sendError(res, {
+        status: 409,
+        code: 'EVIDENCE_DUPLICATE_FILE',
+        message: `Tệp này (cùng mã SHA-256) đã được tải lên trước đó: "${duplicate.documentName || duplicate.id}"${uploadedAt ? ` ngày ${uploadedAt}` : ''}.`,
+        details: { duplicateOf: duplicate, checksumSha256: sha256 }
+      });
+    }
+  }
   const storedFile = await storeEvidenceFile({
     companyId,
     originalFilename: file.originalname,

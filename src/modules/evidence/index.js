@@ -17,6 +17,9 @@ module.exports = {
   get fileStorage() {
     return require('./fileStorage');
   },
+  get generateGeminiText() {
+    return require('./aiExtractor').generateGeminiText;
+  },
   get uploadPolicy() {
     return require('./uploadPolicy');
   },

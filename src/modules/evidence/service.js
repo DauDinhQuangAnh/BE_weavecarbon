@@ -217,12 +217,13 @@ class EvidenceService {
     });
   }
 
-  async updateExtractedJson(companyId, evidenceId, extractedJson, newStatus = 'ocr_parsed') {
+  async updateExtractedJson(companyId, evidenceId, extractedJson, newStatus = 'ocr_parsed', warnings = []) {
     await this.repository.updateExtractedJson({
       companyId,
       evidenceId,
       extractedJson: JSON.stringify(extractedJson || {}),
-      status: newStatus
+      status: newStatus,
+      warnings: JSON.stringify(Array.isArray(warnings) ? warnings : [])
     });
   }
 
@@ -273,6 +274,18 @@ class EvidenceService {
     });
   }
 
+  async findDuplicateByChecksum(companyId, checksumSha256) {
+    if (!/^[a-f0-9]{64}$/i.test(checksumSha256 || '')) return null;
+    const row = await this.repository.findByChecksum({ companyId, checksumSha256 });
+    if (!row) return null;
+    return {
+      id: row.id,
+      documentName: row.document_name || row.file_name || null,
+      status: row.status,
+      createdAt: row.created_at
+    };
+  }
+
   async evidenceExists(companyId, evidenceId) {
     return this.repository.exists({ companyId, evidenceId });
   }
@@ -292,12 +305,31 @@ class EvidenceService {
     const row = await this.repository.getExtractedJson({ companyId, evidenceId });
     if (!row) return null;
     const extracted = reviewableExtraction(row.extracted_json);
-    return Object.entries(extracted).map(([key, value]) => ({
-      id: key,
-      label: key,
-      ai_value: String(value ?? ''),
-      confirmed_value: null
-    }));
+    const warnings = Array.isArray(row.warnings) ? row.warnings : [];
+    const linked = typeof this.repository.getLinkedInvoiceFigures === 'function'
+      ? await this.repository.getLinkedInvoiceFigures({ companyId, evidenceId }).catch(() => ({}))
+      : {};
+    // Số người dùng đã nhập ở form tải lên được ưu tiên làm giá trị đề xuất (LOI-014).
+    const userEntered = {
+      kwh_total: linked?.kwh,
+      fuel_liters: linked?.fuelLiters
+    };
+    const warningFor = (key) => (key.startsWith('kwh')
+      ? warnings.filter((warning) => typeof warning === 'string' && /kWh/.test(warning)).join(' ') || null
+      : null);
+    return Object.entries(extracted).map(([key, value]) => {
+      const entered = userEntered[key];
+      const hasEntered = entered !== null && entered !== undefined && entered !== ''
+        && Number(entered) !== Number(value);
+      return {
+        id: key,
+        label: key,
+        ai_value: String(value ?? ''),
+        confirmed_value: hasEntered ? String(Number(entered)) : null,
+        user_entered_value: hasEntered ? String(Number(entered)) : null,
+        warning: warningFor(key)
+      };
+    });
   }
 
   async confirmExtractionWithAudit(companyId, userId, evidenceId, payload = {}) {
@@ -449,6 +481,9 @@ class EvidenceService {
       fileSizeBytes: Number(row.file_size_bytes || 0),
       checksumSha256: row.checksum_sha256 || null,
       extractedJson: row.extracted_json || {},
+      // Số liệu người dùng nhập tay ở hóa đơn điện/nhiên liệu gắn với chứng từ (LOI-046).
+      linkedKwh: row.linked_kwh != null ? Number(row.linked_kwh) : null,
+      linkedFuelLiters: row.linked_fuel_liters != null ? Number(row.linked_fuel_liters) : null,
       status: row.status,
       verificationLevel: level,
       trustScore: level >= 3 ? level * 20 : null,

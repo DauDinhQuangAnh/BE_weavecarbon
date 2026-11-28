@@ -138,8 +138,8 @@ describe('EvidenceService', () => {
       extractionError: 'failed'
     });
     await expect(service.getEvidenceFields(COMPANY_ID, 'evidence-1')).resolves.toEqual([
-      { id: 'invoice_number', label: 'invoice_number', ai_value: '123', confirmed_value: null },
-      { id: 'supplier', label: 'supplier', ai_value: '', confirmed_value: null }
+      { id: 'invoice_number', label: 'invoice_number', ai_value: '123', confirmed_value: null, user_entered_value: null, warning: null },
+      { id: 'supplier', label: 'supplier', ai_value: '', confirmed_value: null, user_entered_value: null, warning: null }
     ]);
   });
 
