@@ -226,7 +226,7 @@ function createEvidenceRepository({ database = pool } = {}) {
 
     async findByChecksum({ companyId, checksumSha256 }) {
       const { rows } = await database.query(
-        `SELECT id, document_name, file_name, status, created_at
+        `SELECT id, document_name, original_filename, status, created_at
          FROM evidence_documents
          WHERE company_id = $1 AND checksum_sha256 = $2
          ORDER BY created_at ASC

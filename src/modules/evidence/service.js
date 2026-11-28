@@ -280,7 +280,7 @@ class EvidenceService {
     if (!row) return null;
     return {
       id: row.id,
-      documentName: row.document_name || row.file_name || null,
+      documentName: row.document_name || row.original_filename || null,
       status: row.status,
       createdAt: row.created_at
     };

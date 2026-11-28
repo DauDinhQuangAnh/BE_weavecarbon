@@ -465,12 +465,6 @@ function validateElectricityFigures(input) {
       });
       confidenceCap = Math.min(confidenceCap, 0.6);
     }
-  } else if (data.kwh_total && !amount) {
-    warnings.push({
-      code: 'KWH_UNVERIFIED',
-      message: 'Không có tổng tiền hay đủ bộ chỉ số để đối chiếu số kWh; vui lòng kiểm tra lại trước khi xác nhận.'
-    });
-    confidenceCap = Math.min(confidenceCap, 0.8);
   }
 
   if (parts.some((value) => typeof value === 'number')) {
